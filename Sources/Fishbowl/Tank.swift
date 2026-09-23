@@ -52,8 +52,11 @@ final class Tank: NSObject {
 
     private(set) var fish: [Fish] = []
     private var food: [Food] = []
-    private var seaweed: Seaweed?
-    private var fishBubbles: SCNParticleSystem!
+    private var plantBed: PlantBed?
+    /// Big scenery (reef mounds, corals) as spheres that fish steer around.
+    private(set) var obstacles: [(center: V3, radius: Float)] = []
+    /// Where the clownfish live.
+    private(set) var anemoneTop: V3?
     private var schoolGoals: [String: (point: V3, timer: Float)] = [:]
     private(set) var cursor = Cursor()
 
@@ -302,103 +305,159 @@ final class Tank: NSObject {
     }
 
     private func buildScenery() {
-        // Rocks, scattered across the floor; all merged into one mesh.
-        var rocks = Mesh()
-        let rockCount = max(5, Int(width / 2.2))
-        for i in 0..<rockCount {
-            let z = rnd((-depth + 0.3)...(-0.4))
-            let hw = halfWidth(atZ: z)
-            let x = -hw + 2 * hw * (Float(i) + rnd(0.15...0.85)) / Float(rockCount)
-            let r = rnd(0.25...0.8)
-            let rock = Rock.mesh(size: V3(r * rnd(1...1.6), r * rnd(0.55...0.9), r * rnd(0.8...1.3)), tone: Int.random(in: 0..<Rock.tones.count - 1))
-            let place = simd_float4x4(translation: V3(x, floorHeight(x: x, z: z) + r * 0.2, z))
-                * simd_float4x4(simd_quatf(angle: rnd(0...(2 * .pi)), axis: V3(0, 1, 0)))
-            rocks.append(rock, transform: place)
-        }
-        // The bubbler: a small rock with a stream of bubbles rising from it.
-        let bz = -depth * rnd(0.35...0.6)
-        let bx = halfWidth(atZ: bz) * rnd(0.25...0.6)
-        let bubblerTop = V3(bx, floorHeight(x: bx, z: bz) + 0.3, bz)
-        rocks.append(Rock.mesh(size: V3(0.45, 0.3, 0.4), tone: Rock.tones.count - 1),
-                     transform: simd_float4x4(translation: V3(bx, floorHeight(x: bx, z: bz) + 0.08, bz)))
-        let rockGeo = rocks.geometry()
-        let rockMaterial = Rock.material()
-        rockGeo.materials = [rockMaterial]
-        lighting.causticMaterials.append(rockMaterial)
-        scene.rootNode.addChildNode(SCNNode(geometry: rockGeo))
-        buildBubbles(from: bubblerTop)
+        let reef = CoralReef()
+        let plants = PlantBed()
+        let D = depth
+        func floorAt(_ x: Float, _ z: Float) -> V3 { V3(x, floorHeight(x: x, z: z), z) }
 
-        // Seaweed clusters: mostly toward the back, a few near the front corners to frame the view.
-        var blades: [Seaweed.Blade] = []
-        let clusters = max(6, Int(width / 1.8))
-        for i in 0..<clusters {
-            let frontCorner = i < 2
-            let z: Float = frontCorner ? rnd(-1.5 ... -0.6) : rnd((-depth + 0.4)...(-depth * 0.35))
-            let hw = halfWidth(atZ: z)
-            let x: Float = frontCorner
-                ? (i == 0 ? -1 : 1) * hw * rnd(0.8...0.95)
-                : -hw + 2 * hw * (Float(i - 2) + rnd(0.1...0.9)) / Float(clusters - 2)
-            // Mostly greens; occasionally a red cluster.
-            let base = rnd(0...1) < 0.2 ? Int.random(in: 5...6) : Int.random(in: 0...4)
-            let maxH = min(height * (frontCorner ? 0.55 : 0.5), 5)
-            for _ in 0..<Int.random(in: 4...8) {
-                let px = x + rnd(-0.35...0.35), pz = z + rnd(-0.35...0.35)
-                blades.append(Seaweed.Blade(base: V3(px, floorHeight(x: px, z: pz) - 0.05, pz),
-                                            height: rnd(0.35...1.0) * maxH,
-                                            width: rnd(0.14...0.28),
-                                            colorIndex: base >= 5 || Bool.random() ? base : Int.random(in: 0...4)))
+        // Reef mounds at the back: piles of live rock crowned with coral, with sea fans behind.
+        let moundSides: [Float] = Bool.random() ? [-1, 1] : [1, -1]
+        for (i, side) in moundSides.enumerated() {
+            let z = -D * rnd(0.68...0.8)
+            let cx = side * halfWidth(atZ: z) * rnd(0.3...0.5)
+            let scale = rnd(1.0...1.35)
+            var top: Float = floorHeight(x: cx, z: z)
+            for _ in 0..<Int.random(in: 5...7) {
+                let ox = rnd(-1.2...1.2) * scale, oz = rnd(-0.6...0.6) * scale
+                let size = V3(rnd(0.6...1.1), rnd(0.5...0.85), rnd(0.5...0.9)) * scale
+                // Rocks near the middle sit higher, so the pile rises to a peak.
+                let lift = size.y * (0.25 + 0.5 * max(0, 1 - abs(ox) / (1.2 * scale)))
+                let c = floorAt(cx + ox, z + oz) + V3(0, lift, 0)
+                reef.addRock(at: c, size: size, tone: Bool.random() ? .rock : .rockPurple)
+                if abs(ox) < 0.7 * scale { top = max(top, c.y + size.y * 0.75) }
+                obstacles.append((c, max(size.x, size.z) * 0.95))
+                encrust(reef, rock: c, size: size)
+            }
+            let peak = V3(cx, top - 0.15, z)
+            if i == 0 {
+                reef.addBranching(at: peak, height: rnd(1.4...1.9), tone: [.purple, .teal, .pink].randomElement()!)
+            } else {
+                reef.addTable(at: peak, radius: rnd(0.7...0.95), tone: [.tan, .teal].randomElement()!)
+            }
+            obstacles.append((peak + V3(0, 0.5, 0), 0.8))
+            reef.addBrain(at: floorAt(cx - side * 1.3 * scale, z + 0.9) - V3(0, 0.03, 0), radius: rnd(0.4...0.55),
+                          tone: [.tan, .orange, .bone].randomElement()!)
+            plants.addSeaFan(at: floorAt(cx + rnd(-0.6...0.6), z - 0.9), height: rnd(1.8...2.6), facing: rnd(-0.35...0.35),
+                             tone: i == 0 ? .fanPurple : .fanRed)
+            // An Anubias-like rosette of dark leaves tucked at the mound's foot.
+            plants.addSword(at: floorAt(cx + side * 1.4 * scale, z + 0.7), size: 0.45, leaves: 7, width: 0.2, tone: .darkGreen)
+        }
+
+        // Coral gardens: small mixed patches across the middle of the floor.
+        for _ in 0..<max(4, Int(width / 3)) {
+            let z = -D * rnd(0.25...0.6)
+            let c = floorAt(halfWidth(atZ: z) * rnd(-0.85...0.85), z)
+            for _ in 0..<Int.random(in: 2...4) {
+                let p = floorAt(c.x + rnd(-0.5...0.5), c.z + rnd(-0.4...0.4)) - V3(0, 0.03, 0)
+                addSmallCoral(reef, at: p, scale: rnd(0.8...1.2))
             }
         }
-        let weed = Seaweed(blades: blades)
-        lighting.causticMaterials.append(weed.material)
-        scene.rootNode.addChildNode(weed.node)
-        seaweed = weed
+
+        // Larger corals dotted across the middle of the floor.
+        for k in 0..<2 {
+            let z = -D * rnd(0.35...0.55)
+            let x = (k == 0 ? -1 : 1) * halfWidth(atZ: z) * rnd(0.1...0.35)
+            let c = floorAt(x, z)
+            reef.addBrain(at: c - V3(0, 0.03, 0), radius: rnd(0.3...0.45), tone: [.teal, .tan, .orange].randomElement()!)
+            obstacles.append((c, 0.45))
+        }
+        for _ in 0..<3 {
+            let z = -D * rnd(0.3...0.6)
+            let x = halfWidth(atZ: z) * rnd(-0.75...0.75)
+            reef.addBranching(at: floorAt(x, z) - V3(0, 0.05, 0), height: rnd(0.55...0.85),
+                              tone: [.pink, .orange, .purple, .red].randomElement()!)
+        }
+
+        // A sea anemone near the front, which the clownfish call home.
+        let az = -rnd(1.8...2.4)
+        let ax = (Bool.random() ? -1 : 1) * halfWidth(atZ: az) * rnd(0.25...0.45)
+        let anemoneBase = floorAt(ax, az) - V3(0, 0.03, 0)
+        plants.addAnemone(at: anemoneBase, radius: 0.32)
+        reef.addRock(at: anemoneBase - V3(0, 0.05, 0), size: V3(0.4, 0.2, 0.35), tone: .rock)
+        anemoneTop = anemoneBase + V3(0, 0.45, 0)
+
+        // Scattered stones and pebbles.
+        for _ in 0..<7 {
+            let z = rnd((-D + 0.5)...(-0.6))
+            let x = halfWidth(atZ: z) * rnd(-0.9...0.9)
+            let r = rnd(0.15...0.4)
+            reef.addRock(at: floorAt(x, z) + V3(0, r * 0.15, 0), size: V3(r * rnd(1...1.5), r * rnd(0.5...0.8), r), tone: .rock)
+        }
+        for _ in 0..<80 {
+            let z = -D * pow(rnd(0.05...1), 1.5)
+            let x = halfWidth(atZ: z) * rnd(-0.95...0.95)
+            reef.addPebble(at: floorAt(x, z), radius: rnd(0.025...0.07),
+                           tone: [.rock, .rockPurple, .bone, .tan].randomElement()!)
+        }
+
+        // Plants: tall framing clusters in the front corners, more along the back and sides.
+        for side: Float in [-1, 1] {
+            let z = rnd(-1.4 ... -0.7)
+            let x = side * halfWidth(atZ: z) * rnd(0.82...0.95)
+            if side < 0 {
+                for _ in 0..<7 {
+                    let p = floorAt(x + rnd(-0.35...0.35), z + rnd(-0.3...0.3))
+                    plants.addBlade(at: p, height: rnd(0.4...1.0) * min(height * 0.55, 5), width: rnd(0.16...0.3),
+                                    tone: [.green, .brightGreen, .olive].randomElement()!)
+                }
+            } else {
+                let tone: PlantBed.Tone = Bool.random() ? .rotala : .red
+                for _ in 0..<6 {
+                    plants.addStem(at: floorAt(x + rnd(-0.35...0.35), z + rnd(-0.3...0.3)),
+                                   height: rnd(0.5...1.0) * min(height * 0.5, 4.5), tone: tone)
+                }
+            }
+        }
+        for k in 0..<max(4, Int(width / 3)) {
+            let z = -D * rnd(0.55...0.95)
+            let x = halfWidth(atZ: z) * rnd(-0.95...0.95)
+            if k % 2 == 0 {
+                for _ in 0..<Int.random(in: 4...7) {
+                    let p = floorAt(x + rnd(-0.4...0.4), z + rnd(-0.4...0.4))
+                    plants.addBlade(at: p, height: rnd(0.4...1.0) * min(height * 0.5, 4.5), width: rnd(0.14...0.26),
+                                    tone: [.green, .darkGreen, .olive, .maroon].randomElement()!)
+                }
+            } else {
+                let tone = [PlantBed.Tone.lime, .brightGreen, .rotala].randomElement()!
+                for _ in 0..<Int.random(in: 4...6) {
+                    plants.addStem(at: floorAt(x + rnd(-0.35...0.35), z + rnd(-0.35...0.35)),
+                                   height: rnd(0.5...1.0) * min(height * 0.45, 4), tone: tone)
+                }
+            }
+        }
+        for side: Float in [-1, 1] {
+            let z = -D * rnd(0.3...0.5)
+            plants.addSword(at: floorAt(side * halfWidth(atZ: z) * rnd(0.6...0.8), z), size: rnd(0.9...1.3),
+                            leaves: Int.random(in: 10...14), width: rnd(0.16...0.22), tone: [.green, .brightGreen].randomElement()!)
+        }
+
+        reef.finish()
+        scene.rootNode.addChildNode(reef.node)
+        lighting.causticMaterials.append(reef.material)
+        plants.finish()
+        scene.rootNode.addChildNode(plants.node)
+        lighting.causticMaterials.append(plants.material)
+        plantBed = plants
     }
 
-    private func bubbleSystem(size: CGFloat) -> SCNParticleSystem {
-        let p = SCNParticleSystem()
-        p.particleImage = Art.bubble
-        p.particleSize = size
-        p.particleSizeVariation = size * 0.6
-        p.particleColor = NSColor(white: 1, alpha: 0.9)
-        p.blendMode = .additive
-        p.isLightingEnabled = false
-        p.emittingDirection = SCNVector3(0, 1, 0)
-        p.spreadingAngle = 8
-        p.acceleration = SCNVector3(0, 0.25, 0)
-        p.particleLifeSpan = 30
-        p.particleDiesOnCollision = true
-        return p
+    /// Grow a few small corals over the upper surface of a rock.
+    private func encrust(_ reef: CoralReef, rock c: V3, size: V3) {
+        for _ in 0..<Int.random(in: 4...6) {
+            let a = rnd(0...(2 * .pi)), up = rnd(0.35...1.0)
+            let dir = V3(cos(a) * (1 - up * 0.7), up, sin(a) * (1 - up * 0.7)).normalized
+            // Roughly on the rock's (lumpy) surface in that direction.
+            let p = c + dir * size * 0.95
+            addSmallCoral(reef, at: p, scale: rnd(0.8...1.4))
+        }
     }
 
-    private func buildBubbles(from top: V3) {
-        // Bubbles pop when they hit the surface.
-        let surfaceCollider = SCNNode(geometry: SCNBox(width: CGFloat(width * 4), height: 0.1, length: CGFloat(depth * 4), chamferRadius: 0))
-        surfaceCollider.simdPosition = V3(0, surfaceY + 0.05, -depth / 2)
-        surfaceCollider.opacity = 0
-        scene.rootNode.addChildNode(surfaceCollider)
-
-        let stream = bubbleSystem(size: 0.07)
-        stream.birthRate = 5
-        stream.particleVelocity = 0.5
-        stream.particleVelocityVariation = 0.2
-        stream.emitterShape = SCNSphere(radius: 0.05)
-        stream.colliderNodes = [surfaceCollider]
-        let emitter = SCNNode()
-        emitter.simdPosition = top
-        emitter.addParticleSystem(stream)
-        scene.rootNode.addChildNode(emitter)
-
-        // One-shot puff used when a fish is startled.
-        fishBubbles = bubbleSystem(size: 0.035)
-        fishBubbles.birthRate = 20
-        fishBubbles.emissionDuration = 0.12
-        fishBubbles.loops = false
-        fishBubbles.emitterShape = SCNSphere(radius: 0.03)
-        fishBubbles.particleVelocity = 0.2
-        fishBubbles.particleVelocityVariation = 0.18
-        fishBubbles.spreadingAngle = 20
-        fishBubbles.colliderNodes = [surfaceCollider]
+    private func addSmallCoral(_ reef: CoralReef, at p: V3, scale s: Float) {
+        switch Int.random(in: 0..<5) {
+        case 0: reef.addBrain(at: p, radius: 0.22 * s, tone: [.tan, .teal, .orange, .bone, .green].randomElement()!)
+        case 1: reef.addBranching(at: p, height: 0.5 * s, tone: [.pink, .purple, .orange, .red].randomElement()!)
+        case 2: reef.addFingers(at: p, size: 0.45 * s, tone: [.bone, .tan, .orange, .pink].randomElement()!)
+        default: reef.addPolyps(at: p, radius: 0.2 * s, tone: [.green, .orange, .teal, .pink].randomElement()!)
+        }
     }
 
     private func buildShafts() {
@@ -528,9 +587,6 @@ final class Tank: NSObject {
 
     func schoolGoal(for sp: Species) -> V3? { schoolGoals[sp.id]?.point }
 
-    func spawnBubbles(at p: V3) {
-        scene.addParticleSystem(fishBubbles, transform: SCNMatrix4MakeTranslation(CGFloat(p.x), CGFloat(p.y), CGFloat(p.z)))
-    }
 
     // MARK: - Frame loop
 
@@ -561,7 +617,7 @@ final class Tank: NSObject {
 
         updateSchools(dt: dt)
         for f in fish { f.update(dt: dt, tank: self) }
-        seaweed?.update(dt: dt, tank: self)
+        plantBed?.update(dt: dt, tank: self)
 
         food.removeAll { f in
             let alive = f.update(dt: dt, floor: floorHeight(x: f.pos.x, z: f.pos.z) + 0.02)

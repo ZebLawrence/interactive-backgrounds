@@ -5,7 +5,9 @@ An animated 3D aquarium wallpaper for macOS. The fish swim, school, and react to
 - **Move the mouse fast** near fish and they dart out of its path and retreat deeper into the tank.
 - **Rest the cursor** and curious fish swim right up to the glass and turn to look at it.
 - **Click empty desktop** to drop food; fish race to eat it.
-- Seaweed sways and gets pushed around by the "current" from your cursor.
+- A coral reef: rock mounds covered in brain, staghorn, table and finger corals, polyps and sea fans,
+  plus seaweed, sword plants, red-tipped stem plants and an anemone the clownfish call home. The
+  plants sway and get pushed around by the "current" from your cursor.
 - **Night Mode** (menu bar): the tank goes dark except for a lamp hanging above the water that swivels
   to aim at your cursor, with a visible beam, moving shadows and fish that gather in the light.
 
@@ -44,7 +46,9 @@ swift run Fishbowl --night                  # force night (or --day) without cha
   ignores its frame-rate setting and renders at 120 Hz on ProMotion displays.)
 - `FishModel` lofts each species' side-view outline into a 3D body, with the painted skin projected onto
   its flanks, fins/tail on one atlas-textured mesh and glossy eyes: three draw calls per fish.
-- `Shaders` holds the SceneKit shader modifiers: the swimming body wave, seaweed sway (including the
+- `CoralReef` and `PlantBed` generate the scenery procedurally, each merged into a single mesh (one
+  draw call); plant sway data rides in the vertex colour channel.
+- `Shaders` holds the SceneKit shader modifiers: the swimming body wave, plant sway (including the
   current stirred up by the cursor), caustics and the water surface. Shader time wraps hourly and every
   animation frequency is quantised to that period, so animation stays smooth however long it runs.
 - `Lighting` blends day and night: light levels, water colour and the night lamp, which pivots to aim

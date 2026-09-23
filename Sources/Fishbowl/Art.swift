@@ -81,14 +81,6 @@ enum Art {
 
     static func paletteUV(_ index: Int, of count: Int) -> V2 { V2((Float(index) + 0.5) / Float(count), 0.5) }
 
-    static let bubble: CGImage = image(size: CGSize(width: 32, height: 32), scale: 2) { ctx in
-        let c = CGPoint(x: 16, y: 16)
-        radial(ctx, [RGBA(0.8, 0.95, 1, 0.05), RGBA(0.8, 0.95, 1, 0.12), RGBA(0.9, 1, 1, 0.6), RGBA(1, 1, 1, 0)],
-               [0, 0.7, 0.9, 1], center: c, radius: 15.5)
-        ctx.setFillColor(RGBA(1, 1, 1, 0.9).cg)
-        ctx.fillEllipse(in: CGRect(x: 18, y: 19, width: 6, height: 5))
-    }
-
     static let dot: CGImage = image(size: CGSize(width: 16, height: 16), scale: 2) { ctx in
         radial(ctx, [RGBA(1, 1, 1, 1), RGBA(1, 1, 1, 0)], center: CGPoint(x: 8, y: 8), radius: 8)
     }

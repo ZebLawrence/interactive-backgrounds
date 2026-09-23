@@ -98,7 +98,6 @@ final class Fish {
                 let intensity = moving ? min(1.4, 0.45 + speed / 900) : 0.5
                 let startle = min(1, (1 - dScreen / radius) * intensity)
                 if startle > fear {
-                    if fear < 0.25 && startle > 0.45 { tank.spawnBubbles(at: nose) }
                     fear = startle
                     goalTimer = 0
                 }
@@ -160,6 +159,14 @@ final class Fish {
         if n > 0 {
             desired += (align / n - vel) * 0.35
             desired += (centre / n - pos).normalized * (cruise * 0.25)
+        }
+
+        // --- Steer around big scenery (reef mounds, corals).
+        for o in tank.obstacles {
+            let dv = pos - o.center
+            let d = dv.length
+            let r = o.radius + myRadius * 0.5 + 0.2
+            if d < r && d > 0.0001 { desired += dv.normalized * ((1 - d / r) * cruise * 3) }
         }
 
         // --- Stay inside the tank (soft walls).
@@ -240,6 +247,12 @@ final class Fish {
     }
 
     private func pickGoal(in tank: Tank) {
+        // Clownfish mostly stay close to their anemone.
+        if species.id == Species.clownfish.id, let home = tank.anemoneTop, Float.random(in: 0...1) < 0.75 {
+            goal = home + V3(rnd(-0.5...0.5), rnd(0.05...0.6), rnd(-0.45...0.45))
+            goalTimer = rnd(2...5)
+            return
+        }
         goal = tank.wanderPoint(band: species.band, near: pos)
         goalTimer = rnd(4...11)
     }
