@@ -210,8 +210,11 @@ final class CoralReef {
         mat.lightingModel = .physicallyBased
         mat.diffuse.contents = CoralReef.palette()
         mat.roughness.contents = 0.8
-        mat.shaderModifiers = [.surface: Shaders.caustics]
+        mat.shaderModifiers = [.surface: Shaders.reefSurface]
         mat.setValue(0.7, forKey: "causticStrength")
+        mat.setValue(SCNMaterialProperty(contents: Detail.rock), forKey: "detailNormal")
+        mat.setValue(Float(1.1), forKey: "detailScale")
+        mat.setValue(Float(0.7), forKey: "detailStrength")
         Lighting.prepareCaustics(mat)
         geo.materials = [mat]
         material = mat

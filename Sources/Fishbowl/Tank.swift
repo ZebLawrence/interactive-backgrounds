@@ -249,6 +249,10 @@ final class Tank: NSObject {
         mat.diffuse.wrapS = .repeat
         mat.diffuse.wrapT = .repeat
         mat.roughness.contents = 0.95
+        mat.normal.contents = Detail.sand
+        mat.normal.wrapS = .repeat
+        mat.normal.wrapT = .repeat
+        mat.normal.intensity = 0.9
         mat.multiply.contents = ao
         mat.multiply.mappingChannel = 1
         mat.multiply.wrapS = .clamp

@@ -173,23 +173,8 @@ struct FishArt {
             ctx.restoreGState()
 
         case .metallic:
-            // Faint scale pattern.
-            let sp = max(3.2, L * 0.075)
-            ctx.setStrokeColor(RGBA(1, 1, 1, 0.16).cg)
-            ctx.setLineWidth(0.6)
-            var row = 0
-            var y = -b
-            while y < b {
-                var x = -a + (row % 2 == 0 ? 0 : sp / 2)
-                while x < a - 0.28 * L {
-                    ctx.addArc(center: CGPoint(x: x, y: y), radius: sp * 0.6,
-                               startAngle: .pi * 0.5, endAngle: .pi * 1.5, clockwise: true)
-                    ctx.strokePath()
-                    x += sp
-                }
-                y += sp * 0.75
-                row += 1
-            }
+            // Scales come from the body's normal map (see `Detail.scales`).
+            break
 
         case .angel:
             for (c, w) in [(0.84, 0.05), (0.58, 0.07), (0.30, 0.06)] as [(CGFloat, CGFloat)] {

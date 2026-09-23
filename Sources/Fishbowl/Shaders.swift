@@ -74,7 +74,30 @@ enum Shaders {
 
     /// Moving caustic light on upward-facing surfaces (sand, rocks, plants, fish backs).
     /// Runs at the `.surface` stage so lighting and fog still apply afterwards.
-    static let caustics = quantizer("cauQ") + """
+    static let caustics = causticsShader()
+
+    /// Caustics plus surface detail for the reef, whose UVs only index a colour palette: a tileable
+    /// normal map is projected along the three world axes and blended by the surface's facing.
+    static let reefSurface = causticsShader(extraArguments: """
+        texture2d<float> detailNormal;
+        float detailScale;
+        float detailStrength;
+        """, preBody: """
+        float3 dwp = (scn_frame.inverseViewTransform * float4(_surface.position, 1.0)).xyz;
+        float3 dwn = normalize((scn_frame.inverseViewTransform * float4(_surface.normal, 0.0)).xyz);
+        float3 bw = pow(abs(dwn), float3(4.0));
+        bw /= (bw.x + bw.y + bw.z);
+        constexpr sampler dsmp(filter::linear, mip_filter::linear, address::repeat);
+        float2 tx = detailNormal.sample(dsmp, dwp.zy * detailScale).xy * 2.0 - 1.0;
+        float2 ty = detailNormal.sample(dsmp, dwp.xz * detailScale).xy * 2.0 - 1.0;
+        float2 tz = detailNormal.sample(dsmp, dwp.xy * detailScale).xy * 2.0 - 1.0;
+        float3 bump = float3(0.0, tx.y, tx.x) * bw.x + float3(ty.x, 0.0, ty.y) * bw.y + float3(tz.x, tz.y, 0.0) * bw.z;
+        dwn = normalize(dwn + bump * detailStrength);
+        _surface.normal = normalize((scn_frame.viewTransform * float4(dwn, 0.0)).xyz);
+        """)
+
+    private static func causticsShader(extraArguments: String = "", preBody: String = "") -> String {
+        quantizer("cauQ") + """
     float cauHash(float2 p) {
         p = fract(p * float2(234.34, 435.345));
         p += dot(p, p + 34.23);
@@ -106,7 +129,9 @@ enum Shaders {
     float spotTX;
     float spotTY;
     float spotCos;
+    \(extraArguments)
     #pragma body
+    \(preBody)
     float3 wp = (scn_frame.inverseViewTransform * float4(_surface.position, 1.0)).xyz;
     float3 wn = normalize((scn_frame.inverseViewTransform * float4(_surface.normal, 0.0)).xyz);
     float t = scn_frame.time;
@@ -124,6 +149,7 @@ enum Shaders {
     float3 tint = mix(float3(0.55, 0.85, 0.9), float3(1.0, 0.92, 0.75), causticNight);
     _surface.emission.rgb += tint * c * up * causticStrength * gain * (0.2 + _surface.diffuse.rgb);
     """
+    }
 
     /// The visible night-time spotlight beam: an additive cone, brightest where seen edge-on through
     /// its middle. It fades in from darkness near the top rather than starting at a hard edge.
