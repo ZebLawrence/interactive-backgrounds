@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var isPreview: Bool { args.contains("--preview") || args.contains("--snapshot") }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if args.contains("--night") { settings.nightOverride = true }
+        if args.contains("--day") { settings.nightOverride = false }
         buildWindows()
         setupStatusItem()
         updateClickMonitor()
@@ -105,6 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(item("Refill Tank", #selector(resetTank)))
         menu.addItem(.separator())
 
+        let night = item("Night Mode", #selector(toggleNight), "n")
+        night.state = settings.nightMode ? .on : .off
+        menu.addItem(night)
         let click = item("Click Desktop to Feed", #selector(toggleClickToFeed))
         click.state = settings.clickToFeed ? .on : .off
         menu.addItem(click)
@@ -134,6 +139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func removeFish() { windows.forEach { $0.tank.removeFish() } }
 
     @objc private func resetTank() { buildWindows() }
+
+    @objc private func toggleNight() {
+        settings.nightOverride = nil
+        settings.nightMode.toggle()
+    }
 
     @objc private func toggleClickToFeed() {
         settings.clickToFeed.toggle()

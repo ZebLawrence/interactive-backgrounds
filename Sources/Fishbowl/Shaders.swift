@@ -99,6 +99,13 @@ enum Shaders {
     }
     #pragma arguments
     float causticStrength;
+    float causticNight;
+    float spotX;
+    float spotY;
+    float spotZ;
+    float spotTX;
+    float spotTY;
+    float spotCos;
     #pragma body
     float3 wp = (scn_frame.inverseViewTransform * float4(_surface.position, 1.0)).xyz;
     float3 wn = normalize((scn_frame.inverseViewTransform * float4(_surface.normal, 0.0)).xyz);
@@ -107,7 +114,15 @@ enum Shaders {
     cp += 0.3 * float2(sin(cp.y * 1.3 + t * cauQ(0.35)), cos(cp.x * 1.1 - t * cauQ(0.3)));
     float c = cauCells(cp, t, 0.9);
     float up = clamp(wn.y * 0.8 + 0.2, 0.0, 1.0);
-    _surface.emission.rgb += float3(0.55, 0.85, 0.9) * c * up * causticStrength * (0.2 + _surface.diffuse.rgb);
+    // At night, caustics only appear inside the spotlight's cone. The lamp hangs at spot(X,Y,Z)
+    // and aims at (TX, TY) in the same z plane.
+    float3 lamp = float3(spotX, spotY, spotZ);
+    float3 aim = normalize(float3(spotTX, spotTY, spotZ) - lamp);
+    float cosA = dot(normalize(wp - lamp), aim);
+    float inSpot = smoothstep(spotCos, cos(acos(spotCos) * 0.4), cosA);
+    float gain = mix(1.0, inSpot * 1.6, causticNight);
+    float3 tint = mix(float3(0.55, 0.85, 0.9), float3(1.0, 0.92, 0.75), causticNight);
+    _surface.emission.rgb += tint * c * up * causticStrength * gain * (0.2 + _surface.diffuse.rgb);
     """
 
     /// Sum of travelling sine waves for the water surface: returns (height, dh/dx, dh/dz).
@@ -144,6 +159,13 @@ enum Shaders {
     ]) + """
     #pragma arguments
     texture2d<float> reflectionTexture;
+    float surfNight;
+    float spotX;
+    float spotY;
+    float spotZ;
+    float spotTX;
+    float spotTY;
+    float spotCos;
     #pragma body
     float4x4 inv = scn_frame.inverseViewTransform;
     float3 wp = (inv * float4(_surface.position, 1.0)).xyz;
@@ -165,9 +187,34 @@ enum Shaders {
     float window = smoothstep(0.36, 0.62, cosI);
     // Sunlight scattering through the surface: facets tilted toward the viewer glow brighter.
     float tilt = clamp(0.5 + dot(n.xz, -V.xz) * 6.0, 0.0, 1.0);
-    float3 glow = mix(float3(0.05, 0.26, 0.34), float3(0.38, 0.72, 0.8), tilt * tilt);
+    float3 glow = mix(float3(0.05, 0.26, 0.34), float3(0.38, 0.72, 0.8), tilt * tilt) * (1.0 - 0.93 * surfNight);
     float3 col = mirror * float3(0.95, 1.05, 1.08) * 0.85 + glow * 0.5;
-    col = mix(col, float3(0.75, 0.95, 1.0), window);
+    col = mix(col, mix(float3(0.75, 0.95, 1.0), float3(0.02, 0.04, 0.07), surfNight), window);
+    // At night, a bright rippling patch where the spotlight's cone passes through the surface.
+    float3 lamp = float3(spotX, spotY, spotZ);
+    float3 aim = normalize(float3(spotTX, spotTY, spotZ) - lamp);
+    float cosA = dot(normalize(wp - lamp), aim);
+    float disc = smoothstep(cos(acos(spotCos) * 1.2), cos(acos(spotCos) * 0.2), cosA);
+    col += float3(1.0, 0.92, 0.75) * disc * surfNight * (0.35 + 1.1 * tilt * tilt + window);
     _surface.diffuse = float4(col, 1.0);
+    """
+
+    /// The visible night-time spotlight beam: an additive cone, brightest where seen edge-on through
+    /// its middle and toward the surface.
+    static let beam = """
+    #pragma arguments
+    float beamStrength;
+    float beamTop;
+    float beamBottom;
+    #pragma body
+    float3 n = normalize(_surface.normal);
+    float3 v = normalize(-_surface.position);
+    float facing = abs(dot(n, v));
+    float3 wp = (scn_frame.inverseViewTransform * float4(_surface.position, 1.0)).xyz;
+    float h = clamp((wp.y - beamBottom) / (beamTop - beamBottom), 0.0, 1.0);
+    // The cone starts at the lamp above the water; nothing above the surface should show
+    // (it would otherwise appear in the surface reflection).
+    float a = pow(facing, 3.0) * mix(0.3, 1.0, h) * beamStrength * step(wp.y, beamTop);
+    _surface.diffuse = float4(float3(1.0, 0.93, 0.78) * a, 1.0);
     """
 }

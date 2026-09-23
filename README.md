@@ -6,6 +6,8 @@ An animated 3D aquarium wallpaper for macOS. The fish swim, school, and react to
 - **Rest the cursor** and curious fish swim right up to the glass and turn to look at it.
 - **Click empty desktop** to drop food; fish race to eat it.
 - Seaweed sways and gets pushed around by the "current" from your cursor.
+- **Night Mode** (menu bar): the tank goes dark except for a lamp hanging above the water that swivels
+  to aim at your cursor, with a visible beam, moving shadows and fish that gather in the light.
 
 Built natively with Swift + SceneKit: a real 3D scene with sunlight and shadows, image-based
 reflections, fog for depth, animated caustics, HDR bloom and 4x MSAA. It uses roughly 28% of one CPU
@@ -22,13 +24,14 @@ open build/Fishbowl.app
 ./build.sh --install   # or: copy to /Applications and launch
 ```
 
-Control it from the fish icon in the menu bar: feed, add or remove fish, refill the tank, toggle click-to-feed, Low Power mode, Launch at Login, and Quit.
+Control it from the fish icon in the menu bar: feed, add or remove fish, refill the tank, Night Mode, click-to-feed, Low Power mode, Launch at Login, and Quit.
 
 Developer flags:
 
 ```sh
 swift run Fishbowl --preview                # run in a normal window instead of the desktop
 swift run Fishbowl --snapshot out.png --at 6   # render a frame with a simulated cursor and exit
+swift run Fishbowl --night                  # force night (or --day) without changing the saved setting
 ```
 
 ## How it works
@@ -44,6 +47,8 @@ swift run Fishbowl --snapshot out.png --at 6   # render a frame with a simulated
 - `Shaders` holds the SceneKit shader modifiers: the swimming body wave, seaweed sway (including the
   current stirred up by the cursor), caustics and the water surface. Shader time wraps hourly and every
   animation frequency is quantised to that period, so animation stays smooth however long it runs.
+- `Lighting` blends day and night: light levels, water colour and the night lamp, which pivots to aim
+  at the cursor; its beam, caustics and surface patch are confined to the (tilted) cone in the shaders.
 - `Fish` uses 3D steering behaviours (wander, separation, schooling, startle/flee, curiosity, food seeking).
   Its tail-beat phase runs on the GPU; the CPU only updates it when the rhythm changes, because setting
   shader values every frame is expensive in SceneKit.

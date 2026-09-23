@@ -122,6 +122,7 @@ final class FishModel {
         mat.metalness.contents = s.pattern == .metallic ? 0.35 : 0.08
         mat.shaderModifiers = [.geometry: Shaders.swim, .surface: Shaders.caustics]
         mat.setValue(0.35, forKey: "causticStrength")
+        Lighting.prepareCaustics(mat)
         return mat
     }
 

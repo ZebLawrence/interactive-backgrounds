@@ -39,6 +39,7 @@ final class Tank: NSObject {
     private let overlay: Overlay
     private let cameraNode = SCNNode()
     private var reflection: Reflection?
+    private(set) var lighting: Lighting!
     private var frameIndex = 0
 
     let width: Float
@@ -199,48 +200,13 @@ final class Tank: NSObject {
 
         // Water: backdrop, fog for depth, and a matching environment for reflections.
         // The backdrop is exactly the fog colour, so distant sand and surface dissolve into it seamlessly.
-        let water = RGBA(0.035, 0.2, 0.29)
-        scene.background.contents = water.ns
+        // (Colours and light levels are set by `Lighting`, which blends between day and night.)
         scene.lightingEnvironment.contents = Art.waterGradient(width: 256, height: 128)
-        scene.lightingEnvironment.intensity = 0.9
-        scene.fogColor = water.ns
         scene.fogStartDistance = CGFloat(eyeDistance + 0.5)
         scene.fogEndDistance = CGFloat(eyeDistance + depth + 5)
         scene.fogDensityExponent = 1.2
-
-        // Lights: sunlight from above casting shadows, a soft fill from the viewer, blue ambient.
-        let sun = SCNLight()
-        sun.type = .directional
-        sun.color = RGBA(0.85, 0.96, 1.0).ns
-        sun.intensity = 1500
-        sun.castsShadow = true
-        sun.shadowMapSize = CGSize(width: 2048, height: 2048)
-        sun.shadowSampleCount = 8
-        sun.shadowRadius = 4
-        sun.shadowColor = NSColor(white: 0, alpha: 0.5)
-        sun.automaticallyAdjustsShadowProjection = true
-        sun.maximumShadowDistance = CGFloat(eyeDistance + depth + 2)
-        let sunNode = SCNNode()
-        sunNode.light = sun
-        sunNode.simdEulerAngles = V3(-.pi / 2 + 0.3, 0.25, 0)
-        scene.rootNode.addChildNode(sunNode)
-
-        let fill = SCNLight()
-        fill.type = .directional
-        fill.color = RGBA(0.6, 0.85, 0.95).ns
-        fill.intensity = 450
-        let fillNode = SCNNode()
-        fillNode.light = fill
-        fillNode.simdEulerAngles = V3(-0.35, 0, 0)
-        scene.rootNode.addChildNode(fillNode)
-
-        let ambient = SCNLight()
-        ambient.type = .ambient
-        ambient.color = RGBA(0.25, 0.5, 0.6).ns
-        ambient.intensity = 250
-        let ambientNode = SCNNode()
-        ambientNode.light = ambient
-        scene.rootNode.addChildNode(ambientNode)
+        lighting = Lighting(scene: scene, surfaceY: surfaceY, floorY: floorHeight(x: 0, z: -depth * 0.45),
+                            depth: depth, eyeDistance: eyeDistance)
 
         buildSand()
         buildSurface(camera: camera)
@@ -248,6 +214,7 @@ final class Tank: NSObject {
         buildShafts()
         buildParticles()
         populate()
+        lighting.update(dt: 0, tank: self)
     }
 
     private func buildSand() {
@@ -282,6 +249,8 @@ final class Tank: NSObject {
         mat.roughness.contents = 0.95
         mat.shaderModifiers = [.surface: Shaders.caustics]
         mat.setValue(0.55, forKey: "causticStrength")
+        Lighting.prepareCaustics(mat)
+        lighting.causticMaterials.append(mat)
         geo.materials = [mat]
         let node = SCNNode(geometry: geo)
         node.castsShadow = false
@@ -323,6 +292,8 @@ final class Tank: NSObject {
         mat.isDoubleSided = true
         mat.shaderModifiers = [.geometry: Shaders.surfaceWaves, .surface: Shaders.surface]
         mat.setValue(mirror.property, forKey: "reflectionTexture")
+        for key in ["surfNight", "spotX", "spotZ", "spotY", "spotTan"] { mat.setValue(Float(0), forKey: key) }
+        lighting.surfaceMaterial = mat
         geo.materials = [mat]
         let node = SCNNode(geometry: geo)
         node.categoryBitMask = Reflection.surfaceCategory
@@ -351,7 +322,9 @@ final class Tank: NSObject {
         rocks.append(Rock.mesh(size: V3(0.45, 0.3, 0.4), tone: Rock.tones.count - 1),
                      transform: simd_float4x4(translation: V3(bx, floorHeight(x: bx, z: bz) + 0.08, bz)))
         let rockGeo = rocks.geometry()
-        rockGeo.materials = [Rock.material()]
+        let rockMaterial = Rock.material()
+        rockGeo.materials = [rockMaterial]
+        lighting.causticMaterials.append(rockMaterial)
         scene.rootNode.addChildNode(SCNNode(geometry: rockGeo))
         buildBubbles(from: bubblerTop)
 
@@ -377,6 +350,7 @@ final class Tank: NSObject {
             }
         }
         let weed = Seaweed(blades: blades)
+        lighting.causticMaterials.append(weed.material)
         scene.rootNode.addChildNode(weed.node)
         seaweed = weed
     }
@@ -467,9 +441,10 @@ final class Tank: NSObject {
         snow.acceleration = SCNVector3(0, -0.004, 0)
         snow.particleSize = 0.018
         snow.particleSizeVariation = 0.012
-        snow.particleColor = RGBA(0.8, 0.95, 1, 0.2).ns
+        // Lit particles: they glint in the spotlight's beam at night and fade into the dark elsewhere.
+        snow.particleColor = RGBA(0.8, 0.95, 1, 0.35).ns
         snow.blendMode = .additive
-        snow.isLightingEnabled = false
+        snow.isLightingEnabled = true
         snow.warmupDuration = 30
         snow.fresnelExponent = 0
         let node = SCNNode()
@@ -490,6 +465,7 @@ final class Tank: NSObject {
 
     func addFish(_ sp: Species) {
         let f = Fish(species: sp, at: randomPoint(band: sp.band))
+        f.setCausticScale(lighting.fishCausticScale)
         fish.append(f)
         scene.rootNode.addChildNode(f.node)
     }
@@ -536,6 +512,20 @@ final class Tank: NSObject {
 
     func eat(_ f: Food) { f.eaten = true }
 
+    func applyFishCaustics(_ scale: Float) {
+        for f in fish { f.setCausticScale(scale) }
+    }
+
+    /// At night, fish are drawn to the spotlight: often returns a point in its beam instead.
+    func wanderPoint(band: ClosedRange<CGFloat>, near p: V3) -> V3 {
+        guard lighting.night > 0.5, Float.random(in: 0...1) < 0.65 else { return randomPoint(band: band, near: p) }
+        let lo = floorBase + 0.6, hi = surfaceY - 0.9
+        let axis = lighting.pointInBeam(atY: lo + (hi - lo) * Float(rand(band)))
+        let z = clamp(axis.z + rnd(-1.2...1.2), -depth + 0.8, -0.6)
+        let x = clamp(axis.x + rnd(-0.8...0.8), -halfWidth(atZ: z) + 0.8, halfWidth(atZ: z) - 0.8)
+        return V3(x, max(axis.y, floorHeight(x: x, z: z) + 0.5), z)
+    }
+
     func schoolGoal(for sp: Species) -> V3? { schoolGoals[sp.id]?.point }
 
     func spawnBubbles(at p: V3) {
@@ -580,8 +570,9 @@ final class Tank: NSObject {
         }
 
         for (node, phase) in shafts {
-            node.opacity = CGFloat(0.07 + 0.06 * sin(Float(clock) * 0.25 + phase))
+            node.opacity = CGFloat((0.07 + 0.06 * sin(Float(clock) * 0.25 + phase)) * (1 - lighting.night))
         }
+        lighting.update(dt: dt, tank: self)
 
         view.draw(atTime: Tank.renderTime(clock))
     }
@@ -594,7 +585,7 @@ final class Tank: NSObject {
             var g = schoolGoals[sp.id] ?? (centre, 0)
             g.timer -= dt
             if g.timer <= 0 || simd_distance(centre, g.point) < 0.9 {
-                g = (randomPoint(band: sp.band, near: centre), rnd(6...14))
+                g = (wanderPoint(band: sp.band, near: centre), rnd(6...14))
             }
             schoolGoals[sp.id] = g
         }

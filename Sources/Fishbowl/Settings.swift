@@ -16,5 +16,14 @@ final class Settings {
         set { defaults.set(newValue, forKey: "clickToFeed") }
     }
 
+    /// Dark tank lit only by a spotlight that follows the cursor.
+    var nightMode: Bool {
+        get { nightOverride ?? defaults.bool(forKey: "nightMode") }
+        set { defaults.set(newValue, forKey: "nightMode") }
+    }
+
+    /// Set from the command line (`--night` / `--day`) for testing without changing the saved setting.
+    var nightOverride: Bool?
+
     var framesPerSecond: Int { lowPower ? 30 : 60 }
 }

@@ -17,7 +17,7 @@ final class Seaweed {
                           RGBA(0.27, 0.50, 0.20), RGBA(0.55, 0.20, 0.16), RGBA(0.62, 0.30, 0.14)]
 
     let node: SCNNode
-    private let material: SCNMaterial
+    let material: SCNMaterial
     private var smoothedVX: Float = 0
 
     init(blades: [Blade]) {
@@ -59,6 +59,7 @@ final class Seaweed {
         material.isDoubleSided = true
         material.shaderModifiers = [.geometry: Shaders.sway, .surface: Shaders.caustics]
         material.setValue(0.4, forKey: "causticStrength")
+        Lighting.prepareCaustics(material)
         for key in ["curX", "curY", "curVX", "eyeDist"] { material.setValue(Float(0), forKey: key) }
         geo.materials = [material]
         node = SCNNode(geometry: geo)
@@ -139,6 +140,7 @@ enum Rock {
         mat.roughness.contents = 0.85
         mat.shaderModifiers = [.surface: Shaders.caustics]
         mat.setValue(0.8, forKey: "causticStrength")
+        Lighting.prepareCaustics(mat)
         return mat
     }
 }

@@ -240,8 +240,18 @@ final class Fish {
     }
 
     private func pickGoal(in tank: Tank) {
-        goal = tank.randomPoint(band: species.band, near: pos)
+        goal = tank.wanderPoint(band: species.band, near: pos)
         goalTimer = rnd(4...11)
+    }
+
+    private var causticScale: Float = 1
+
+    /// Fish get no caustics or fin glow at night; only touched when the day/night blend steps.
+    func setCausticScale(_ scale: Float) {
+        guard scale != causticScale else { return }
+        causticScale = scale
+        materials[0].setValue(0.35 * scale, forKey: "causticStrength")
+        materials[1].emission.intensity = CGFloat(0.25 * scale)
     }
 
     /// Same wave as `Shaders.swim`, so the rigid eyes follow the body.
