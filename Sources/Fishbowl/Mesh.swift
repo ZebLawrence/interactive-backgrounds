@@ -7,6 +7,8 @@ struct Mesh {
     var positions: [V3] = []
     var normals: [V3] = []
     var uvs: [V2] = []
+    /// Optional second texture-coordinate set (mapping channel 1).
+    var uvs2: [V2] = []
     /// Optional per-vertex colour (or packed per-vertex data for shaders).
     var colors: [SIMD4<Float>] = []
     var indices: [UInt32] = []
@@ -44,6 +46,9 @@ struct Mesh {
         ]
         if !uvs.isEmpty {
             sources.append(SCNGeometrySource(textureCoordinates: uvs.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }))
+        }
+        if !uvs2.isEmpty {
+            sources.append(SCNGeometrySource(textureCoordinates: uvs2.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }))
         }
         if !colors.isEmpty {
             let data = colors.withUnsafeBufferPointer { Data(buffer: $0) }

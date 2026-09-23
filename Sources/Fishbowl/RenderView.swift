@@ -22,9 +22,6 @@ final class RenderView: NSView {
         didSet { if sampleCount != oldValue { msaaTexture = nil; depthTexture = nil } }
     }
 
-    /// Extra passes (e.g. the water-surface reflection) encoded before the main scene each frame.
-    var prepass: ((MTLCommandBuffer, CFTimeInterval, CGSize) -> Void)?
-
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     private var pendingCapture: ((CGImage?) -> Void)?
 
@@ -77,7 +74,6 @@ final class RenderView: NSView {
               let drawable = metalLayer.nextDrawable(),
               let commandBuffer = queue.makeCommandBuffer() else { return }
         let w = drawable.texture.width, h = drawable.texture.height
-        prepass?(commandBuffer, time, CGSize(width: w, height: h))
         if depthTexture?.width != w || depthTexture?.height != h { makeTargets(width: w, height: h) }
 
         let pass = MTLRenderPassDescriptor()

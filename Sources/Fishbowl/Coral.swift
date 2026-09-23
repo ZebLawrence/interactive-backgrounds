@@ -27,6 +27,10 @@ final class CoralReef {
     }
 
     private var mesh = Mesh()
+    /// Which piece each vertex belongs to (for baking occlusion).
+    private var pieceOfVertex: [Int] = []
+    /// Spheres approximating each piece, for contact shadows on the reef and the sand.
+    private(set) var occluders: [Occluder] = []
     private(set) var node: SCNNode!
     private(set) var material: SCNMaterial!
 
@@ -34,7 +38,7 @@ final class CoralReef {
 
     /// A domed brain coral with meandering grooves.
     func addBrain(at base: V3, radius: Float, tone: Tone) {
-        var m = Mesh.icosphere(subdivisions: 5)
+        var m = Mesh.icosphere(subdivisions: radius > 0.35 ? 5 : 4)
         let s = (0..<3).map { _ in rnd(0...(2 * .pi)) }
         let f = rnd(11...14)
         var shades: [Float] = []
@@ -50,7 +54,7 @@ final class CoralReef {
             shades.append(0.25 + 0.65 * ridge)
         }
         m.uvs = shades.map { uv(tone, $0) }
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, radius * 0.3, 0), radius * 0.85))
     }
 
     /// A staghorn-style coral: tapering branches that split, with pale growing tips.
@@ -76,7 +80,7 @@ final class CoralReef {
             }
         }
         grow(from: .zero, dir: V3(0, 1, 0), len: height * 0.32, radius: height * 0.07, depth: 0)
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, height * 0.4, 0), height * 0.3))
     }
 
     /// A table coral: a wavy plate on a short stalk, paler toward the rim.
@@ -108,7 +112,7 @@ final class CoralReef {
         }
         m.append(plate(offset: 0))
         m.append(plate(offset: -radius * 0.05))
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, radius * 0.5, 0), radius * 0.8))
     }
 
     /// A porous lump of live rock, for building reef mounds.
@@ -134,7 +138,7 @@ final class CoralReef {
             let coralline = n > 0.55 && p.y > 0
             return uv(coralline ? .coralline : tone, shades[i])
         }
-        add(m, at: base, rotation: rnd(0...(2 * .pi)))
+        add(m, at: base, occluder: (.zero, (size.x + size.y + size.z) / 3 * 0.95), rotation: rnd(0...(2 * .pi)))
     }
 
     /// A clump of finger (pillar) coral: upright rounded columns.
@@ -149,7 +153,7 @@ final class CoralReef {
                                    uv: { t, _ in self.uv(tone, 0.35 + 0.5 * t) }))
             m.append(cap(at: pts[2], radius: r * 0.95, tone: tone))
         }
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, size * 0.35, 0), size * 0.45))
     }
 
     /// A cluster of button polyps (zoanthids): little stalked discs with pale centres.
@@ -173,7 +177,7 @@ final class CoralReef {
             }
             for k in 0..<10 { m.triangle(c, c + 2 + k, c + 1 + k) }
         }
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, radius * 0.2, 0), radius * 0.7))
     }
 
     /// A small smooth pebble.
@@ -182,13 +186,25 @@ final class CoralReef {
         let squash = V3(rnd(0.8...1.3), rnd(0.45...0.7), rnd(0.8...1.2)) * radius
         m.positions = m.positions.map { $0 * squash }
         m.uvs = Array(repeating: uv(tone, rnd(0.4...0.8)), count: m.positions.count)
-        add(m, at: base)
+        add(m, at: base, occluder: (V3(0, radius * 0.4, 0), radius * 1.1))
     }
 
     // MARK: - Finish
 
-    func finish() {
+    /// Build the merged geometry, baking contact shadows: darker where pieces meet the floor
+    /// (`floor(x, z)` gives its height), face downward, or press against their neighbours.
+    func finish(floor: (Float, Float) -> Float) {
         mesh.computeNormals()
+        for i in mesh.positions.indices {
+            let p = mesh.positions[i], n = mesh.normals[i]
+            let aboveFloor = p.y - floor(p.x, p.z)
+            var vis = 0.3 + 0.7 * smoothstep(-0.05, 0.5, aboveFloor)
+            vis *= 0.8 + 0.2 * clamp(n.y * 0.5 + 0.5, 0, 1)
+            vis *= Occlusion.visibility(at: p, normal: n, occluders: occluders, ignoring: pieceOfVertex[i], strength: 1)
+            // Shade runs along u in the palette (dark → pale), so occlusion just darkens it.
+            let shade = (mesh.uvs[i].x - 0.05) / 0.9
+            mesh.uvs[i].x = 0.05 + clamp(shade * vis, 0, 1) * 0.9
+        }
         let geo = mesh.geometry()
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
@@ -201,13 +217,18 @@ final class CoralReef {
         material = mat
         node = SCNNode(geometry: geo)
         mesh = Mesh()
+        pieceOfVertex = []
     }
 
     // MARK: - Helpers
 
-    private func add(_ piece: Mesh, at base: V3, rotation: Float = rnd(0...(2 * .pi))) {
+    private func add(_ piece: Mesh, at base: V3, occluder: (offset: V3, radius: Float),
+                     rotation: Float = rnd(0...(2 * .pi))) {
         var p = piece
         p.normals = []
+        let id = occluders.count
+        occluders.append(Occluder(center: base + occluder.offset, radius: occluder.radius, piece: id))
+        pieceOfVertex += Array(repeating: id, count: p.positions.count)
         mesh.append(p, transform: simd_float4x4(translation: base) * simd_float4x4(simd_quatf(angle: rotation, axis: V3(0, 1, 0))))
     }
 
@@ -219,8 +240,9 @@ final class CoralReef {
         return m
     }
 
+    /// `shade` 0...1 runs dark to pale within the palette's normal range (occlusion can go darker).
     private func uv(_ tone: Tone, _ shade: Float) -> V2 {
-        V2(0.05 + clamp(shade, 0, 1) * 0.9, (Float(tone.rawValue) + 0.5) / Float(Tone.allCases.count))
+        V2(0.05 + (0.15 + 0.85 * clamp(shade, 0, 1)) * 0.9, (Float(tone.rawValue) + 0.5) / Float(Tone.allCases.count))
     }
 
     /// Rows of colours, each shading from a deep shadow tone to a pale, sun-bleached tip.
@@ -233,7 +255,8 @@ final class CoralReef {
                 let y = CGFloat(tones.count - 1 - tone.rawValue)
                 ctx.saveGState()
                 ctx.clip(to: CGRect(x: 0, y: y, width: 32, height: 1))
-                Art.linear(ctx, [c.darker(0.55), c, c.lighter(0.45)], [0, 0.55, 1],
+                // Shades 0.15...1 are the normal range; below that is extra depth for baked contact shadows.
+                Art.linear(ctx, [c.darker(0.85), c.darker(0.55), c, c.lighter(0.45)], [0, 0.15, 0.62, 1],
                            from: CGPoint(x: 0, y: y), to: CGPoint(x: 32, y: y))
                 ctx.restoreGState()
             }

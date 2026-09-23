@@ -3,8 +3,8 @@ import SceneKit
 import simd
 
 /// Day/night lighting. By day, sunlight comes down through the surface; at night the tank goes dark
-/// apart from a lamp hanging above the water that swivels to aim at the cursor, with a visible beam,
-/// caustics only inside its cone, and a bright patch where it enters the surface. Switching fades over ~2 s.
+/// apart from a lamp hanging above the water that swivels to aim at the cursor, with a visible beam
+/// and caustics only inside its cone. Switching fades over ~2 s.
 final class Lighting {
     let sun = SCNLight()
     let fill = SCNLight()
@@ -17,7 +17,6 @@ final class Lighting {
 
     /// Materials using `Shaders.caustics` that should confine caustics to the spotlight at night.
     var causticMaterials: [SCNMaterial] = []
-    var surfaceMaterial: SCNMaterial?
 
     /// 0 = day, 1 = night (animated).
     private(set) var night: Float
@@ -165,7 +164,7 @@ final class Lighting {
         applyBlend(tank: tank)
     }
 
-    private var spotMaterials: [SCNMaterial] { causticMaterials + [surfaceMaterial].compactMap { $0 } }
+    private var spotMaterials: [SCNMaterial] { causticMaterials }
 
     private func applyBlend(tank: Tank) {
         if !spotConstantsSent {
@@ -201,7 +200,7 @@ final class Lighting {
         tank.scene.background.contents = water
         tank.scene.lightingEnvironment.intensity = lerp(0.9, 0.1, n)
         for mat in causticMaterials { mat.setValue(night, forKey: "causticNight") }
-        surfaceMaterial?.setValue(night, forKey: "surfNight")
+        tank.setSkyGlow(1 - night * 0.9)
         tank.applyFishCaustics(fishCausticScale)
     }
 }

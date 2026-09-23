@@ -131,6 +131,12 @@ enum Art {
         ctx.strokeEllipse(in: CGRect(x: 14, y: 14, width: 100, height: 100))
     }
 
+    /// Soft light from above: brightest at the top edge, fading down (drawn additively).
+    static let skyGlow: SKTexture = texture(size: CGSize(width: 8, height: 256)) { ctx in
+        linear(ctx, [RGBA(0.35, 0.65, 0.72, 0), RGBA(0.30, 0.60, 0.68, 0.10), RGBA(0.35, 0.68, 0.75, 0.28)],
+               [0, 0.6, 1], from: .zero, to: CGPoint(x: 0, y: 256))
+    }
+
     /// A soft vertical streak used to suggest light reflecting on the glass.
     static let glassStreak: SKTexture = texture(size: CGSize(width: 64, height: 256)) { ctx in
         ctx.saveGState()

@@ -38,9 +38,7 @@ final class Tank: NSObject {
     let screenFrame: CGRect
     private let overlay: Overlay
     private let cameraNode = SCNNode()
-    private var reflection: Reflection?
     private(set) var lighting: Lighting!
-    private var frameIndex = 0
 
     let width: Float
     let height: Float
@@ -88,16 +86,11 @@ final class Tank: NSObject {
         r.pointOfView = cameraNode
         r.overlaySKScene = overlay
         r.isPlaying = true
-        view.prepass = { [weak self] commandBuffer, time, size in
-            guard let self, let reflection = self.reflection else { return }
-            // The water moves slowly, so at 60 fps the mirror image is refreshed every other frame.
-            self.frameIndex += 1
-            if Settings.shared.lowPower || self.frameIndex % 2 == 0 {
-                reflection.render(atTime: time, commandBuffer: commandBuffer, size: size)
-            }
-        }
         applySettings()
     }
+
+    /// Dims the glow from above at night.
+    func setSkyGlow(_ amount: Float) { overlay.setSkyGlow(CGFloat(amount)) }
 
     func start() {
         let link = view.displayLink(target: self, selector: #selector(step(_:)))
@@ -211,20 +204,25 @@ final class Tank: NSObject {
         lighting = Lighting(scene: scene, surfaceY: surfaceY, floorY: floorHeight(x: 0, z: -depth * 0.45),
                             depth: depth, eyeDistance: eyeDistance)
 
-        buildSand()
-        buildSurface(camera: camera)
-        buildScenery()
+        // Scenery first: the sand bakes its contact shadows from what's standing on it.
+        let occluders = buildScenery()
+        buildSand(occluders: occluders)
         buildShafts()
         buildParticles()
         populate()
         lighting.update(dt: 0, tank: self)
     }
 
-    private func buildSand() {
+    private func buildSand(occluders: [Occluder]) {
         // Extends well past the fog distance so its far edge dissolves into the water.
         let backZ = -depth - 14, frontZ: Float = 2
         let hw = halfWidth(atZ: backZ) + 2
         let nx = 120, nz = 70
+        // Contact shadows are baked into a map covering the part of the floor with things on it.
+        let aoFarZ = -depth - 1, aoNearZ: Float = 1
+        let aoMaxX = halfWidth(atZ: aoFarZ) + 0.5, aoMinX = -aoMaxX
+        let ao = Occlusion.floorMap(minX: aoMinX, maxX: aoMaxX, nearZ: aoNearZ, farZ: aoFarZ, width: 1536,
+                                    floor: floorHeight, occluders: occluders)
         var m = Mesh()
         for j in 0...nz {
             let z = frontZ + (backZ - frontZ) * Float(j) / Float(nz)
@@ -232,6 +230,7 @@ final class Tank: NSObject {
                 let x = -hw + 2 * hw * Float(i) / Float(nx)
                 m.positions.append(V3(x, floorHeight(x: x, z: z), z))
                 m.uvs.append(V2(x / 2.5, z / 2.5))
+                m.uvs2.append(V2((x - aoMinX) / (aoMaxX - aoMinX), (z - aoNearZ) / (aoFarZ - aoNearZ)))
             }
         }
         for j in 0..<nz {
@@ -250,6 +249,10 @@ final class Tank: NSObject {
         mat.diffuse.wrapS = .repeat
         mat.diffuse.wrapT = .repeat
         mat.roughness.contents = 0.95
+        mat.multiply.contents = ao
+        mat.multiply.mappingChannel = 1
+        mat.multiply.wrapS = .clamp
+        mat.multiply.wrapT = .clamp
         mat.shaderModifiers = [.surface: Shaders.caustics]
         mat.setValue(0.55, forKey: "causticStrength")
         Lighting.prepareCaustics(mat)
@@ -260,51 +263,8 @@ final class Tank: NSObject {
         scene.rootNode.addChildNode(node)
     }
 
-    private func buildSurface(camera: SCNCamera) {
-        // A fine grid (world space, facing down) that the wave shader displaces.
-        let frontZ: Float = 2, backZ = -depth - 14
-        let hw = halfWidth(atZ: backZ) + 2
-        let nx = 140, nz = 90
-        var m = Mesh()
-        for j in 0...nz {
-            // Denser rows near the glass, where the surface is closest and largest on screen.
-            let f = pow(Float(j) / Float(nz), 1.6)
-            let z = frontZ + (backZ - frontZ) * f
-            for i in 0...nx {
-                m.positions.append(V3(-hw + 2 * hw * Float(i) / Float(nx), surfaceY, z))
-                // SceneKit silently skips this mesh without texture coordinates, so give it some.
-                m.uvs.append(V2(Float(i) / Float(nx), f))
-            }
-        }
-        for j in 0..<nz {
-            for i in 0..<nx {
-                let a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1
-                m.triangle(a, c, b)
-                m.triangle(b, c, d)
-            }
-        }
-        m.computeNormals()
-        let geo = m.geometry()
-
-        let mirror = Reflection(device: view.device, scene: scene, mainCamera: camera,
-                                mirrorY: surfaceY, eyeDistance: eyeDistance,
-                                pixelSize: screenFrame.size * (NSScreen.main?.backingScaleFactor ?? 2))
-        reflection = mirror
-        let mat = SCNMaterial()
-        mat.lightingModel = .constant
-        mat.isDoubleSided = true
-        mat.shaderModifiers = [.geometry: Shaders.surfaceWaves, .surface: Shaders.surface]
-        mat.setValue(mirror.property, forKey: "reflectionTexture")
-        for key in ["surfNight", "spotX", "spotZ", "spotY", "spotTan"] { mat.setValue(Float(0), forKey: key) }
-        lighting.surfaceMaterial = mat
-        geo.materials = [mat]
-        let node = SCNNode(geometry: geo)
-        node.categoryBitMask = Reflection.surfaceCategory
-        node.castsShadow = false
-        scene.rootNode.addChildNode(node)
-    }
-
-    private func buildScenery() {
+    /// Builds the reef and plants; returns spheres approximating them for the sand's contact shadows.
+    private func buildScenery() -> [Occluder] {
         let reef = CoralReef()
         let plants = PlantBed()
         let D = depth
@@ -431,13 +391,14 @@ final class Tank: NSObject {
                             leaves: Int.random(in: 10...14), width: rnd(0.16...0.22), tone: [.green, .brightGreen].randomElement()!)
         }
 
-        reef.finish()
+        reef.finish(floor: floorHeight)
         scene.rootNode.addChildNode(reef.node)
         lighting.causticMaterials.append(reef.material)
         plants.finish()
         scene.rootNode.addChildNode(plants.node)
         lighting.causticMaterials.append(plants.material)
         plantBed = plants
+        return reef.occluders + plants.occluders
     }
 
     /// Grow a few small corals over the upper surface of a rock.
@@ -470,13 +431,15 @@ final class Tank: NSObject {
         let billboard = SCNBillboardConstraint()
         billboard.freeAxes = .Y
         for _ in 0..<max(5, Int(width / 2.5)) {
-            let h = rnd((height * 0.6)...(height * 1.1))
+            let z = rnd((-depth + 0.5)...(-1.0))
+            // Start above the top of the view at this depth, so shafts come in from off-screen.
+            let top = (height / 2) * (eyeDistance - z) / eyeDistance + 0.5
+            let h = rnd((height * 0.7)...(height * 1.2))
             let plane = SCNPlane(width: CGFloat(rnd(0.6...1.8)), height: CGFloat(h))
             plane.materials = [mat]
             let node = SCNNode(geometry: plane)
-            let z = rnd((-depth + 0.5)...(-1.0))
             let x = rnd(-halfWidth(atZ: z)...halfWidth(atZ: z))
-            node.simdPosition = V3(x, surfaceY - h / 2, z)
+            node.simdPosition = V3(x, top - h / 2, z)
             node.constraints = [billboard]
             node.castsShadow = false
             node.opacity = 0.1
@@ -648,12 +611,22 @@ final class Tank: NSObject {
     }
 }
 
-/// 2D layer drawn over the 3D view: reflections on the glass and ripples where the cursor stirs.
+/// 2D layer drawn over the 3D view: a soft glow of light from above, reflections on the glass, and
+/// ripples where the cursor stirs.
 final class Overlay: SKScene {
+    private let skyGlow: SKSpriteNode
+
     override init(size: CGSize) {
+        skyGlow = SKSpriteNode(texture: Art.skyGlow, size: CGSize(width: size.width, height: size.height * 0.45))
         super.init(size: size)
-        scaleMode = .resizeFill
+        // Laid out in screen points; the renderer draws overlays in pixels, so scale to fit
+        // (.resizeFill would reinterpret every position as pixels).
+        scaleMode = .fill
         backgroundColor = .clear
+        skyGlow.anchorPoint = CGPoint(x: 0, y: 1)
+        skyGlow.position = CGPoint(x: 0, y: size.height)
+        skyGlow.blendMode = .add
+        addChild(skyGlow)
         for (x, w, a) in [(0.05, 0.035, 0.06), (0.095, 0.01, 0.045), (0.93, 0.02, 0.035)] as [(CGFloat, CGFloat, CGFloat)] {
             let s = SKSpriteNode(texture: Art.glassStreak, size: CGSize(width: size.width * w, height: size.height * 0.9))
             s.position = CGPoint(x: size.width * x, y: size.height * 0.5)
@@ -664,6 +637,8 @@ final class Overlay: SKScene {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func setSkyGlow(_ amount: CGFloat) { skyGlow.alpha = amount }
 
     func ripple(at p: CGPoint, scale: CGFloat) {
         let ring = SKSpriteNode(texture: Art.ring, size: CGSize(width: 120, height: 120))

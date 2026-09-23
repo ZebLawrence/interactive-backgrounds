@@ -34,6 +34,8 @@ final class PlantBed {
     }
 
     private var mesh = Mesh()
+    /// Spheres around each plant's base, for contact shadows on the sand.
+    private(set) var occluders: [Occluder] = []
     private(set) var node: SCNNode!
     private(set) var material: SCNMaterial!
     private var smoothedVX: Float = 0
@@ -55,7 +57,7 @@ final class PlantBed {
             b.uvs += [uv(tone, 0.1, v), uv(tone, 0.9, v)]
         }
         for r in 0..<rows { b.quad(r * 2, r * 2 + 1, r * 2 + 2, r * 2 + 3) }
-        emit(b, at: base, height: height, amp: rnd(0.06...0.14) * height / 2.5)
+        emit(b, at: base, height: height, amp: rnd(0.06...0.14) * height / 2.5, occluder: (0.12, 0.1))
     }
 
     /// A rosette of broad, arching leaves (Amazon sword; short and wide for an Anubias look).
@@ -70,7 +72,7 @@ final class PlantBed {
             top = max(top, leaf.positions.map(\.y).max() ?? 0)
             plant.append(leaf, transform: simd_float4x4(simd_quatf(angle: az, axis: V3(0, 1, 0))))
         }
-        emit(plant, at: base, height: top, amp: 0.04 * top)
+        emit(plant, at: base, height: top, amp: 0.04 * top, occluder: (top * 0.35, size * 0.45))
     }
 
     /// A tall stem with pairs of small leaves all the way up (Rotala / Ludwigia).
@@ -110,7 +112,7 @@ final class PlantBed {
             az += .pi / 3 + rnd(-0.2...0.2)
             y += rnd(0.08...0.11)
         }
-        emit(plant, at: base, height: height, amp: rnd(0.04...0.08) * height / 2)
+        emit(plant, at: base, height: height, amp: rnd(0.04...0.08) * height / 2, occluder: (0.15, 0.14))
     }
 
     /// A sea anemone: a short column with a crown of swaying, tapering tentacles.
@@ -137,7 +139,7 @@ final class PlantBed {
             a.append(PlantBed.tube(points: pts, radii: radii, sides: 5,
                                    uv: { t, u in self.uv(.anemone, u, 0.3 + 0.7 * t) }))
         }
-        emit(a, at: base, height: top, amp: 0.05 * top)
+        emit(a, at: base, height: top, amp: 0.05 * top, occluder: (top * 0.4, radius * 1.1))
     }
 
     /// A sea fan (gorgonian): a flat, lacy lattice of thin branches that sways gently.
@@ -161,7 +163,7 @@ final class PlantBed {
         grow(from: .zero, dir: V3(0, 1, 0), len: height * 0.3, radius: 0.025, depth: 0)
         let top = fan.positions.map(\.y).max()!
         fan.positions = fan.positions.map { $0 * (height / top) }
-        emit(fan, at: base, height: height, amp: 0.015 * height, rotation: angle)
+        emit(fan, at: base, height: height, amp: 0.015 * height, occluder: (0.1, 0.1), rotation: angle)
     }
 
     // MARK: - Finish
@@ -201,7 +203,9 @@ final class PlantBed {
 
     /// Append a plant built in local space (base at the origin, y up), tagging each vertex with the
     /// data the sway shader needs.
-    private func emit(_ plant: Mesh, at base: V3, height: Float, amp: Float, rotation: Float = rnd(0...(2 * .pi))) {
+    private func emit(_ plant: Mesh, at base: V3, height: Float, amp: Float, occluder: (height: Float, radius: Float),
+                      rotation: Float = rnd(0...(2 * .pi))) {
+        occluders.append(Occluder(center: base + V3(0, occluder.height, 0), radius: occluder.radius, piece: -2))
         var p = plant
         let phase = rnd(0...(2 * .pi))
         p.colors = p.positions.map { SIMD4(clamp($0.y / height, 0, 1), height, phase, amp) }
