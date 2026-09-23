@@ -38,6 +38,8 @@ final class Tank: NSObject {
     let screenFrame: CGRect
     private let overlay: Overlay
     private let cameraNode = SCNNode()
+    private var reflection: Reflection?
+    private var frameIndex = 0
 
     let width: Float
     let height: Float
@@ -82,6 +84,14 @@ final class Tank: NSObject {
         r.pointOfView = cameraNode
         r.overlaySKScene = overlay
         r.isPlaying = true
+        view.prepass = { [weak self] commandBuffer, time, size in
+            guard let self, let reflection = self.reflection else { return }
+            // The water moves slowly, so at 60 fps the mirror image is refreshed every other frame.
+            self.frameIndex += 1
+            if Settings.shared.lowPower || self.frameIndex % 2 == 0 {
+                reflection.render(atTime: time, commandBuffer: commandBuffer, size: size)
+            }
+        }
         applySettings()
     }
 
@@ -233,7 +243,7 @@ final class Tank: NSObject {
         scene.rootNode.addChildNode(ambientNode)
 
         buildSand()
-        buildSurface()
+        buildSurface(camera: camera)
         buildScenery()
         buildShafts()
         buildParticles()
@@ -278,18 +288,44 @@ final class Tank: NSObject {
         scene.rootNode.addChildNode(node)
     }
 
-    private func buildSurface() {
-        let length = depth + 16
-        let hw = halfWidth(atZ: 2 - length) + 2
-        let plane = SCNPlane(width: CGFloat(hw * 2), height: CGFloat(length))
+    private func buildSurface(camera: SCNCamera) {
+        // A fine grid (world space, facing down) that the wave shader displaces.
+        let frontZ: Float = 2, backZ = -depth - 14
+        let hw = halfWidth(atZ: backZ) + 2
+        let nx = 140, nz = 90
+        var m = Mesh()
+        for j in 0...nz {
+            // Denser rows near the glass, where the surface is closest and largest on screen.
+            let f = pow(Float(j) / Float(nz), 1.6)
+            let z = frontZ + (backZ - frontZ) * f
+            for i in 0...nx {
+                m.positions.append(V3(-hw + 2 * hw * Float(i) / Float(nx), surfaceY, z))
+                // SceneKit silently skips this mesh without texture coordinates, so give it some.
+                m.uvs.append(V2(Float(i) / Float(nx), f))
+            }
+        }
+        for j in 0..<nz {
+            for i in 0..<nx {
+                let a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1
+                m.triangle(a, c, b)
+                m.triangle(b, c, d)
+            }
+        }
+        m.computeNormals()
+        let geo = m.geometry()
+
+        let mirror = Reflection(device: view.device, scene: scene, mainCamera: camera,
+                                mirrorY: surfaceY, eyeDistance: eyeDistance,
+                                pixelSize: screenFrame.size * (NSScreen.main?.backingScaleFactor ?? 2))
+        reflection = mirror
         let mat = SCNMaterial()
         mat.lightingModel = .constant
         mat.isDoubleSided = true
-        mat.shaderModifiers = [.surface: Shaders.surface]
-        plane.materials = [mat]
-        let node = SCNNode(geometry: plane)
-        node.simdEulerAngles = V3(.pi / 2, 0, 0)
-        node.simdPosition = V3(0, surfaceY, 2 - length / 2)
+        mat.shaderModifiers = [.geometry: Shaders.surfaceWaves, .surface: Shaders.surface]
+        mat.setValue(mirror.property, forKey: "reflectionTexture")
+        geo.materials = [mat]
+        let node = SCNNode(geometry: geo)
+        node.categoryBitMask = Reflection.surfaceCategory
         node.castsShadow = false
         scene.rootNode.addChildNode(node)
     }
