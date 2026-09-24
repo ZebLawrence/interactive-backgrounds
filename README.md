@@ -8,6 +8,9 @@ An animated 3D aquarium wallpaper for macOS. The fish swim, school, and react to
 - A coral reef: rock mounds covered in brain, staghorn, table and finger corals, polyps and sea fans,
   plus seaweed, sword plants, red-tipped stem plants and an anemone the clownfish call home. The
   plants sway and get pushed around by the "current" from your cursor.
+- **Shark** (menu bar, off by default): a shark lurks in the haze at the back, now and then swims in
+  to catch a fish (they scatter; clownfish in their anemone are safe), then retreats. Eaten fish are
+  replaced a minute or so later.
 - **Night Mode** (menu bar): the tank goes dark except for a lamp hanging above the water that swivels
   to aim at your cursor, with a visible beam, moving shadows and fish that gather in the light.
 
@@ -34,6 +37,7 @@ Developer flags:
 swift run Fishbowl --preview                # run in a normal window instead of the desktop
 swift run Fishbowl --snapshot out.png --at 6   # render a frame with a simulated cursor and exit
 swift run Fishbowl --night                  # force night (or --day) without changing the saved setting
+swift run Fishbowl --shark                  # force the shark on (--hunt-now: it hunts within seconds)
 ```
 
 ## How it works
@@ -53,6 +57,8 @@ swift run Fishbowl --night                  # force night (or --day) without cha
   animation frequency is quantised to that period, so animation stays smooth however long it runs.
 - `Lighting` blends day and night: light levels, water colour and the night lamp, which pivots to aim
   at the cursor; its beam and caustics are confined to the (tilted) cone in the shaders.
+- `Shark` reuses the fish model and movement with its own lurk → hunt → retreat state machine;
+  fish treat a nearby hunting shark like a startle and flee.
 - `Fish` uses 3D steering behaviours (wander, separation, schooling, startle/flee, curiosity, food seeking).
   Its tail-beat phase runs on the GPU; the CPU only updates it when the rhythm changes, because setting
   shader values every frame is expensive in SceneKit.

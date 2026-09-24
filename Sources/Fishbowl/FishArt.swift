@@ -60,14 +60,34 @@ struct FishArt {
     /// The body is symmetric about y = 0.
     static func topCurve(_ s: Species, _ t: CGFloat) -> CGPoint {
         let a = s.length / 2, b = s.height / 2, L = s.length
-        let p0 = CGPoint(x: -a, y: b * 0.36)
-        let p1 = CGPoint(x: -a + 0.3 * L, y: 1.6 * b)
-        let p2 = CGPoint(x: a - 0.04 * L, y: 0.85 * b)
+        var p0 = CGPoint(x: -a, y: b * 0.36)
+        var p1 = CGPoint(x: -a + 0.3 * L, y: 1.6 * b)
+        var p2 = CGPoint(x: a - 0.04 * L, y: 0.85 * b)
         let p3 = CGPoint(x: a, y: 0)
+        if s.shape == .shark {
+            // Torpedo: thickest a third of the way back, tapering to a long pointed snout.
+            p0 = CGPoint(x: -a, y: b * 0.3)
+            p1 = CGPoint(x: -a + 0.5 * L, y: 1.45 * b)
+            p2 = CGPoint(x: a - 0.15 * L, y: 0.9 * b)
+        }
         let u = 1 - t
         let w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t
         return CGPoint(x: w0 * p0.x + w1 * p1.x + w2 * p2.x + w3 * p3.x,
                        y: w0 * p0.y + w1 * p1.y + w2 * p2.y + w3 * p3.y)
+    }
+
+    /// The body's half-height at x, found by sampling the outline.
+    static func halfHeight(_ s: Species, atX x: CGFloat) -> CGFloat {
+        var prev = topCurve(s, 0)
+        for i in 1...64 {
+            let p = topCurve(s, CGFloat(i) / 64)
+            if p.x >= x {
+                let t = (x - prev.x) / max(p.x - prev.x, 1e-4)
+                return prev.y + (p.y - prev.y) * t
+            }
+            prev = p
+        }
+        return prev.y
     }
 
     static func finPath(_ f: FinSpec, _ s: Species, top: Bool) -> CGPath {
@@ -87,6 +107,15 @@ struct FishArt {
     }
 
     private static func paintFin(_ ctx: CGContext, _ path: CGPath, _ s: Species, from: CGPoint, to: CGPoint) {
+        if s.shape == .shark {
+            // Solid, like the body: dark at the base, a little lighter toward the tip.
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.clip()
+            Art.linear(ctx, [s.top, s.top.lighter(0.12)], from: from, to: to)
+            ctx.restoreGState()
+            return
+        }
         ctx.saveGState()
         ctx.addPath(path)
         ctx.clip()
@@ -121,13 +150,15 @@ struct FishArt {
             Art.linear(ctx, [s.top, s.mid, s.belly], [0.05, 0.45, 0.95],
                        from: CGPoint(x: 0, y: b), to: CGPoint(x: 0, y: -b))
             paintPattern(ctx, s)
-            // Gill cover.
-            let gx = a - 0.3 * L
-            ctx.setStrokeColor(s.top.darker(0.4).alpha(0.35).cg)
-            ctx.setLineWidth(max(0.6, L * 0.015))
-            ctx.move(to: CGPoint(x: gx, y: b * 0.65))
-            ctx.addQuadCurve(to: CGPoint(x: gx, y: -b * 0.6), control: CGPoint(x: gx + L * 0.09, y: 0))
-            ctx.strokePath()
+            // Gill cover (sharks have gill slits instead, drawn with their pattern).
+            if s.shape != .shark {
+                let gx = a - 0.3 * L
+                ctx.setStrokeColor(s.top.darker(0.4).alpha(0.35).cg)
+                ctx.setLineWidth(max(0.6, L * 0.015))
+                ctx.move(to: CGPoint(x: gx, y: b * 0.65))
+                ctx.addQuadCurve(to: CGPoint(x: gx, y: -b * 0.6), control: CGPoint(x: gx + L * 0.09, y: 0))
+                ctx.strokePath()
+            }
             // Mouth.
             ctx.setStrokeColor(RGBA(0, 0, 0, 0.4).cg)
             ctx.setLineWidth(0.7)
@@ -175,6 +206,35 @@ struct FishArt {
         case .metallic:
             // Scales come from the body's normal map (see `Detail.scales`).
             break
+
+        case .shark:
+            // Crisp white underside along the lower flank, with a softly feathered, slightly wavy edge.
+            let belly = CGMutablePath()
+            belly.move(to: CGPoint(x: -a - 4, y: -b * 1.4))
+            for i in 0...24 {
+                let t = CGFloat(i) / 24
+                let x = -a - 4 + (L + 8) * t
+                // The line rises toward the head, like a real shark's countershading.
+                let y = -b * 0.22 + b * 0.2 * t + b * 0.05 * sin(t * 19)
+                belly.addLine(to: CGPoint(x: x, y: y))
+            }
+            belly.addLine(to: CGPoint(x: a + 4, y: -b * 1.4))
+            belly.closeSubpath()
+            ctx.saveGState()
+            ctx.setShadow(offset: .zero, blur: b * 0.12, color: RGBA(0.95, 0.95, 0.93).cg)
+            ctx.addPath(belly)
+            ctx.setFillColor(RGBA(0.95, 0.95, 0.93).cg)
+            ctx.fillPath()
+            ctx.restoreGState()
+            // Gill slits.
+            ctx.setStrokeColor(s.top.darker(0.5).alpha(0.55).cg)
+            ctx.setLineWidth(1.1)
+            for k in 0..<5 {
+                let x = a - 0.24 * L - CGFloat(k) * 0.03 * L
+                ctx.move(to: CGPoint(x: x, y: b * 0.35))
+                ctx.addQuadCurve(to: CGPoint(x: x - 0.01 * L, y: -b * 0.3), control: CGPoint(x: x + 0.012 * L, y: 0))
+            }
+            ctx.strokePath()
 
         case .angel:
             for (c, w) in [(0.84, 0.05), (0.58, 0.07), (0.30, 0.06)] as [(CGFloat, CGFloat)] {
@@ -227,6 +287,13 @@ struct FishArt {
             path.addCurve(to: CGPoint(x: -T * 0.8, y: -S), control1: CGPoint(x: -T * 1.1, y: S * 0.6),
                           control2: CGPoint(x: -T * 1.1, y: -S * 0.6))
             path.addQuadCurve(to: CGPoint(x: overlap, y: -p), control: CGPoint(x: -T * 0.4, y: -S * 0.85))
+        case .shark:
+            // Long upper lobe sweeping up and back, short lower lobe.
+            path.move(to: CGPoint(x: overlap, y: p))
+            path.addQuadCurve(to: CGPoint(x: -T, y: S * 1.05), control: CGPoint(x: -T * 0.45, y: p + S * 0.35))
+            path.addQuadCurve(to: CGPoint(x: -T * 0.3, y: S * 0.05), control: CGPoint(x: -T * 0.62, y: S * 0.3))
+            path.addQuadCurve(to: CGPoint(x: -T * 0.55, y: -S * 0.6), control: CGPoint(x: -T * 0.35, y: -S * 0.25))
+            path.addQuadCurve(to: CGPoint(x: overlap, y: -p), control: CGPoint(x: -T * 0.2, y: -p - S * 0.2))
         case .flowing:
             path.move(to: CGPoint(x: overlap, y: p))
             path.addCurve(to: CGPoint(x: -T * 0.95, y: S * 0.9), control1: CGPoint(x: -T * 0.3, y: S * 1.1),
@@ -249,6 +316,11 @@ struct FishArt {
             ctx.saveGState()
             ctx.addPath(path)
             ctx.clip()
+            if s.shape == .shark {
+                Art.linear(ctx, [s.top, s.top.lighter(0.1)], from: CGPoint(x: 0, y: 0), to: CGPoint(x: -T, y: 0))
+                ctx.restoreGState()
+                return
+            }
             let tipAlpha: CGFloat = s.tailStyle == .flowing ? 0.4 : 0.6
             Art.linear(ctx, [s.fin.darker(0.08), s.fin.lighter(0.2).alpha(s.fin.a * tipAlpha)],
                        from: CGPoint(x: 0, y: 0), to: CGPoint(x: -T, y: 0))
@@ -275,7 +347,7 @@ struct FishArt {
     // MARK: - Pectoral fin
 
     private static func makePectoral(_ s: Species) -> (CGImage, CGSize) {
-        let size = CGSize(width: max(6, s.length * 0.26), height: max(4, s.length * 0.16))
+        let size = CGSize(width: max(6, s.length * 0.26 * s.pectoralScale), height: max(4, s.length * 0.16 * s.pectoralScale))
         let img = Art.image(size: size) { ctx in
             let w = size.width, h = size.height
             let path = CGMutablePath()
@@ -284,6 +356,11 @@ struct FishArt {
             path.addQuadCurve(to: CGPoint(x: w, y: h / 2), control: CGPoint(x: w * 0.35, y: 0))
             ctx.addPath(path)
             ctx.clip()
+            if s.shape == .shark {
+                // Pale underneath, slate on top, like the body.
+                Art.linear(ctx, [s.top, s.mid], from: CGPoint(x: 0, y: h), to: CGPoint(x: 0, y: 0))
+                return
+            }
             Art.linear(ctx, [s.fin.lighter(0.1), s.fin.lighter(0.3).alpha(s.fin.a * 0.4)],
                        from: CGPoint(x: w, y: 0), to: CGPoint(x: 0, y: 0))
         }

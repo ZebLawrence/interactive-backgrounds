@@ -1,8 +1,10 @@
 import CoreGraphics
 
-enum TailStyle { case forked, fan, flowing }
+enum TailStyle { case forked, fan, flowing, shark }
 
-enum Pattern { case neon, metallic, angel, clown }
+enum Pattern { case neon, metallic, angel, clown, shark }
+
+enum BodyShape { case fish, shark }
 
 /// A fin along the top (dorsal) or bottom (anal) of the body.
 /// `start`/`end` are fractions of body length measured from the tail (0) to the nose (1).
@@ -42,6 +44,13 @@ struct Species {
     let band: ClosedRange<CGFloat>
     /// How many to spawn on a ~1500x1000 pt screen.
     let population: Int
+    var shape: BodyShape = .fish
+    var pectoralScale: CGFloat = 1
+    var eyeScale: CGFloat = 1
+    /// How much the body curls into turns.
+    var flex: CGFloat = 1
+    /// Skin roughness (higher = more matte); nil uses the default for the pattern.
+    var roughness: CGFloat? = nil
 }
 
 extension Species {
@@ -89,6 +98,17 @@ extension Species {
         top: RGBA(0.10, 0.13, 0.52), mid: RGBA(0.18, 0.30, 0.82), belly: RGBA(0.34, 0.40, 0.86),
         fin: RGBA(0.56, 0.16, 0.74, 0.78), finEdge: nil, eye: RGBA(0.30, 0.35, 0.60),
         pattern: .metallic, cruise: 28, burst: 240, schooling: false, band: 0.5...0.9, population: 1)
+
+    /// The optional predator: not part of the regular population (see `Shark`).
+    static let shark = Species(
+        id: "shark", name: "Shark",
+        length: 440, height: 84, thickness: 0.85, tailLength: 160, tailSpread: 96, tailStyle: .shark,
+        dorsal: FinSpec(start: 0.42, end: 0.62, height: 92, sweep: 0.12),
+        anal: FinSpec(start: 0.1, end: 0.18, height: 20, sweep: 0.05),
+        top: RGBA(0.20, 0.24, 0.29), mid: RGBA(0.40, 0.45, 0.50), belly: RGBA(0.50, 0.54, 0.58),
+        fin: RGBA(0.34, 0.38, 0.43, 0.97), finEdge: nil, eye: RGBA(0.04, 0.04, 0.05),
+        pattern: .shark, cruise: 30, burst: 540, schooling: false, band: 0.3...0.7, population: 0,
+        shape: .shark, pectoralScale: 1.1, eyeScale: 0.4, flex: 2.5, roughness: 0.85)
 
     static let all: [Species] = [.neonTetra, .goldfish, .angelfish, .clownfish, .betta]
 

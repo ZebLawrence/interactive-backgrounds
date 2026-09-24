@@ -49,6 +49,8 @@ final class Tank: NSObject {
     private let floorBase: Float
 
     private(set) var fish: [Fish] = []
+    private(set) var shark: Shark?
+    private var respawns: [(species: Species, at: Double)] = []
     private var food: [Food] = []
     private var plantBed: PlantBed?
     /// Big scenery (reef mounds, corals) as spheres that fish steer around.
@@ -72,7 +74,7 @@ final class Tank: NSObject {
         self.screenFrame = screenFrame
         width = Float(screenFrame.width) / 100
         height = Float(screenFrame.height) / 100
-        depth = clamp(height * 0.75, 5, 9)
+        depth = clamp(height * 1.0, 6, 12)
         let fov: Float = 40
         eyeDistance = (height / 2) / tan(fov / 2 * .pi / 180)
         let menuBar = Float(NSStatusBar.system.thickness) / 100
@@ -130,21 +132,31 @@ final class Tank: NSObject {
 
     struct Bounds { var minX, maxX, minY, maxY, minZ, maxZ: Float }
 
+    /// Half the visible height at depth z.
+    func halfHeight(atZ z: Float) -> Float { height / 2 * (eyeDistance - z) / eyeDistance }
+
+    /// How far in front of the screen plane (toward the camera) fish may swim.
+    var frontZ: Float { eyeDistance * 0.35 }
+
+    /// Where a fish may be at depth p.z: inside the tank and inside what the camera can see there
+    /// (the view narrows toward the camera), clear of the floor and the menu bar.
     func bounds(at p: V3, bodyLength: Float) -> Bounds {
         let hw = halfWidth(atZ: p.z) - bodyLength * 0.6
+        let hh = halfHeight(atZ: p.z)
         return Bounds(minX: -hw, maxX: hw,
-                      minY: floorHeight(x: p.x, z: p.z) + 0.25 + bodyLength * 0.4,
-                      maxY: surfaceY - 0.45 - bodyLength * 0.3,
-                      minZ: -depth + 0.6, maxZ: -0.35 - bodyLength * 0.3)
+                      minY: max(floorHeight(x: p.x, z: p.z) + 0.25, -hh + 0.2) + bodyLength * 0.4,
+                      maxY: min(surfaceY, hh * 0.91) - 0.45 - bodyLength * 0.3,
+                      minZ: -depth + 0.6, maxZ: frontZ - bodyLength * 0.3)
     }
 
     func randomPoint(band: ClosedRange<CGFloat>, near p: V3? = nil) -> V3 {
-        let z = rnd((-depth + 0.8)...(-0.6))
+        let z = rnd((-depth + 0.8)...(frontZ - 0.8))
         let hw = halfWidth(atZ: z) - 0.8
         var x = rnd(-hw...hw)
         if let p { x = clamp(p.x + rnd(-6.5...6.5), -hw, hw) }
-        let lo = floorHeight(x: x, z: z) + 0.5
-        let hi = surfaceY - 0.9
+        let hh = halfHeight(atZ: z)
+        let lo = max(floorHeight(x: x, z: z) + 0.5, -hh + 0.6)
+        let hi = min(surfaceY, hh * 0.91) - 0.9
         let y = lo + (hi - lo) * Float(rand(band))
         return V3(x, y, z)
     }
@@ -198,9 +210,11 @@ final class Tank: NSObject {
         // The backdrop is exactly the fog colour, so distant sand and surface dissolve into it seamlessly.
         // (Colours and light levels are set by `Lighting`, which blends between day and night.)
         scene.lightingEnvironment.contents = Art.waterGradient(width: 256, height: 128)
-        scene.fogStartDistance = CGFloat(eyeDistance + 0.5)
-        scene.fogEndDistance = CGFloat(eyeDistance + depth + 5)
-        scene.fogDensityExponent = 1.2
+        // The haze thickens gradually and only becomes opaque well behind the back of the tank,
+        // leaving room for the shark to lurk as a fading shape.
+        scene.fogStartDistance = CGFloat(eyeDistance + 1)
+        scene.fogEndDistance = CGFloat(eyeDistance + depth + 14)
+        scene.fogDensityExponent = 1.3
         lighting = Lighting(scene: scene, surfaceY: surfaceY, floorY: floorHeight(x: 0, z: -depth * 0.45),
                             depth: depth, eyeDistance: eyeDistance)
 
@@ -215,7 +229,7 @@ final class Tank: NSObject {
 
     private func buildSand(occluders: [Occluder]) {
         // Extends well past the fog distance so its far edge dissolves into the water.
-        let backZ = -depth - 14, frontZ: Float = 2
+        let backZ = -depth - 26, frontZ: Float = 2
         let hw = halfWidth(atZ: backZ) + 2
         let nx = 120, nz = 70
         // Contact shadows are baked into a map covering the part of the floor with things on it.
@@ -274,12 +288,13 @@ final class Tank: NSObject {
         let D = depth
         func floorAt(_ x: Float, _ z: Float) -> V3 { V3(x, floorHeight(x: x, z: z), z) }
 
-        // Reef mounds at the back: piles of live rock crowned with coral, with sea fans behind.
+        // Reef mounds: piles of live rock crowned with coral, with sea fans behind. One sits far
+        // back, the other in the middle distance off to the side, so the reef has depth.
         let moundSides: [Float] = Bool.random() ? [-1, 1] : [1, -1]
         for (i, side) in moundSides.enumerated() {
-            let z = -D * rnd(0.68...0.8)
-            let cx = side * halfWidth(atZ: z) * rnd(0.3...0.5)
-            let scale = rnd(1.0...1.35)
+            let z = i == 0 ? -D * rnd(0.75...0.88) : -D * rnd(0.38...0.5)
+            let cx = side * halfWidth(atZ: z) * (i == 0 ? rnd(0.25...0.45) : rnd(0.45...0.65))
+            let scale = i == 0 ? rnd(1.0...1.35) : rnd(0.75...0.95)
             var top: Float = floorHeight(x: cx, z: z)
             for _ in 0..<Int.random(in: 5...7) {
                 let ox = rnd(-1.2...1.2) * scale, oz = rnd(-0.6...0.6) * scale
@@ -308,8 +323,8 @@ final class Tank: NSObject {
         }
 
         // Coral gardens: small mixed patches across the middle of the floor.
-        for _ in 0..<max(4, Int(width / 3)) {
-            let z = -D * rnd(0.25...0.6)
+        for _ in 0..<max(6, Int(width / 2.5)) {
+            let z = -D * rnd(0.1...0.7)
             let c = floorAt(halfWidth(atZ: z) * rnd(-0.85...0.85), z)
             for _ in 0..<Int.random(in: 2...4) {
                 let p = floorAt(c.x + rnd(-0.5...0.5), c.z + rnd(-0.4...0.4)) - V3(0, 0.03, 0)
@@ -319,21 +334,21 @@ final class Tank: NSObject {
 
         // Larger corals dotted across the middle of the floor.
         for k in 0..<2 {
-            let z = -D * rnd(0.35...0.55)
+            let z = -D * rnd(0.2...0.65)
             let x = (k == 0 ? -1 : 1) * halfWidth(atZ: z) * rnd(0.1...0.35)
             let c = floorAt(x, z)
             reef.addBrain(at: c - V3(0, 0.03, 0), radius: rnd(0.3...0.45), tone: [.teal, .tan, .orange].randomElement()!)
             obstacles.append((c, 0.45))
         }
-        for _ in 0..<3 {
-            let z = -D * rnd(0.3...0.6)
+        for _ in 0..<4 {
+            let z = -D * rnd(0.15...0.7)
             let x = halfWidth(atZ: z) * rnd(-0.75...0.75)
             reef.addBranching(at: floorAt(x, z) - V3(0, 0.05, 0), height: rnd(0.55...0.85),
                               tone: [.pink, .orange, .purple, .red].randomElement()!)
         }
 
         // A sea anemone near the front, which the clownfish call home.
-        let az = -rnd(1.8...2.4)
+        let az = -rnd(1.0...1.8)
         let ax = (Bool.random() ? -1 : 1) * halfWidth(atZ: az) * rnd(0.25...0.45)
         let anemoneBase = floorAt(ax, az) - V3(0, 0.03, 0)
         plants.addAnemone(at: anemoneBase, radius: 0.32)
@@ -341,39 +356,56 @@ final class Tank: NSObject {
         anemoneTop = anemoneBase + V3(0, 0.45, 0)
 
         // Scattered stones and pebbles.
-        for _ in 0..<7 {
-            let z = rnd((-D + 0.5)...(-0.6))
+        for _ in 0..<9 {
+            let z = rnd((-D + 0.5)...0.3)
             let x = halfWidth(atZ: z) * rnd(-0.9...0.9)
             let r = rnd(0.15...0.4)
             reef.addRock(at: floorAt(x, z) + V3(0, r * 0.15, 0), size: V3(r * rnd(1...1.5), r * rnd(0.5...0.8), r), tone: .rock)
         }
-        for _ in 0..<80 {
-            let z = -D * pow(rnd(0.05...1), 1.5)
+        for _ in 0..<100 {
+            let z = 0.5 - (D + 0.5) * pow(rnd(0...1), 1.3)
             let x = halfWidth(atZ: z) * rnd(-0.95...0.95)
             reef.addPebble(at: floorAt(x, z), radius: rnd(0.025...0.07),
                            tone: [.rock, .rockPurple, .bone, .tan].randomElement()!)
         }
 
-        // Plants: tall framing clusters in the front corners, more along the back and sides.
+        // Foreground: tall plants close to the camera in both corners, rising from below the frame,
+        // and a rock outcrop at one bottom corner.
+        let bladeSide: Float = Bool.random() ? -1 : 1
         for side: Float in [-1, 1] {
-            let z = rnd(-1.4 ... -0.7)
-            let x = side * halfWidth(atZ: z) * rnd(0.82...0.95)
-            if side < 0 {
-                for _ in 0..<7 {
-                    let p = floorAt(x + rnd(-0.35...0.35), z + rnd(-0.3...0.3))
-                    plants.addBlade(at: p, height: rnd(0.4...1.0) * min(height * 0.55, 5), width: rnd(0.16...0.3),
+            let z = rnd(0.4...1.2)
+            let x = side * halfWidth(atZ: z) * rnd(0.78...0.92)
+            if side == bladeSide {
+                for _ in 0..<8 {
+                    let p = floorAt(x + rnd(-0.45...0.45), z + rnd(-0.35...0.35))
+                    plants.addBlade(at: p, height: rnd(0.5...1.0) * min(height * 0.6, 5.5), width: rnd(0.18...0.32),
                                     tone: [.green, .brightGreen, .olive].randomElement()!)
                 }
             } else {
                 let tone: PlantBed.Tone = Bool.random() ? .rotala : .red
-                for _ in 0..<6 {
-                    plants.addStem(at: floorAt(x + rnd(-0.35...0.35), z + rnd(-0.3...0.3)),
-                                   height: rnd(0.5...1.0) * min(height * 0.5, 4.5), tone: tone)
+                for _ in 0..<7 {
+                    plants.addStem(at: floorAt(x + rnd(-0.45...0.45), z + rnd(-0.35...0.35)),
+                                   height: rnd(0.6...1.0) * min(height * 0.55, 5), tone: tone)
                 }
             }
         }
-        for k in 0..<max(4, Int(width / 3)) {
-            let z = -D * rnd(0.55...0.95)
+        do {
+            let z = rnd(0.2...0.7)
+            let x = -bladeSide * halfWidth(atZ: z) * rnd(0.45...0.6)
+            for _ in 0..<3 {
+                let size = V3(rnd(0.7...1.1), rnd(0.5...0.75), rnd(0.6...0.9))
+                let c = floorAt(x + rnd(-0.8...0.8), z + rnd(-0.4...0.4)) + V3(0, size.y * 0.3, 0)
+                reef.addRock(at: c, size: size, tone: Bool.random() ? .rock : .rockPurple)
+                obstacles.append((c, max(size.x, size.z) * 0.95))
+                encrust(reef, rock: c, size: size)
+            }
+            plants.addSword(at: floorAt(x + rnd(0.9...1.3) * bladeSide, z - 0.3), size: rnd(0.8...1.1),
+                            leaves: Int.random(in: 9...12), width: rnd(0.16...0.22), tone: .brightGreen)
+        }
+
+        // Plant clusters filling the background.
+        for k in 0..<max(6, Int(width / 2.5)) {
+            let z = -D * rnd(0.55...0.97)
             let x = halfWidth(atZ: z) * rnd(-0.95...0.95)
             if k % 2 == 0 {
                 for _ in 0..<Int.random(in: 4...7) {
@@ -390,7 +422,7 @@ final class Tank: NSObject {
             }
         }
         for side: Float in [-1, 1] {
-            let z = -D * rnd(0.3...0.5)
+            let z = -D * rnd(0.2...0.45)
             plants.addSword(at: floorAt(side * halfWidth(atZ: z) * rnd(0.6...0.8), z), size: rnd(0.9...1.3),
                             leaves: Int.random(in: 10...14), width: rnd(0.16...0.22), tone: [.green, .brightGreen].randomElement()!)
         }
@@ -480,7 +512,9 @@ final class Tank: NSObject {
     }
 
     private func populate() {
-        let areaFactor = clamp(Float(screenFrame.width * screenFrame.height) / (1512 * 982), 0.5, 2.5)
+        // Scaled by screen area, plus a bit more for the deep tank (it's about twice the volume of
+        // the original, so the same count looked sparse).
+        let areaFactor = clamp(Float(screenFrame.width * screenFrame.height) / (1512 * 982), 0.5, 2.5) * 1.3
         for sp in Species.all {
             let count = max(1, Int((Float(sp.population) * areaFactor).rounded()))
             for _ in 0..<count { addFish(sp) }
@@ -489,8 +523,8 @@ final class Tank: NSObject {
 
     // MARK: - Public actions
 
-    func addFish(_ sp: Species) {
-        let f = Fish(species: sp, at: randomPoint(band: sp.band))
+    func addFish(_ sp: Species, at position: V3? = nil) {
+        let f = Fish(species: sp, at: position ?? randomPoint(band: sp.band))
         f.setCausticScale(lighting.fishCausticScale)
         fish.append(f)
         scene.rootNode.addChildNode(f.node)
@@ -538,6 +572,29 @@ final class Tank: NSObject {
 
     func eat(_ f: Food) { f.eaten = true }
 
+    /// The shark caught a fish: it vanishes, and a replacement swims in from the back a while later.
+    func eaten(_ f: Fish) {
+        fish.removeAll { $0 === f }
+        f.node.runAction(.sequence([
+            .group([.scale(to: 0.05, duration: 0.15), .fadeOut(duration: 0.15)]),
+            .removeFromParentNode(),
+        ]))
+        respawns.append((f.species, clock + Double(rnd(45...90))))
+    }
+
+    /// Add or remove the shark to match the setting.
+    private func syncShark() {
+        let wanted = Settings.shared.shark
+        if wanted, shark == nil {
+            let s = Shark(tank: self)
+            scene.rootNode.addChildNode(s.body.node)
+            shark = s
+        } else if !wanted, let s = shark {
+            s.body.node.runAction(.sequence([.fadeOut(duration: 1.5), .removeFromParentNode()]))
+            shark = nil
+        }
+    }
+
     func applyFishCaustics(_ scale: Float) {
         for f in fish { f.setCausticScale(scale) }
     }
@@ -547,7 +604,7 @@ final class Tank: NSObject {
         guard lighting.night > 0.5, Float.random(in: 0...1) < 0.65 else { return randomPoint(band: band, near: p) }
         let lo = floorBase + 0.6, hi = surfaceY - 0.9
         let axis = lighting.pointInBeam(atY: lo + (hi - lo) * Float(rand(band)))
-        let z = clamp(axis.z + rnd(-1.2...1.2), -depth + 0.8, -0.6)
+        let z = clamp(axis.z + rnd(-1.5...1.5), -depth + 0.8, frontZ - 0.8)
         let x = clamp(axis.x + rnd(-0.8...0.8), -halfWidth(atZ: z) + 0.8, halfWidth(atZ: z) - 0.8)
         return V3(x, max(axis.y, floorHeight(x: x, z: z) + 0.5), z)
     }
@@ -583,7 +640,17 @@ final class Tank: NSObject {
         }
 
         updateSchools(dt: dt)
+        syncShark()
+        shark?.update(dt: dt, tank: self)
         for f in fish { f.update(dt: dt, tank: self) }
+        // Replacements for eaten fish arrive from the back of the tank.
+        while let next = respawns.first, next.at <= clock {
+            respawns.removeFirst()
+            let z = -depth + 1
+            addFish(next.species, at: V3(rnd(-halfWidth(atZ: z) * 0.6...halfWidth(atZ: z) * 0.6), 0, z))
+            fish.last?.node.opacity = 0
+            fish.last?.node.runAction(.fadeIn(duration: 2))
+        }
         plantBed?.update(dt: dt, tank: self)
 
         food.removeAll { f in

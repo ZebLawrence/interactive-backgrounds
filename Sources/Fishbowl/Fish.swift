@@ -7,6 +7,13 @@ final class Fish {
     let node = SCNNode()
     private let materials: [SCNMaterial]  // body and fins: each has the swim modifier
     private let eyes: SCNNode
+    /// Shark only: the lower jaw swings on this pivot; the upper teeth stay with the head.
+    private var jawPivot: SCNNode?
+    private var upperTeeth: SCNNode?
+    private var palate: SCNNode?
+    private var lowerTeeth: SCNNode?
+    /// 0 = shut, 1 = gaping wide.
+    var mouthOpen: Float = 0
 
     var pos: V3
     var vel: V3
@@ -21,6 +28,11 @@ final class Fish {
     private var swimFreq: Float = 0
     private var swimOffset = rnd(0...(2 * .pi))
     private var swimAmp: Float = 0
+    /// Sideways curve of the body while turning (world units at the tail joint), as sent / as wanted.
+    private var swimBend: Float = 0
+    private var targetBend: Float = 0
+    private var sinceBendUpdate: Float = 1
+    private var lastForward = V3(1, 0, 0)
     private var smoothedAmp: Float = 0
     private var sinceRhythmUpdate: Float = 1
     private var renderTime: Float = 0
@@ -31,11 +43,12 @@ final class Fish {
     /// Personality: curious fish come over to inspect a resting cursor.
     private let curiosity = rnd(0...1)
     private let speedJitter = rnd(0.8...1.2)
-    private let hoverOffset = V3(rnd(0.55...1.2) * (Bool.random() ? 1 : -1), rnd(-0.45...0.45), -rnd(0.35...0.9))
+    /// Where a curious fish hovers relative to the cursor: beside it, and well out toward the viewer.
+    private let hoverOffset = V3(rnd(0.45...1.0) * (Bool.random() ? 1 : -1), rnd(-0.4...0.4), rnd(0.8...3.5))
     let schoolOffset = V3(rnd(-0.9...0.9), rnd(-0.5...0.5), rnd(-0.9...0.9))
 
     /// Screen-points-per-second in the species data → world units per second.
-    private static let speedUnit: Float = 1.2 / 100
+    static let speedUnit: Float = 1.2 / 100
 
     init(species: Species, at p: V3) {
         self.species = species
@@ -58,6 +71,26 @@ final class Fish {
         eyes = SCNNode(geometry: model.eyes)
         eyes.castsShadow = false
         [bodyNode, finNode, eyes].forEach(node.addChildNode)
+        if let jaw = model.jaw {
+            let pivot = SCNNode()
+            pivot.simdPosition = jaw.hinge
+            let shell = SCNNode(geometry: jaw.shell)
+            shell.simdPosition = -jaw.hinge
+            let lower = SCNNode(geometry: jaw.lowerTeeth)
+            lower.simdPosition = -jaw.hinge
+            pivot.addChildNode(shell)
+            pivot.addChildNode(lower)
+            node.addChildNode(pivot)
+            let upper = SCNNode(geometry: jaw.upperTeeth)
+            node.addChildNode(upper)
+            let roof = SCNNode(geometry: jaw.palate)
+            node.addChildNode(roof)
+            palate = roof
+            [shell, lower, upper, roof].forEach { $0.castsShadow = false }
+            jawPivot = pivot
+            upperTeeth = upper
+            lowerTeeth = lower
+        }
 
         pos = p
         let angle = rnd(0...(2 * .pi))
@@ -69,6 +102,7 @@ final class Fish {
             mat.setValue(swimFreq, forKey: "swimFreq")
             mat.setValue(swimOffset, forKey: "swimOffset")
             mat.setValue(swimAmp, forKey: "swimAmp")
+            mat.setValue(swimBend, forKey: "swimBend")
         }
         render()
     }
@@ -112,6 +146,14 @@ final class Fish {
                 fleeDir = away.normalized
             }
         }
+        // --- A hunting shark nearby: scatter.
+        if let threat = tank.shark?.threat(to: self) {
+            if threat.intensity > fear {
+                fear = threat.intensity
+                goalTimer = 0
+            }
+            fleeDir = threat.away
+        }
         fear = max(0, fear - dt * 0.55)
 
         // --- Pick what we're swimming toward.
@@ -125,11 +167,14 @@ final class Fish {
             }
         } else if c.present && c.stillTime > 0.7 && fear < 0.05 && curiosity > 0.45
                     && tank.screenDistance(pos, c.screen) < 420 {
-            // Come right up to the glass next to the cursor, and look at it.
+            // Swim up close, beside the cursor's line of sight (so it appears next to the cursor on
+            // screen), and turn to face the viewer.
             let g = tank.cursorGlassPoint
-            target = V3(g.x + hoverOffset.x, g.y + hoverOffset.y, hoverOffset.z)
+            let z = min(hoverOffset.z, tank.frontZ - 0.8)
+            let f = (tank.eyeDistance - z) / tank.eyeDistance
+            target = V3((g.x + hoverOffset.x) * f, (g.y + hoverOffset.y) * f, z)
             targetSpeed = cruise * 1.2
-            lookAt = g
+            lookAt = V3(g.x * f, g.y * f, z + 3)
         } else if sp.schooling, let g = tank.schoolGoal(for: sp) {
             target = g + schoolOffset
         } else {
@@ -183,12 +228,21 @@ final class Fish {
         // --- Flee.
         desired += fleeDir * (burst * fear)
 
-        // --- Integrate.
-        let agility = 1.6 + 7 * fear
+        move(desired: desired, dt: dt, cruise: cruise,
+             maxSpeed: cruise * 1.4 + (burst - cruise * 1.4) * fear,
+             agility: 1.6 + 7 * fear,
+             maxClimb: cruise * 0.8 + burst * fear * 0.5,
+             excitement: fear, lookAt: lookAt, bounds: b, tank: tank)
+    }
+
+    /// Steer toward the `desired` velocity, stay inside `b`, turn to face the heading (or `lookAt`
+    /// when nearly still), bank into turns and animate the tail. Shared by fish and the shark.
+    func move(desired: V3, dt: Float, cruise: Float, maxSpeed: Float, agility: Float, maxClimb: Float,
+              excitement: Float, lookAt: V3?, bounds b: Tank.Bounds, tank: Tank) {
         vel += (desired - vel) * min(1, dt * agility)
-        vel = vel.limited(to: cruise * 1.4 + (burst - cruise * 1.4) * fear)
+        vel = vel.limited(to: maxSpeed)
         // Fish rarely swim straight up or down.
-        vel.y = clamp(vel.y, -cruise * 0.8 - burst * fear * 0.5, cruise * 0.8 + burst * fear * 0.5)
+        vel.y = clamp(vel.y, -maxClimb, maxClimb)
         pos += vel * dt
         pos.x = clamp(pos.x, b.minX - 0.2, b.maxX + 0.2)
         pos.y = clamp(pos.y, b.minY - 0.1, b.maxY + 0.1)
@@ -208,12 +262,24 @@ final class Fish {
             let q = simd_quatf(angle: yaw, axis: V3(0, 1, 0))
                 * simd_quatf(angle: pitch, axis: V3(0, 0, 1))
                 * simd_quatf(angle: roll, axis: V3(1, 0, 0))
-            orientation = simd_slerp(orientation, q, min(1, dt * (3 + 8 * fear)))
+            orientation = simd_slerp(orientation, q, min(1, dt * (3 + 8 * excitement)))
         }
 
+        // --- Flex into the turn: the body arcs with the tail swinging toward the inside of the curve.
+        // Driven by how fast the fish is actually rotating (not where it wants to head).
+        let fwd = forward
+        let flatNow = V2(fwd.x, fwd.z), flatBefore = V2(lastForward.x, lastForward.z)
+        let turnRate = dt > 0 ? angleDelta(atan2(-flatNow.y, flatNow.x), atan2(-flatBefore.y, flatBefore.x)) / dt : 0
+        lastForward = fwd
+        let flex = Float(species.flex)
+        let maxBend = model.length * 0.3 * min(flex, 1.5)
+        let bendGoal = clamp(-turnRate * model.length * 0.12 * flex, -maxBend, maxBend)
+        targetBend += (bendGoal - targetBend) * min(1, dt * 6)
+        updateBend(dt: dt)
+
         // --- Swimming animation: faster, bigger tail beats at speed.
-        let hz = min(8, 1.1 + (speed / Fish.speedUnit) / (Float(sp.length) * 0.9))
-        let targetAmp = model.length * (0.035 + 0.05 * min(1, speed / (cruise * 2)) + 0.03 * fear)
+        let hz = min(8, 1.1 + (speed / Fish.speedUnit) / (Float(species.length) * 0.9))
+        let targetAmp = model.length * (0.035 + 0.05 * min(1, speed / (cruise * 2)) + 0.03 * excitement)
         smoothedAmp += (targetAmp - smoothedAmp) * min(1, dt * 3)
         renderTime = tank.renderTime
         updateSwimRhythm(hz: hz, dt: dt)
@@ -246,6 +312,15 @@ final class Fish {
         }
     }
 
+    /// Like the rhythm, the bend is only sent to the shader when it has changed noticeably.
+    private func updateBend(dt: Float) {
+        sinceBendUpdate += dt
+        guard sinceBendUpdate > 0.08, abs(targetBend - swimBend) > model.length * 0.015 else { return }
+        sinceBendUpdate = 0
+        swimBend = abs(targetBend) < model.length * 0.01 ? 0 : targetBend
+        for mat in materials { mat.setValue(swimBend, forKey: "swimBend") }
+    }
+
     private func pickGoal(in tank: Tank) {
         // Clownfish mostly stay close to their anemone.
         if species.id == Species.clownfish.id, let home = tank.anemoneTop, Float.random(in: 0...1) < 0.75 {
@@ -271,7 +346,7 @@ final class Fish {
     private func lateralOffset(atX x: Float) -> Float {
         let s = max(0, (model.noseX - x) / model.length)
         let phase = swimFreq * renderTime + swimOffset
-        return swimAmp * (0.08 + s * s) * sin(phase - s * 3.2)
+        return swimAmp * (0.08 + s * s) * sin(phase - s * 3.2) + swimBend * s * s
     }
 
     // MARK: - Rendering
@@ -281,5 +356,18 @@ final class Fish {
         node.simdOrientation = orientation
         // The eyes are rigid, so shift them with the head's part of the swim wave.
         eyes.simdPosition = V3(0, 0, lateralOffset(atX: model.eyeX))
+        if let jaw = model.jaw, let pivot = jawPivot {
+            let lateral = V3(0, 0, lateralOffset(atX: jaw.midX))
+            pivot.simdPosition = jaw.hinge + lateral
+            // The lower jaw drops, front first, about the hinge at the back of the mouth.
+            pivot.simdEulerAngles = V3(0, 0, -0.75 * mouthOpen)
+            upperTeeth?.simdPosition = lateral
+            palate?.simdPosition = lateral
+            // The inside of the mouth only exists while it's open.
+            let shut = mouthOpen < 0.03
+            upperTeeth?.isHidden = shut
+            lowerTeeth?.isHidden = shut
+            palate?.isHidden = shut
+        }
     }
 }

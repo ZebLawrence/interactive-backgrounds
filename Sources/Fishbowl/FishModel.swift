@@ -13,6 +13,8 @@ final class FishModel {
     let body: SCNGeometry
     let fins: SCNGeometry
     let eyes: SCNGeometry
+    /// The shark's articulated mouth (nil for other species).
+    let jaw: SharkJaw?
     /// Fish-space x of the eyes (world units), so they can follow the swim wave.
     let eyeX: Float
     let noseX: Float
@@ -87,12 +89,12 @@ final class FishModel {
             finMesh.append(pectoral, transform: simd_float4x4(translation: at) * rot)
         }
         fins = finMesh.geometry()
-        fins.materials = [FishModel.finMaterial(art.finAtlas)]
+        fins.materials = [FishModel.finMaterial(art.finAtlas, solid: s.shape == .shark)]
 
         // Eyes: two small spheres; each vertex picks pupil / iris / rim from a tiny palette texture.
         let ex = Float(s.length / 2 - 0.17 * s.length)
         let near = halfSizes.min { abs($0.x - ex) < abs($1.x - ex) }!
-        let er = Float(max(1.9, min(s.length * 0.075, s.height / 2 * 0.34))) * u
+        let er = Float(max(1.9, min(s.length * 0.075, s.height / 2 * 0.34)) * s.eyeScale) * u
         eyeX = ex * u
         var eyeMesh = Mesh()
         var sphere = Mesh.icosphere(subdivisions: 2)
@@ -112,14 +114,30 @@ final class FishModel {
         eyeMat.diffuse.magnificationFilter = .nearest
         eyeMat.roughness.contents = 0.12
         eyes.materials = [eyeMat]
+
+        if s.shape == .shark {
+            // Body half-height/width at any x, interpolated between loft stations.
+            let stations = halfSizes
+            jaw = SharkJaw(species: s, unit: u) { x in
+                guard let k = stations.firstIndex(where: { $0.x >= x }), k > 0 else {
+                    let e = x <= stations[0].x ? stations[0] : stations[stations.count - 1]
+                    return (e.hy, e.hz)
+                }
+                let p = stations[k - 1], q = stations[k]
+                let t = (x - p.x) / max(q.x - p.x, 1e-4)
+                return (p.hy + (q.hy - p.hy) * t, p.hz + (q.hz - p.hz) * t)
+            }
+        } else {
+            jaw = nil
+        }
     }
 
     private static func bodyMaterial(_ s: Species, _ art: FishArt) -> SCNMaterial {
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
         mat.diffuse.contents = art.skin
-        mat.roughness.contents = s.pattern == .metallic ? 0.3 : 0.4
-        mat.metalness.contents = s.pattern == .metallic ? 0.35 : 0.08
+        mat.roughness.contents = s.roughness ?? (s.pattern == .metallic ? 0.3 : 0.4)
+        mat.metalness.contents = s.shape == .shark ? 0 : (s.pattern == .metallic ? 0.35 : 0.08)
         // Overlapping scales: about 24 along the body whatever the species' size.
         let scaleSize = s.length / 24
         mat.normal.contents = Detail.scales
@@ -127,25 +145,33 @@ final class FishModel {
         mat.normal.wrapT = .repeat
         mat.normal.contentsTransform = SCNMatrix4MakeScale(art.skinRect.width / (scaleSize * 8),
                                                            art.skinRect.height / (scaleSize * 0.8 * 10), 1)
-        mat.normal.intensity = s.pattern == .metallic ? 0.8 : 0.5
+        mat.normal.intensity = s.pattern == .metallic ? 0.8 : (s.shape == .shark ? 0.12 : 0.5)
         mat.shaderModifiers = [.geometry: Shaders.swim, .surface: Shaders.caustics]
         mat.setValue(0.35, forKey: "causticStrength")
         Lighting.prepareCaustics(mat)
         return mat
     }
 
-    private static func finMaterial(_ image: CGImage) -> SCNMaterial {
+    /// Fins are translucent and faintly glowing, except a shark's, which are solid and matte.
+    private static func finMaterial(_ image: CGImage, solid: Bool) -> SCNMaterial {
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
         mat.diffuse.contents = image
-        mat.roughness.contents = 0.5
+        mat.roughness.contents = solid ? 0.85 : 0.5
         mat.isDoubleSided = true
-        mat.writesToDepthBuffer = false
-        mat.blendMode = .alpha
+        mat.writesToDepthBuffer = solid
         // A little self-illumination so thin fins glow when back-lit.
         mat.emission.contents = image
-        mat.emission.intensity = 0.25
-        mat.shaderModifiers = [.geometry: Shaders.swim]
+        mat.emission.intensity = solid ? 0 : 0.25
+        if solid {
+            // Cut out the fin shape and draw it opaque (blending made even fully opaque pixels look
+            // see-through, as SceneKit routes any texture with alpha through its transparent pass).
+            mat.blendMode = .replace
+            mat.shaderModifiers = [.geometry: Shaders.swim, .fragment: Shaders.alphaCutout]
+        } else {
+            mat.blendMode = .alpha
+            mat.shaderModifiers = [.geometry: Shaders.swim]
+        }
         return mat
     }
 }

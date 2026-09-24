@@ -24,18 +24,20 @@ enum Shaders {
     float swimFreq;
     float swimOffset;
     float swimAmp;
+    float swimBend;
     float noseX;
     float bodyLen;
     #pragma body
     // The tail-beat phase runs on the GPU; the CPU only adjusts frequency/offset/amplitude when
-    // the fish's rhythm changes (see `Fish.updateSwimUniforms`).
+    // the fish's rhythm changes (see `Fish.updateSwimRhythm`). `swimBend` curves the whole body
+    // into an arc while turning.
     float swimPhase = scn_frame.time * swimFreq + swimOffset;
     float s = max(0.0, (noseX - _geometry.position.x) / bodyLen);
     float env = swimAmp * (0.08 + s * s);
     float k = 3.2;
     float wave = swimPhase - s * k;
-    float off = env * sin(wave);
-    float dOffDs = swimAmp * 2.0 * s * sin(wave) - env * k * cos(wave);
+    float off = env * sin(wave) + swimBend * s * s;
+    float dOffDs = swimAmp * 2.0 * s * sin(wave) - env * k * cos(wave) + swimBend * 2.0 * s;
     float slope = -dOffDs / bodyLen;
     _geometry.position.z += off;
     _geometry.normal = normalize(float3(_geometry.normal.x - slope * _geometry.normal.z,
@@ -166,5 +168,12 @@ enum Shaders {
     float h = clamp((wp.y - beamBottom) / (beamTop - beamBottom), 0.0, 1.0);
     float a = pow(facing, 3.0) * mix(0.3, 1.0, h) * beamStrength * smoothstep(beamTop + 0.5, beamTop - 1.5, wp.y);
     _surface.diffuse = float4(float3(1.0, 0.93, 0.78) * a, 1.0);
+    """
+
+    /// Discard pixels outside a texture's shape so it can be drawn fully opaque.
+    static let alphaCutout = """
+    #pragma body
+    if (_output.color.a < 0.5) { discard_fragment(); }
+    _output.color.a = 1.0;
     """
 }

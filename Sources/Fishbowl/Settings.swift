@@ -25,5 +25,14 @@ final class Settings {
     /// Set from the command line (`--night` / `--day`) for testing without changing the saved setting.
     var nightOverride: Bool?
 
+    /// A shark lurks at the back and now and then swims in to catch a fish.
+    var shark: Bool {
+        get { sharkOverride ?? defaults.bool(forKey: "shark") }
+        set { defaults.set(newValue, forKey: "shark") }
+    }
+
+    /// Set from the command line (`--shark`) for testing without changing the saved setting.
+    var sharkOverride: Bool?
+
     var framesPerSecond: Int { lowPower ? 30 : 60 }
 }

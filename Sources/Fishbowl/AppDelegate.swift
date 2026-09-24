@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if args.contains("--night") { settings.nightOverride = true }
         if args.contains("--day") { settings.nightOverride = false }
+        if args.contains("--shark") { settings.sharkOverride = true }
+        if args.contains("--hunt-now") { settings.sharkOverride = true; Shark.huntSoon = true }
         buildWindows()
         setupStatusItem()
         updateClickMonitor()
@@ -110,6 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let night = item("Night Mode", #selector(toggleNight), "n")
         night.state = settings.nightMode ? .on : .off
         menu.addItem(night)
+        let shark = item("Shark", #selector(toggleShark))
+        shark.state = settings.shark ? .on : .off
+        menu.addItem(shark)
         let click = item("Click Desktop to Feed", #selector(toggleClickToFeed))
         click.state = settings.clickToFeed ? .on : .off
         menu.addItem(click)
@@ -143,6 +148,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleNight() {
         settings.nightOverride = nil
         settings.nightMode.toggle()
+    }
+
+    @objc private func toggleShark() {
+        settings.sharkOverride = nil
+        settings.shark.toggle()
     }
 
     @objc private func toggleClickToFeed() {
