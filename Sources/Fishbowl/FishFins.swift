@@ -27,7 +27,8 @@ enum FishFins {
         var m = Mesh()
 
         // Dorsal and anal fins: the painted sheet through the middle of the body, split at the centre
-        // line so each half can follow the body's back or belly (the art assumes a symmetric body).
+        // line so each half follows the body's back or belly. The art is painted from the same outline
+        // (`FishArt.outline`), so the shift is normally ~0; it keeps the two in step if they ever differ.
         let fr = art.finsRect
         for top in [true, false] {
             let half = CGRect(x: fr.minX, y: top ? 0 : fr.minY, width: fr.width, height: top ? fr.maxY : -fr.minY)
@@ -35,7 +36,8 @@ enum FishFins {
             for i in sheet.positions.indices {
                 let p = sheet.positions[i]
                 let section = body.section(atX: p.x)
-                let artEdge = Float(FishArt.halfHeight(s, atX: CGFloat(p.x)))
+                let outline = FishArt.outline(s, atX: CGFloat(p.x))
+                let artEdge = Float(top ? outline.top : outline.bottom)
                 let shift = top ? section.top - artEdge : artEdge - section.bottom
                 sheet.positions[i].y += shift
                 let span = max(0, abs(p.y) - artEdge * 0.95) * u
@@ -45,15 +47,13 @@ enum FishFins {
             m.append(sheet.scaled(u))
         }
 
-        // Tail, centred on the tail joint.
+        // Tail (the art already fits its root to the tail joint's back and belly heights).
         let tr = art.tailRect
         let attachX = -a + 1
-        let joint = body.section(atX: -a)
         var tail = grid(tr, image: tr, uv: uv[1], columns: 12, rows: 8)
         let spread = Float(max(tr.maxY, -tr.minY))
         for i in tail.positions.indices {
             let p = tail.positions[i]
-            tail.positions[i].y += (joint.top - joint.bottom) / 2
             let span = clamp((attachX - p.x) / Float(s.tailLength), 0, 1)
             tail.colors.append(data(shark ? .rigid : .tail, flow, span, p.y / spread, Float(s.tailLength) * u))
         }
