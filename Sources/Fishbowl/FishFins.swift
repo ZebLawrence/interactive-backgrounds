@@ -63,8 +63,10 @@ enum FishFins {
         let px = L * 0.12
         let pSec = body.section(atX: px)
         let pMid = (pSec.top - pSec.bottom) / 2, pHalf = (pSec.top + pSec.bottom) / 2
+        // A shark's are stiff wings: laid nearly flat, swept back, low on the flank.
         m.append(pair(size: art.pectoralSize, uv: uv[2], kind: shark ? .rigid : .pectoral, flow: 0,
-                      root: V3(px, pMid - pHalf * 0.24, pSec.halfWidth * 0.9), splay: 0.55, droop: 0.35, unit: u))
+                      root: V3(px, pMid - pHalf * (shark ? 0.5 : 0.24), pSec.halfWidth * (shark ? 0.8 : 0.9)),
+                      splay: shark ? 1.15 : 0.55, droop: shark ? 0.4 : 0.35, roll: shark ? 1.35 : 0, unit: u))
 
         // Pelvic fins, on the belly.
         let vx = a - pelvic.fromNose * L
@@ -215,12 +217,15 @@ enum FishFins {
     /// A paired fin on both sides. The image's right edge is the root; the fin is swung back and out
     /// by `splay`, then angled down by `droop` (radians). `root` is the right-hand root in species points.
     private static func pair(size: CGSize, uv: CGRect, kind: Kind, flow: Float, root: V3,
-                             splay: Float, droop: Float, unit u: Float) -> Mesh {
+                             splay: Float, droop: Float, roll: Float = 0, unit u: Float) -> Mesh {
         let r = CGRect(x: -size.width, y: -size.height / 2, width: size.width, height: size.height)
         let fin = grid(r, image: r, uv: uv, columns: kind == .pelvic && flow > 0.5 ? 12 : 4, rows: 1)
         var both = Mesh()
         for side: Float in [1, -1] {
-            let rot = simd_float4x4(simd_quatf(angle: side * splay, axis: V3(0, 1, 0)) * simd_quatf(angle: droop, axis: V3(0, 0, 1)))
+            // `roll` turns the fin about its own span first, laying it flat like a wing
+            // (the image's top edge becomes the leading edge).
+            let rot = simd_float4x4(simd_quatf(angle: side * splay, axis: V3(0, 1, 0)) * simd_quatf(angle: droop, axis: V3(0, 0, 1))
+                                    * simd_quatf(angle: side * roll, axis: V3(1, 0, 0)))
             let tip = rot * SIMD4<Float>(-1, 0, 0, 0)
             var piece = fin.scaled(u)
             piece.colors = fin.positions.map { data(kind, flow, side * (-$0.x * u + 1e-6), tip.x, tip.y) }

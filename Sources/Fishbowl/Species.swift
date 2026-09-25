@@ -148,17 +148,20 @@ extension Species {
     /// The optional predator: not part of the regular population (see `Shark`).
     static let shark = Species(
         id: "shark", name: "Shark",
-        length: 440, height: 84, thickness: 0.85, tailLength: 160, tailSpread: 96, tailStyle: .shark,
-        dorsal: FinSpec(start: 0.42, end: 0.62, height: 92, sweep: 0.12),
-        anal: FinSpec(start: 0.1, end: 0.18, height: 20, sweep: 0.05),
+        // Great white proportions: a heavy spindle about four times as long as it is deep, a tall
+        // crescent tail, a big triangular first dorsal and long, swept-back pectoral fins.
+        length: 440, height: 140, thickness: 0.92, tailLength: 115, tailSpread: 112, tailStyle: .shark,
+        dorsal: FinSpec(start: 0.43, end: 0.62, height: 96, sweep: 0.1),
+        anal: FinSpec(start: 0.09, end: 0.14, height: 14, sweep: 0.04),
         top: RGBA(0.20, 0.24, 0.29), mid: RGBA(0.40, 0.45, 0.50), belly: RGBA(0.50, 0.54, 0.58),
         fin: RGBA(0.34, 0.38, 0.43, 0.97), finEdge: nil, eye: RGBA(0.04, 0.04, 0.05),
         pattern: .shark, cruise: 30, burst: 540, schooling: false, band: 0.3...0.7, population: 0,
-        shape: .shark, pectoralScale: 1.1, eyeScale: 0.4, flex: 2.5, roughness: 0.85,
-        // Torpedo, thickest a third of the way back, tapering to a long pointed snout; the belly
-        // is flatter than the back. It must stay elliptical (roundness 2) for `SharkJaw` to fit.
-        backProfile: BodyProfile(depth: 1.05, peak: 0.6, peduncle: 0.3, head: 1.5, snout: 0.7, pinch: 0.3, roundness: 1.9),
-        bellyProfile: BodyProfile(depth: 0.88, peak: 0.58, peduncle: 0.24, head: 1.7, snout: 0.65, pinch: 0.3, roundness: 2))
+        shape: .shark, pectoralScale: 1.05, eyeScale: 0.26, flex: 2.5, roughness: 0.85,
+        // Deepest just behind the pectoral fins, tapering to a conical snout and a slender tail
+        // stock; the belly is flatter than the back. The belly must stay elliptical (roundness 2)
+        // for `SharkJaw` to fit.
+        backProfile: BodyProfile(depth: 1.0, peak: 0.58, peduncle: 0.13, head: 1.35, snout: 0.88, rear: 1.7, pinch: 0.3, roundness: 1.85),
+        bellyProfile: BodyProfile(depth: 0.94, peak: 0.55, peduncle: 0.11, head: 1.7, snout: 0.72, rear: 1.9, pinch: 0.3, roundness: 2))
 
     static let all: [Species] = [.neonTetra, .goldfish, .angelfish, .clownfish, .betta]
 

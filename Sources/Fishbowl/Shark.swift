@@ -15,6 +15,8 @@ final class Shark {
     private var clock: Float = 0
     private var patrol: V3
     private var biteTimer: Float = 0
+    private var gliding = false
+    private var glideTimer: Float = 2
     /// For testing: start hunting almost immediately.
     static var huntSoon = false
 
@@ -46,8 +48,13 @@ final class Shark {
 
         switch state {
         case .lurking(let until):
-            // Slow patrols around the hazy region behind the tank.
-            speed = cruise * 1.6
+            // Slow patrols around the hazy region behind the tank, gliding between a few tail beats.
+            glideTimer -= dt
+            if glideTimer <= 0 {
+                gliding.toggle()
+                glideTimer = gliding ? rnd(2.5...5) : rnd(1.5...3)
+            }
+            speed = cruise * (gliding ? 1.2 : 1.8)
             if simd_distance(pos, patrol) < 1.5 { patrol = lurkPoint(tank) }
             desired = (patrol - pos).normalized * speed
             if clock > until, let prey = pickPrey(tank) {
@@ -92,6 +99,9 @@ final class Shark {
             jawRate = 18
         }
         body.mouthOpen += (gape - body.mouthOpen) * min(1, dt * jawRate)
+        let lurkingGlide: Bool
+        if case .lurking = state { lurkingGlide = gliding } else { lurkingGlide = false }
+        body.rig.thrust = lurkingGlide ? 0.1 : 1
 
         // Steer around the reef.
         for o in tank.obstacles {
