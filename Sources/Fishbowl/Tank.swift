@@ -233,9 +233,9 @@ final class Tank: NSObject {
         let hw = halfWidth(atZ: backZ) + 2
         let nx = 120, nz = 70
         // Contact shadows are baked into a map covering the part of the floor with things on it.
-        let aoFarZ = -depth - 1, aoNearZ: Float = 1
+        let aoFarZ = -depth - 13, aoNearZ: Float = 1
         let aoMaxX = halfWidth(atZ: aoFarZ) + 0.5, aoMinX = -aoMaxX
-        let ao = Occlusion.floorMap(minX: aoMinX, maxX: aoMaxX, nearZ: aoNearZ, farZ: aoFarZ, width: 1536,
+        let ao = Occlusion.floorMap(minX: aoMinX, maxX: aoMaxX, nearZ: aoNearZ, farZ: aoFarZ, width: 2048,
                                     floor: floorHeight, occluders: occluders)
         var m = Mesh()
         for j in 0...nz {
@@ -427,6 +427,8 @@ final class Tank: NSObject {
                             leaves: Int.random(in: 10...14), width: rnd(0.16...0.22), tone: [.green, .brightGreen].randomElement()!)
         }
 
+        buildFarBackground(reef: reef, plants: plants)
+
         reef.finish(floor: floorHeight)
         scene.rootNode.addChildNode(reef.node)
         lighting.causticMaterials.append(reef.material)
@@ -435,6 +437,63 @@ final class Tank: NSObject {
         lighting.causticMaterials.append(plants.material)
         plantBed = plants
         return reef.occluders + plants.occluders
+    }
+
+    /// Reef, rocks and plants continuing from the back of the fish zone deep into the haze, laid out
+    /// on a jittered grid so the whole width is covered. Pieces get larger with distance so they
+    /// still read as shapes through the fog.
+    private func buildFarBackground(reef: CoralReef, plants: PlantBed) {
+        func floorAt(_ x: Float, _ z: Float) -> V3 { V3(x, floorHeight(x: x, z: z), z) }
+        let bands: [(near: Float, far: Float)] = [(-depth * 0.92, -depth - 3), (-depth - 3, -depth - 7), (-depth - 7, -depth - 12)]
+        for (bandIndex, band) in bands.enumerated() {
+            let zMid = (band.near + band.far) / 2
+            let hw = halfWidth(atZ: zMid) * 0.97
+            let spacing: Float = 3.2 + Float(bandIndex) * 0.8
+            let columns = max(3, Int(2 * hw / spacing))
+            let grow = 1 + Float(bandIndex) * 0.35
+            for c in 0..<columns {
+                let x = -hw + 2 * hw * (Float(c) + rnd(0.2...0.8)) / Float(columns)
+                let z = rnd(band.far...band.near)
+                let roll = rnd(0...1)
+                if roll < 0.45 {
+                    // Rock outcrop crowned with coral.
+                    var top = floorHeight(x: x, z: z)
+                    for _ in 0..<Int.random(in: 2...4) {
+                        let size = V3(rnd(0.7...1.3), rnd(0.5...0.9), rnd(0.6...1.1)) * grow
+                        let c = floorAt(x + rnd(-1...1) * grow, z + rnd(-0.7...0.7) * grow) + V3(0, size.y * 0.3, 0)
+                        reef.addRock(at: c, size: size, tone: Bool.random() ? .rock : .rockPurple)
+                        top = max(top, c.y + size.y * 0.7)
+                        obstacles.append((c, max(size.x, size.z) * 0.95))
+                    }
+                    let crown = V3(x, top - 0.15, z)
+                    switch Int.random(in: 0..<3) {
+                    case 0: reef.addBranching(at: crown, height: rnd(1.1...1.8) * grow, tone: [.purple, .teal, .pink, .orange].randomElement()!)
+                    case 1: reef.addTable(at: crown, radius: rnd(0.6...0.9) * grow, tone: [.tan, .teal, .bone].randomElement()!)
+                    default: reef.addBrain(at: crown - V3(0, 0.1, 0), radius: rnd(0.4...0.6) * grow, tone: [.tan, .orange, .bone].randomElement()!)
+                    }
+                } else if roll < 0.7 {
+                    // Tall seaweed.
+                    for _ in 0..<Int.random(in: 4...7) {
+                        plants.addBlade(at: floorAt(x + rnd(-0.6...0.6), z + rnd(-0.5...0.5)),
+                                        height: rnd(0.5...1.0) * min(height * 0.55, 5.5) * grow, width: rnd(0.18...0.32) * grow,
+                                        tone: [.green, .darkGreen, .olive, .maroon].randomElement()!)
+                    }
+                } else if roll < 0.82 {
+                    // Stem plants.
+                    let tone = [PlantBed.Tone.lime, .brightGreen, .rotala, .red].randomElement()!
+                    for _ in 0..<Int.random(in: 3...5) {
+                        plants.addStem(at: floorAt(x + rnd(-0.5...0.5), z + rnd(-0.5...0.5)),
+                                       height: rnd(0.6...1.0) * min(height * 0.45, 4) * grow, tone: tone)
+                    }
+                } else if roll < 0.92 {
+                    plants.addSeaFan(at: floorAt(x, z), height: rnd(1.8...2.8) * grow, facing: rnd(-0.4...0.4),
+                                     tone: Bool.random() ? .fanPurple : .fanRed)
+                } else {
+                    reef.addBrain(at: floorAt(x, z) - V3(0, 0.05, 0), radius: rnd(0.5...0.8) * grow,
+                                  tone: [.tan, .teal, .orange].randomElement()!)
+                }
+            }
+        }
     }
 
     /// Grow a few small corals over the upper surface of a rock.
