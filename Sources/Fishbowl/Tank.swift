@@ -38,6 +38,9 @@ final class Tank: NSObject {
     let screenFrame: CGRect
     private let overlay: Overlay
     private let cameraNode = SCNNode()
+    /// The camera's gentle pan/tilt toward the edge the cursor is near (yaw, pitch in radians).
+    private var cameraAngles = V2.zero
+    private(set) var cameraTurn = simd_quatf(angle: 0, axis: V3(0, 1, 0))
     private(set) var lighting: Lighting!
 
     let width: Float
@@ -161,11 +164,12 @@ final class Tank: NSObject {
         return V3(x, y, z)
     }
 
-    /// Screen position (points) of a world point.
+    /// Screen position (points) of a world point, through the camera as it's currently turned.
     func project(_ p: V3) -> CGPoint {
-        let f = eyeDistance / (eyeDistance - p.z)
-        return CGPoint(x: screenFrame.width / 2 + CGFloat(p.x * f * 100),
-                       y: screenFrame.height / 2 + CGFloat(p.y * f * 100))
+        let q = cameraTurn.inverse.act(p - V3(0, 0, eyeDistance))
+        let f = eyeDistance / max(-q.z, 0.01)
+        return CGPoint(x: screenFrame.width / 2 + CGFloat(q.x * f * 100),
+                       y: screenFrame.height / 2 + CGFloat(q.y * f * 100))
     }
 
     func screenDistance(_ p: V3, _ s: CGPoint) -> CGFloat {
@@ -174,8 +178,16 @@ final class Tank: NSObject {
     }
 
     /// Where the cursor touches the front glass.
-    var cursorGlassPoint: V3 {
-        V3(Float(cursor.screen.x - screenFrame.width / 2) / 100, Float(cursor.screen.y - screenFrame.height / 2) / 100, 0)
+    var cursorGlassPoint: V3 { glassPoint(atScreen: cursor.screen) }
+
+    /// Where the line of sight through a screen point (points) meets the front glass (z = 0). With the
+    /// camera straight ahead this is just the screen point scaled to world units; when it's turned,
+    /// the ray is turned with it, so everything aimed along the cursor ray stays under the cursor.
+    func glassPoint(atScreen s: CGPoint) -> V3 {
+        let local = V3(Float(s.x - screenFrame.width / 2) / 100, Float(s.y - screenFrame.height / 2) / 100, -eyeDistance)
+        let dir = cameraTurn.act(local)
+        let eye = V3(0, 0, eyeDistance)
+        return eye + dir * (eyeDistance / max(-dir.z, 0.01))
     }
 
     func closestPointOnCursorRay(_ p: V3) -> V3 {
@@ -528,7 +540,7 @@ final class Tank: NSObject {
         for _ in 0..<max(5, Int(width / 2.5)) {
             let z = rnd((-depth + 0.5)...(-1.0))
             // Start above the top of the view at this depth, so shafts come in from off-screen.
-            let top = (height / 2) * (eyeDistance - z) / eyeDistance + 0.5
+            let top = (height / 2) * (eyeDistance - z) / eyeDistance + 1.5
             let h = rnd((height * 0.7)...(height * 1.2))
             let plane = SCNPlane(width: CGFloat(rnd(0.6...1.8)), height: CGFloat(h))
             plane.materials = [mat]
@@ -597,7 +609,7 @@ final class Tank: NSObject {
 
     /// Drop flakes of food where the cursor ray meets a plane a little behind the glass.
     func dropFood(atScreen p: CGPoint, count: Int = 6) {
-        let g = V3(Float(p.x - screenFrame.width / 2) / 100, Float(p.y - screenFrame.height / 2) / 100, 0)
+        let g = glassPoint(atScreen: p)
         let eye = V3(0, 0, eyeDistance)
         let z: Float = -1.4
         let hit = eye + (g - eye) * ((eyeDistance - z) / eyeDistance)
@@ -681,6 +693,30 @@ final class Tank: NSObject {
     /// The (wrapped) time the next frame will be rendered at; fish use it to keep shader phases continuous.
     var renderTime: Float { Float(Tank.renderTime(clock)) }
 
+    /// When the cursor nears an edge of the screen, the camera slowly pans or tilts a few degrees
+    /// toward it, and drifts back to centre when it leaves. The menu bar strip doesn't count, so
+    /// using menus doesn't tip the view.
+    private func updateCamera(dt: Float) {
+        let maxYaw: Float = 3.5 * .pi / 180, maxPitch: Float = 2 * .pi / 180
+        var target = V2.zero
+        if cursor.present {
+            let w = Float(screenFrame.width), h = Float(screenFrame.height)
+            let menuBar = Float(NSStatusBar.system.thickness) + 4
+            let x = Float(cursor.screen.x), y = Float(cursor.screen.y)
+            let zoneX = w * 0.12, zoneY = h * 0.12
+            let right = smoothstep(w - zoneX, w, x) - smoothstep(zoneX, 0, x)
+            let up = smoothstep(h - menuBar - zoneY, h - menuBar, y) * (y < h - menuBar ? 1 : 0) - smoothstep(zoneY, 0, y)
+            // Turning right is a negative yaw; tilting up a positive pitch.
+            target = V2(-right * maxYaw, up * maxPitch)
+        }
+        let before = cameraAngles
+        // Slow and smooth: a camera operator easing over, not a snap.
+        cameraAngles += (target - cameraAngles) * min(1, dt * 1.2)
+        guard simd_distance(before, cameraAngles) > 1e-6 else { return }
+        cameraTurn = simd_quatf(angle: cameraAngles.x, axis: V3(0, 1, 0)) * simd_quatf(angle: cameraAngles.y, axis: V3(1, 0, 0))
+        cameraNode.simdOrientation = cameraTurn
+    }
+
     @objc private func step(_ link: CADisplayLink) {
         let now = link.timestamp
         let dt = Float(min(now - (lastTimestamp ?? now), 1.0 / 15))
@@ -689,6 +725,7 @@ final class Tank: NSObject {
 
         let global = fakeMouse?(Float(clock)) ?? NSEvent.mouseLocation
         cursor.update(global: global, frame: screenFrame, dt: dt)
+        updateCamera(dt: dt)
 
         if cursor.present && cursor.speed > 900 {
             rippleTimer -= dt
