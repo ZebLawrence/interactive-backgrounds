@@ -1,19 +1,18 @@
 import SceneKit
 import simd
 
+/// One fish's behaviour: where it wants to go (wandering, schooling, food, curiosity, fear) and how
+/// it moves and turns there. Drawing and animation live in its `FishRig`.
 final class Fish {
     let species: Species
     let model: FishModel
-    let node = SCNNode()
-    private let materials: [SCNMaterial]  // body and fins: each has the swim modifier
-    private let eyes: SCNNode
-    /// Shark only: the lower jaw swings on this pivot; the upper teeth stay with the head.
-    private var jawPivot: SCNNode?
-    private var upperTeeth: SCNNode?
-    private var palate: SCNNode?
-    private var lowerTeeth: SCNNode?
-    /// 0 = shut, 1 = gaping wide.
-    var mouthOpen: Float = 0
+    let rig: FishRig
+    var node: SCNNode { rig.node }
+    /// Shark only: 0 = shut, 1 = gaping wide.
+    var mouthOpen: Float {
+        get { rig.mouthOpen }
+        set { rig.mouthOpen = newValue }
+    }
 
     var pos: V3
     var vel: V3
@@ -24,21 +23,10 @@ final class Fish {
     private(set) var fear: Float = 0
     private var fleeDir = V3.zero
 
-    // Swim rhythm as last sent to the shader: phase(t) = swimFreq * t + swimOffset.
-    private var swimFreq: Float = 0
-    private var swimOffset = rnd(0...(2 * .pi))
-    private var swimAmp: Float = 0
-    /// Sideways curve of the body while turning (world units at the tail joint), as sent / as wanted.
-    private var swimBend: Float = 0
-    private var targetBend: Float = 0
-    private var sinceBendUpdate: Float = 1
-    private var lastForward = V3(1, 0, 0)
-    private var smoothedAmp: Float = 0
-    private var sinceRhythmUpdate: Float = 1
-    private var renderTime: Float = 0
-    private var orientation = simd_quatf(angle: 0, axis: V3(0, 1, 0))
+    private(set) var orientation = simd_quatf(angle: 0, axis: V3(0, 1, 0))
     private var yaw: Float = 0
     private var roll: Float = 0
+    private var lastForward = V3(1, 0, 0)
 
     /// Personality: curious fish come over to inspect a resting cursor.
     private let curiosity = rnd(0...1)
@@ -55,56 +43,15 @@ final class Fish {
         let model = FishModel.forSpecies(species)
         self.model = model
         size = rnd(0.85...1.15)
-
-        func instance(_ g: SCNGeometry) -> (SCNNode, SCNMaterial) {
-            let copy = g.copy() as! SCNGeometry
-            let mat = g.firstMaterial!.copy() as! SCNMaterial
-            mat.setValue(model.noseX, forKey: "noseX")
-            mat.setValue(model.length, forKey: "bodyLen")
-            copy.materials = [mat]
-            return (SCNNode(geometry: copy), mat)
-        }
-        let (bodyNode, bodyMat) = instance(model.body)
-        let (finNode, finMat) = instance(model.fins)
-        finNode.castsShadow = false
-        materials = [bodyMat, finMat]
-        eyes = SCNNode(geometry: model.eyes)
-        eyes.castsShadow = false
-        [bodyNode, finNode, eyes].forEach(node.addChildNode)
-        if let jaw = model.jaw {
-            let pivot = SCNNode()
-            pivot.simdPosition = jaw.hinge
-            let shell = SCNNode(geometry: jaw.shell)
-            shell.simdPosition = -jaw.hinge
-            let lower = SCNNode(geometry: jaw.lowerTeeth)
-            lower.simdPosition = -jaw.hinge
-            pivot.addChildNode(shell)
-            pivot.addChildNode(lower)
-            node.addChildNode(pivot)
-            let upper = SCNNode(geometry: jaw.upperTeeth)
-            node.addChildNode(upper)
-            let roof = SCNNode(geometry: jaw.palate)
-            node.addChildNode(roof)
-            palate = roof
-            [shell, lower, upper, roof].forEach { $0.castsShadow = false }
-            jawPivot = pivot
-            upperTeeth = upper
-            lowerTeeth = lower
-        }
-
+        rig = FishRig(model: model, size: size)
         pos = p
         let angle = rnd(0...(2 * .pi))
         vel = V3(cos(angle), 0, sin(angle)) * Float(species.cruise) * Fish.speedUnit * 0.5
         yaw = atan2(-vel.z, vel.x)
         orientation = simd_quatf(angle: yaw, axis: V3(0, 1, 0))
-        node.simdScale = V3(repeating: size)
-        for mat in materials {
-            mat.setValue(swimFreq, forKey: "swimFreq")
-            mat.setValue(swimOffset, forKey: "swimOffset")
-            mat.setValue(swimAmp, forKey: "swimAmp")
-            mat.setValue(swimBend, forKey: "swimBend")
-        }
-        render()
+        lastForward = forward
+        rig.node.simdPosition = pos
+        rig.node.simdOrientation = orientation
     }
 
     var forward: V3 { orientation.act(V3(1, 0, 0)) }
@@ -164,6 +111,7 @@ final class Fish {
             targetSpeed = cruise * 2.2
             if simd_distance(nose, food.pos) < max(0.1, model.length * 0.25 * size) {
                 tank.eat(food)
+                rig.gulp()
             }
         } else if c.present && c.stillTime > 0.7 && fear < 0.05 && curiosity > 0.45
                     && tank.screenDistance(pos, c.screen) < 420 {
@@ -265,60 +213,16 @@ final class Fish {
             orientation = simd_slerp(orientation, q, min(1, dt * (3 + 8 * excitement)))
         }
 
-        // --- Flex into the turn: the body arcs with the tail swinging toward the inside of the curve.
-        // Driven by how fast the fish is actually rotating (not where it wants to head).
+        // How fast the body is actually rotating (not where it wants to head), for the turn bend.
         let fwd = forward
-        let flatNow = V2(fwd.x, fwd.z), flatBefore = V2(lastForward.x, lastForward.z)
-        let turnRate = dt > 0 ? angleDelta(atan2(-flatNow.y, flatNow.x), atan2(-flatBefore.y, flatBefore.x)) / dt : 0
+        let turnRate = dt > 0
+            ? angleDelta(atan2(-fwd.z, fwd.x), atan2(-lastForward.z, lastForward.x)) / dt : 0
         lastForward = fwd
-        let flex = Float(species.flex)
-        let maxBend = model.length * 0.3 * min(flex, 1.5)
-        let bendGoal = clamp(-turnRate * model.length * 0.12 * flex, -maxBend, maxBend)
-        targetBend += (bendGoal - targetBend) * min(1, dt * 6)
-        updateBend(dt: dt)
 
-        // --- Swimming animation: faster, bigger tail beats at speed.
-        let hz = min(8, 1.1 + (speed / Fish.speedUnit) / (Float(species.length) * 0.9))
-        let targetAmp = model.length * (0.035 + 0.05 * min(1, speed / (cruise * 2)) + 0.03 * excitement)
-        smoothedAmp += (targetAmp - smoothedAmp) * min(1, dt * 3)
-        renderTime = tank.renderTime
-        updateSwimRhythm(hz: hz, dt: dt)
-
-        render()
-    }
-
-    /// Setting shader values is expensive in SceneKit, so the tail-beat phase runs on the GPU and we
-    /// only send a new frequency/amplitude when the rhythm has changed noticeably (at most ~6x/s).
-    private func updateSwimRhythm(hz: Float, dt: Float) {
-        sinceRhythmUpdate += dt
-        let freq = Shaders.quantize(hz * 2 * .pi)
-        let freqChanged = abs(freq - swimFreq) > swimFreq * 0.12
-        let ampChanged = abs(smoothedAmp - swimAmp) > swimAmp * 0.12 + model.length * 0.002
-        guard sinceRhythmUpdate > 0.16, freqChanged || ampChanged else { return }
-        sinceRhythmUpdate = 0
-        if freqChanged {
-            // Keep the phase continuous at the moment of the switch.
-            let t = renderTime
-            swimOffset = (swimFreq * t + swimOffset - freq * t).truncatingRemainder(dividingBy: 2 * .pi)
-            swimFreq = freq
-            for mat in materials {
-                mat.setValue(swimFreq, forKey: "swimFreq")
-                mat.setValue(swimOffset, forKey: "swimOffset")
-            }
-        }
-        if ampChanged {
-            swimAmp = smoothedAmp
-            for mat in materials { mat.setValue(swimAmp, forKey: "swimAmp") }
-        }
-    }
-
-    /// Like the rhythm, the bend is only sent to the shader when it has changed noticeably.
-    private func updateBend(dt: Float) {
-        sinceBendUpdate += dt
-        guard sinceBendUpdate > 0.08, abs(targetBend - swimBend) > model.length * 0.015 else { return }
-        sinceBendUpdate = 0
-        swimBend = abs(targetBend) < model.length * 0.01 ? 0 : targetBend
-        for mat in materials { mat.setValue(swimBend, forKey: "swimBend") }
+        rig.node.simdPosition = pos
+        rig.node.simdOrientation = orientation
+        rig.animate(dt: dt, fish: self, speed: speed, cruise: cruise, excitement: excitement,
+                    turnRate: turnRate, tank: tank)
     }
 
     private func pickGoal(in tank: Tank) {
@@ -332,42 +236,6 @@ final class Fish {
         goalTimer = rnd(4...11)
     }
 
-    private var causticScale: Float = 1
-
-    /// Fish get no caustics or fin glow at night; only touched when the day/night blend steps.
-    func setCausticScale(_ scale: Float) {
-        guard scale != causticScale else { return }
-        causticScale = scale
-        materials[0].setValue(0.35 * scale, forKey: "causticStrength")
-        materials[1].emission.intensity = CGFloat(0.25 * scale)
-    }
-
-    /// Same wave as `Shaders.swim`, so the rigid eyes follow the body.
-    private func lateralOffset(atX x: Float) -> Float {
-        let s = max(0, (model.noseX - x) / model.length)
-        let phase = swimFreq * renderTime + swimOffset
-        return swimAmp * (0.08 + s * s) * sin(phase - s * 3.2) + swimBend * s * s
-    }
-
-    // MARK: - Rendering
-
-    private func render() {
-        node.simdPosition = pos
-        node.simdOrientation = orientation
-        // The eyes are rigid, so shift them with the head's part of the swim wave.
-        eyes.simdPosition = V3(0, 0, lateralOffset(atX: model.eyeX))
-        if let jaw = model.jaw, let pivot = jawPivot {
-            let lateral = V3(0, 0, lateralOffset(atX: jaw.midX))
-            pivot.simdPosition = jaw.hinge + lateral
-            // The lower jaw drops, front first, about the hinge at the back of the mouth.
-            pivot.simdEulerAngles = V3(0, 0, -0.75 * mouthOpen)
-            upperTeeth?.simdPosition = lateral
-            palate?.simdPosition = lateral
-            // The inside of the mouth only exists while it's open.
-            let shut = mouthOpen < 0.03
-            upperTeeth?.isHidden = shut
-            lowerTeeth?.isHidden = shut
-            palate?.isHidden = shut
-        }
-    }
+    /// Fish get no caustics or fin glow at night.
+    func setCausticScale(_ scale: Float) { rig.setCausticScale(scale) }
 }
