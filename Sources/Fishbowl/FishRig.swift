@@ -13,7 +13,8 @@ final class FishRig {
 
     // MARK: Hooks for behaviour
 
-    /// 0 = gliding (tail held still), 1 = swimming normally. Set by `Fish` each frame.
+    /// 0 = gliding (tail held still, pectorals sculling), 1 = swimming normally. Set by `Fish` each
+    /// frame; the tail beat eases toward the new strength, so it can change abruptly.
     var thrust: Float = 1
     /// 0 = shut, 1 = gaping wide (shark only).
     var mouthOpen: Float = 0
@@ -24,8 +25,10 @@ final class FishRig {
         targetBend += amount * model.length
     }
 
-    /// The fish just ate something.
-    func gulp() {}
+    /// The fish just ate something: the mouth gapes for a moment and the gills flare.
+    func gulp() {
+        materials[0].setValue(renderTime, forKey: "gulpTime")
+    }
 
     // MARK: State
 
@@ -41,6 +44,23 @@ final class FishRig {
     private var sinceBendUpdate: Float = 1
     private var renderTime: Float = 0
     private var causticScale: Float = 1
+
+    // Independent fin motion (see `FishShaders.fins`): hover and brake as wanted, and as last sent
+    // (eased on the GPU from `finFrom` to `finTo` starting at `finTime`).
+    private let finsMove: Bool
+    private var hover: Float = 0
+    private var brake: Float = 0
+    private var lastSpeed: Float = 0
+    private var finFrom = V2.zero
+    private var finTo = V2.zero
+    private var finTime: Float = -100
+    private var sinceFinUpdate: Float = 1
+    // Backlit fin glow (see `FishShaders.finGlow`), eased the same way.
+    private var glowFrom: Float = 0
+    private var glowTo: Float = 0
+    private var glowTime: Float = -100
+    private var sinceGlowUpdate: Float = 1
+    private var lampSent = false
 
     // Shark jaw.
     private var jawPivot: SCNNode?
@@ -63,6 +83,28 @@ final class FishRig {
         finNode.castsShadow = false
         materials = [bodyMat, finMat]
         FishMaterials.personalize(bodyMat, species: model.species)
+        let s = model.species
+        let shark = s.shape == .shark
+        finsMove = !shark
+
+        // Breathing: a slow rhythm, slower for bigger fish. The shark only flares its gill slits
+        // (its mouth is the articulated jaw).
+        let breathHz = (shark ? 0.3 : clamp(38 / Float(s.length), 0.3, 1.1)) * rnd(0.85...1.15)
+        bodyMat.setValue(Shaders.quantize(breathHz * 2 * .pi), forKey: "breathFreq")
+        bodyMat.setValue(rnd(0...(2 * .pi)), forKey: "breathPhase")
+        bodyMat.setValue(Float(shark ? 0 : 0.03), forKey: "mouthAmp")
+        bodyMat.setValue(Float(shark ? 0.006 : 0.03), forKey: "gillAmp")
+        bodyMat.setValue(Float(shark ? 0.36 : 0.3), forKey: "gillX")
+        bodyMat.setValue(Float(-1000), forKey: "gulpTime")
+
+        // Fins scull at their own pace; small fish flick them faster.
+        let finHz = 110 / (Float(s.length) + 14) * rnd(0.9...1.1)
+        finMat.setValue(Shaders.quantize(finHz * 2 * .pi), forKey: "finFreq")
+        finMat.setValue(rnd(0...(2 * .pi)), forKey: "finSeed")
+        finMat.setValue(finTime, forKey: "finTime")
+        for key in ["finFrom", "finTo"] { finMat.setValue(NSValue(scnVector4: SCNVector4Zero), forKey: key) }
+        finMat.setValue(NSValue(scnVector4: SCNVector4Zero), forKey: "finGlow")
+        finMat.setValue(NSValue(scnVector3: SCNVector3Zero), forKey: "lampPos")
         node.addChildNode(bodyNode)
         node.addChildNode(finNode)
         eyes = EyeRig(model: model.eyes, parent: node)
@@ -111,22 +153,36 @@ final class FishRig {
         targetBend += (bendGoal - targetBend) * min(1, dt * 6)
         updateBend(dt: dt)
 
-        // Faster, bigger tail beats at speed.
+        // Faster, bigger tail beats at speed; the tail all but stops while gliding.
         let hz = min(8, 1.1 + (speed / Fish.speedUnit) / (Float(model.species.length) * 0.9))
-        let targetAmp = model.length * (0.035 + 0.05 * min(1, speed / (cruise * 2)) + 0.03 * excitement)
+        let beat = 0.06 + 0.94 * clamp(thrust, 0, 1)
+        let targetAmp = model.length * (0.035 + 0.05 * min(1, speed / (cruise * 2)) + 0.03 * excitement) * beat
         smoothedAmp += (targetAmp - smoothedAmp) * min(1, dt * 3)
         updateSwimRhythm(hz: hz, dt: dt)
+
+        // Pectorals scull hardest when hovering or gliding, and flare out to brake.
+        if finsMove {
+            let slow = clamp(1 - speed / cruise, 0, 1)
+            hover += (max(slow, (1 - clamp(thrust, 0, 1)) * 0.6) - hover) * min(1, dt * 2)
+            let decel = dt > 0 ? (lastSpeed - speed) / dt : 0
+            let brakeGoal = clamp((decel / cruise - 0.4) / 1.2, 0, 1)
+            brake += (brakeGoal - brake) * min(1, dt * (brakeGoal > brake ? 8 : 1.5))
+            updateFins(dt: dt)
+            updateGlow(dt: dt, fish: fish, tank: tank)
+        }
+        lastSpeed = speed
 
         eyes.update(dt: dt, fish: fish, tank: tank, lateral: lateralOffset(atX: model.eyes.x))
         updateJaw()
     }
 
-    /// Fish get no caustics or fin glow at night; only touched when the day/night blend steps.
+    /// Fish get no caustics at night, and their fins glow only in the lamp's beam; only touched
+    /// when the day/night blend steps.
     func setCausticScale(_ scale: Float) {
         guard scale != causticScale else { return }
         causticScale = scale
         materials[0].setValue(0.35 * scale, forKey: "causticStrength")
-        materials[1].emission.intensity = CGFloat(0.25 * scale)
+        sinceGlowUpdate = .infinity
     }
 
     /// Same wave as `FishShaders.swim`, so rigid parts (eyes, jaw) follow the body.
@@ -161,6 +217,60 @@ final class FishRig {
             swimAmp = smoothedAmp
             for mat in materials { mat.setValue(swimAmp, forKey: "swimAmp") }
         }
+    }
+
+    /// Hover and brake ease on the GPU; they're only sent when they have changed noticeably.
+    private func updateFins(dt: Float) {
+        sinceFinUpdate += dt
+        let goal = V2(hover, brake)
+        guard sinceFinUpdate > 0.3, simd_length(goal - finTo) > 0.12 else { return }
+        sinceFinUpdate = 0
+        finFrom = eased(finFrom, finTo, since: finTime, over: 0.4)
+        finTo = goal
+        finTime = renderTime
+        let mat = materials[1]
+        mat.setValue(NSValue(scnVector4: SCNVector4(finFrom.x, finFrom.y, 0, 0)), forKey: "finFrom")
+        mat.setValue(NSValue(scnVector4: SCNVector4(finTo.x, finTo.y, 0, 0)), forKey: "finTo")
+        mat.setValue(finTime, forKey: "finTime")
+    }
+
+    /// How strongly light shines through the fins: sunlight by day; at night only inside the lamp's
+    /// cone. Sent (and eased on the GPU) only when it changes noticeably.
+    private func updateGlow(dt: Float, fish: Fish, tank: Tank) {
+        let light = tank.lighting!
+        let mat = materials[1]
+        if !lampSent {
+            lampSent = true
+            mat.setValue(NSValue(scnVector3: SCNVector3(light.spotPosition)), forKey: "lampPos")
+        }
+        sinceGlowUpdate += dt
+        guard sinceGlowUpdate > 0.25 else { return }
+        let night = 1 - causticScale
+        var goal = causticScale
+        if night > 0 {
+            let aim = (light.spotTarget - light.spotPosition).normalized
+            let angle = acos(clamp(simd_dot((fish.pos - light.spotPosition).normalized, aim), -1, 1))
+            let inBeam = 1 - smoothstep(light.spotHalfAngle * 0.7, light.spotHalfAngle * 1.3, angle)
+            goal += night * 1.3 * inBeam
+        }
+        let nightChanged = sinceGlowUpdate.isInfinite
+        guard nightChanged || abs(goal - glowTo) > 0.1 || (goal < 0.02 && glowTo > 0) else { return }
+        sinceGlowUpdate = 0
+        glowFrom = eased(glowFrom, glowTo, since: glowTime, over: 0.5)
+        glowTo = goal < 0.02 ? 0 : goal
+        glowTime = renderTime
+        mat.setValue(NSValue(scnVector4: SCNVector4(glowFrom, glowTo, glowTime, night)), forKey: "finGlow")
+    }
+
+    /// Where a value easing linearly from `a` to `b` over `duration` seconds from `start` is now, as
+    /// the shaders compute it (after the hourly time wrap it counts as arrived).
+    private func eased(_ a: V2, _ b: V2, since start: Float, over duration: Float) -> V2 {
+        let t = renderTime - start
+        return a + (b - a) * (t < 0 ? 1 : min(1, t / duration))
+    }
+
+    private func eased(_ a: Float, _ b: Float, since start: Float, over duration: Float) -> Float {
+        eased(V2(a, 0), V2(b, 0), since: start, over: duration).x
     }
 
     /// Like the rhythm, the bend is only sent to the shader when it has changed noticeably.
