@@ -275,132 +275,159 @@ export class Meteors {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The horizon: a dark tree line standing in the fog, and hills beyond it
+// The horizon: a dark tree line standing in the fog, and hills beyond it. The trees are drawn in
+// metres onto a canvas fine enough (about 45 px per metre) to stay sharp on a 4K display, with
+// real structure: trunks, drooping branches with needle tufts, forking limbs, clumped leaves.
 // ---------------------------------------------------------------------------------------------
 
-function treeLineCanvas() {
-  const w = 4096, h = 1024;
+/** A single-channel mask texture from a canvas's alpha, flipped so row 0 is the bottom. */
+function maskTexture(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const rgba = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const src = (h - 1 - y) * w, dst = y * w;
+    for (let x = 0; x < w; x++) mask[dst + x] = rgba[(src + x) * 4 + 3];
+  }
+  const tex = new THREE.DataTexture(mask, w, h, THREE.RedFormat, THREE.UnsignedByteType);
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * The tree line, `widthM` metres wide and `heightM` tall, drawn in metre units. Every stroke is
+ * sized in metres so the detail is the same whatever the canvas resolution.
+ */
+function treeLineCanvas(widthM, heightM, px) {
+  const w = Math.round(widthM * px), h = Math.round(heightM * px);
   return Art.image(w, h, (ctx) => {
-    const ink = () => pick(['#040806', '#050a07', '#060b08', '#040705']);
-    const groundAt = (x) => h - 14 - fbm2(x / 500, 3.3, 3) * 16;
-    // The ground the trees stand on, undulating a little.
+    ctx.setTransform(px, 0, 0, px, 0, 0);
+    const W = widthM, H = heightM;
     ctx.fillStyle = '#040806';
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    for (let x = 0; x <= w; x += 16) ctx.lineTo(x, groundAt(x));
-    ctx.lineTo(w, h);
-    ctx.fill();
+    ctx.strokeStyle = '#040806';
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    const line = (x0, y0, x1, y1, width) => {
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    };
+    const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
 
-    /** A spruce or fir: a trunk with serrated tiers of drooping branches, ragged at the edges. */
-    const conifer = (x, base, size) => {
+    // The ground the trees stand on: a low bank with a ragged fringe of grass.
+    const groundAt = (x) => H - 0.8 - fbm2(x / 40, 3.3, 3) * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 0.5) ctx.lineTo(x, groundAt(x));
+    ctx.lineTo(W, H);
+    ctx.fill();
+    for (let x = 0; x < W; x += rnd(0.04, 0.12)) {
+      const g = groundAt(x);
+      line(x, g + 0.1, x + rnd(-0.15, 0.15), g - rnd(0.15, 0.6), rnd(0.02, 0.05));
+    }
+
+    /** A spruce or fir: trunk, drooping branches every few decimetres, needle tufts along each. */
+    const conifer = (x, base, height) => {
       const fir = Math.random() < 0.4;
-      const widest = fir ? 0.3 : 0.22;
+      const widest = fir ? 0.32 : 0.22;
       const tilt = rnd(-0.03, 0.03);
-      ctx.fillStyle = ink();
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.lineWidth = Math.max(1.5, size * 0.03);
-      ctx.beginPath();
-      ctx.moveTo(x, base - size);
-      ctx.lineTo(x + tilt * size, base);
-      ctx.stroke();
-      const right = [], left = [];
-      const step = Math.max(1.5, size * 0.022);
-      let i = 0;
-      for (let y = base - size * 0.97; y <= base - size * 0.08; y += step, i++) {
-        const f = (y - (base - size)) / size;
-        // Branches lengthen down the tree; needles serrate the edge, and a few branches jut out
-        // or are missing, so no two trees share an outline.
-        const tier = Math.pow(f, fir ? 0.85 : 1.15) * widest * size;
-        const needle = i % 2 ? 1 : 0.78;
-        const whorl = 0.9 + 0.1 * Math.cos(f * 23.0 + x);
-        const gap = Math.random() < 0.06 ? rnd(0.5, 0.8) : 1;
-        const jut = Math.random() < 0.05 ? rnd(1.1, 1.3) : 1;
-        const cx = x + tilt * size * f;
-        right.push([cx + tier * needle * whorl * gap * jut * rnd(0.92, 1.06), y + rnd(0, step * 0.5)]);
-        left.push([cx - tier * (i % 2 ? 0.8 : 1) * whorl * rnd(0.9, 1.08) * (Math.random() < 0.06 ? 0.65 : 1), y + rnd(0, step * 0.5)]);
+      const top = base - height;
+      line(x, base, x + tilt * height, top, 0.12 + height * 0.015);
+      for (let y = top + height * 0.04; y < base - height * 0.08; y += rnd(0.2, 0.38)) {
+        const f = (y - top) / height;
+        const cx = x + tilt * (base - y);
+        for (const side of [-1, 1]) {
+          if (Math.random() < 0.08) continue; // a missing branch
+          const len = Math.pow(f, fir ? 0.85 : 1.15) * widest * height * rnd(0.75, 1.15) * (Math.random() < 0.05 ? 1.3 : 1);
+          const droop = rnd(0.1, 0.45) * (0.4 + f);
+          const ex = cx + side * Math.cos(droop) * len, ey = y + Math.sin(droop) * len;
+          line(cx, y, ex, ey, 0.03 + len * 0.03);
+          // Needle tufts hang from the branch, denser toward its tip.
+          for (let s = 0.15; s < len; s += rnd(0.1, 0.2)) {
+            const bx = cx + side * Math.cos(droop) * s, by = y + Math.sin(droop) * s;
+            const tl = rnd(0.12, 0.3) * (0.5 + s / len);
+            line(bx, by, bx + side * rnd(-0.05, 0.1), by + tl, 0.03);
+            if (Math.random() < 0.5) line(bx, by, bx + side * rnd(0.05, 0.15), by + tl * 0.6, 0.025);
+          }
+        }
       }
-      ctx.beginPath();
-      ctx.moveTo(x, base - size - rnd(0, size * 0.05));
-      for (const [px, py] of right) ctx.lineTo(px, py);
-      ctx.lineTo(x + tilt * size, base);
-      for (let i = left.length - 1; i >= 0; i--) ctx.lineTo(left[i][0], left[i][1]);
-      ctx.closePath();
-      ctx.fill();
+      // The leader: a few short twigs at the very top.
+      for (let k = 0; k < 4; k++) line(x + tilt * height, top + k * 0.12, x + tilt * height + rnd(-0.15, 0.15), top + k * 0.12 + rnd(0.05, 0.2), 0.025);
     };
 
-    /** A broadleaf tree: a trunk and a few limbs, with a crown of many small leaf clumps. */
-    const deciduous = (x, base, size) => {
-      ctx.fillStyle = ink();
-      ctx.strokeStyle = ctx.fillStyle;
-      const trunkH = size * rnd(0.3, 0.45);
-      ctx.lineWidth = Math.max(2, size * 0.06);
-      ctx.beginPath();
-      ctx.moveTo(x, base);
-      ctx.lineTo(x + rnd(-0.03, 0.03) * size, base - trunkH);
-      ctx.stroke();
-      const crownY = base - trunkH - size * 0.25;
-      const limbs = randInt(3, 5);
-      for (let i = 0; i < limbs; i++) {
-        const a = -Math.PI / 2 + (i / (limbs - 1) - 0.5) * 1.6 + rnd(-0.15, 0.15);
-        const len = size * rnd(0.25, 0.4);
-        ctx.lineWidth = Math.max(1.2, size * 0.03);
-        ctx.beginPath();
-        ctx.moveTo(x, base - trunkH);
-        ctx.quadraticCurveTo(x + Math.cos(a) * len * 0.5, base - trunkH + Math.sin(a) * len * 0.5 - size * 0.05,
-          x + Math.cos(a) * len, base - trunkH + Math.sin(a) * len);
-        ctx.stroke();
-      }
-      // The crown: clumps of small overlapping blobs, denser toward the middle, uneven at the edge.
-      const rx = size * rnd(0.32, 0.42), ry = size * rnd(0.26, 0.34);
-      for (let k = Math.round(size * 1.2); k > 0; k--) {
-        const a = rnd(0, TAU), r = Math.pow(Math.random(), 0.6);
-        const cx = x + Math.cos(a) * r * rx, cy = crownY + Math.sin(a) * r * ry;
-        const rr = size * rnd(0.025, 0.06) * (1.2 - 0.5 * r);
-        ctx.beginPath();
-        ctx.arc(cx, cy, rr, 0, TAU);
-        ctx.fill();
-      }
-    };
-
-    /** A dead or winter tree: bare branches, forking as they go. */
-    const bare = (x, base, size) => {
-      ctx.strokeStyle = ink();
-      const branch = (bx, by, a, len, depth) => {
+    /** A broadleaf tree: trunk, forking limbs, and a crown of many small leaf clusters. */
+    const deciduous = (x, base, height) => {
+      const trunkH = height * rnd(0.3, 0.45);
+      const limbEnds = [];
+      const limb = (bx, by, a, len, width, depth) => {
         const ex = bx + Math.cos(a) * len, ey = by + Math.sin(a) * len;
-        ctx.lineWidth = Math.max(0.8, len * 0.1);
+        ctx.lineWidth = width;
         ctx.beginPath();
         ctx.moveTo(bx, by);
-        ctx.lineTo(ex, ey);
+        ctx.quadraticCurveTo(bx + Math.cos(a + rnd(-0.3, 0.3)) * len * 0.5, by + Math.sin(a + rnd(-0.3, 0.3)) * len * 0.5, ex, ey);
         ctx.stroke();
-        if (depth === 0) return;
-        const n = randInt(2, 3);
-        for (let i = 0; i < n; i++) branch(ex, ey, a + rnd(-0.75, 0.75), len * rnd(0.55, 0.75), depth - 1);
+        if (depth === 0) { limbEnds.push([ex, ey, len]); return; }
+        for (let i = randInt(2, 3); i > 0; i--) limb(ex, ey, a + rnd(-0.7, 0.7), len * rnd(0.5, 0.7), width * 0.6, depth - 1);
       };
-      branch(x, base, -Math.PI / 2 + rnd(-0.1, 0.1), size * 0.35, 4);
-    };
-
-    /** Low bushes and brambles along the foot of the trees. */
-    const bush = (x, base, size) => {
-      ctx.fillStyle = ink();
-      for (let k = randInt(5, 9); k > 0; k--) {
-        ctx.beginPath();
-        ctx.arc(x + rnd(-0.5, 0.5) * size, base - rnd(0, 0.3) * size, size * rnd(0.12, 0.25), 0, TAU);
-        ctx.fill();
+      line(x, base, x + rnd(-0.1, 0.1), base - trunkH, 0.18 + height * 0.025);
+      for (let i = randInt(3, 5); i > 0; i--) limb(x, base - trunkH, -Math.PI / 2 + rnd(-0.9, 0.9), height * rnd(0.2, 0.32), 0.08 + height * 0.008, 2);
+      // Leaves cluster around the limb ends, each cluster a lobe of the crown, ragged at its edge.
+      for (const [lx, ly, len] of limbEnds) {
+        const r = len * rnd(1.1, 1.8);
+        for (let k = Math.round(r * r * 55); k > 0; k--) {
+          const a = rnd(0, TAU), d = Math.pow(Math.random(), 0.6) * r;
+          dot(lx + Math.cos(a) * d, ly + Math.sin(a) * d * 0.85, rnd(0.07, 0.22) * (1.1 - 0.5 * d / r));
+        }
+        for (let k = randInt(3, 7); k > 0; k--) {
+          const a = rnd(-Math.PI, 0.3);
+          const sx = lx + Math.cos(a) * r * 0.8, sy = ly + Math.sin(a) * r * 0.7;
+          line(sx, sy, sx + Math.cos(a) * rnd(0.2, 0.5), sy + Math.sin(a) * rnd(0.2, 0.5), 0.025);
+        }
       }
     };
 
-    // Mixed woodland, a little denser and taller in the middle; bushes fill the gaps at its feet.
-    for (let x = -100; x < w + 100; x += rnd(12, 34)) {
-      const base = groundAt(x) + rnd(0, 12);
-      const size = rnd(60, 115) * (0.8 + 0.4 * Math.sin(x / w * Math.PI));
+    /** A dead or winter tree: bare branches forking down to twigs. */
+    const bare = (x, base, height) => {
+      const branch = (bx, by, a, len, width, depth) => {
+        const ex = bx + Math.cos(a) * len, ey = by + Math.sin(a) * len;
+        line(bx, by, ex, ey, width);
+        if (depth === 0) return;
+        for (let i = randInt(2, 3); i > 0; i--) branch(ex, ey, a + rnd(-0.7, 0.7), len * rnd(0.55, 0.72), Math.max(0.02, width * 0.6), depth - 1);
+      };
+      branch(x, base, -Math.PI / 2 + rnd(-0.12, 0.12), height * 0.32, 0.14 + height * 0.012, 6);
+    };
+
+    /** Low bushes and brambles: tiny leaves on a tangle of stems. */
+    const bush = (x, base, size) => {
+      for (let k = randInt(6, 12); k > 0; k--) {
+        const a = rnd(-Math.PI * 0.9, -Math.PI * 0.1), len = size * rnd(0.4, 1);
+        const ex = x + Math.cos(a) * len, ey = base + Math.sin(a) * len;
+        line(x, base, ex, ey, 0.03);
+        for (let j = Math.round(len * 25); j > 0; j--) {
+          const t = Math.random();
+          dot(x + Math.cos(a) * len * t + rnd(-0.12, 0.12), base + Math.sin(a) * len * t + rnd(-0.12, 0.12), rnd(0.03, 0.09));
+        }
+      }
+    };
+
+    // Woodland with open patches, denser and taller toward the middle, with the odd tall emergent.
+    for (let x = -4; x < W + 4; x += rnd(0.9, 2.6)) {
+      const open = fbm2(x / 55 + 7, 1.2, 2) < 0.4; // a clearing: bushes only
+      const base = groundAt(x) + rnd(0, 0.6);
+      if (open) { if (Math.random() < 0.5) bush(x, base, rnd(1, 2.5)); continue; }
+      const height = rnd(6, 14) * (0.8 + 0.4 * Math.sin(x / W * Math.PI)) * (Math.random() < 0.06 ? 1.5 : 1);
       const roll = Math.random();
-      if (roll < 0.36) conifer(x, base, size * 1.25);
-      else if (roll < 0.46) bare(x, base, size * 1.1);
-      else deciduous(x, base, size);
+      if (roll < 0.38) conifer(x, base, height * 1.25);
+      else if (roll < 0.47) bare(x, base, height);
+      else deciduous(x, base, height);
     }
-    for (let x = -50; x < w + 50; x += rnd(25, 70)) bush(x, groundAt(x) + 6, rnd(20, 45));
+    for (let x = -2; x < W + 2; x += rnd(1.5, 4)) bush(x, groundAt(x) + 0.3, rnd(0.8, 2.2));
   });
 }
 
@@ -419,12 +446,12 @@ function hillsCanvas() {
 }
 
 export class Horizon {
-  constructor() {
+  /** @param {(d: number) => number} halfWidth  the visible half-width of the meadow `d` metres out. */
+  constructor(halfWidth) {
     this.group = new THREE.Group();
     this.textures = [];
     this.materials = [];
-    const silhouette = (canvas, tint, fogged) => {
-      const tex = Art.texture(canvas);
+    const silhouette = (tex, tint, fogged) => {
       this.textures.push(tex);
       const mat = new THREE.ShaderMaterial({
         uniforms: { uMap: { value: tex }, uTint: { value: tint }, uFogColor: G.uFogColor, uFogNear: G.uFogNear, uFogFar: G.uFogFar, uFogged: { value: fogged } },
@@ -435,7 +462,7 @@ export class Horizon {
           uniform sampler2D uMap; uniform vec3 uTint, uFogColor; uniform float uFogNear, uFogFar, uFogged;
           varying vec2 vUv; varying float vDist;
           void main() {
-            if (texture2D(uMap, vUv).a < 0.5) discard;
+            if (texture2D(uMap, vUv).r < 0.5) discard;
             float f = pow(clamp((vDist - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0), 1.3);
             vec3 c = mix(uTint, uFogColor * 0.85, max(f, 1.0 - uFogged));
             gl_FragColor = vec4(c, 1.0);
@@ -444,9 +471,12 @@ export class Horizon {
       this.materials.push(mat);
       return mat;
     };
-    const trees = new THREE.Mesh(new THREE.PlaneGeometry(400, 100), silhouette(treeLineCanvas(), v3(0.004, 0.009, 0.006), 1));
-    trees.position.set(0, 50 - 1, -90);
-    const hills = new THREE.Mesh(new THREE.PlaneGeometry(640, 40), silhouette(hillsCanvas(), v3(0, 0, 0), 0));
+    // The tree line only needs to span what the camera can see at its distance.
+    const treeZ = -90, treeW = Math.max(120, halfWidth(-treeZ) * 2.3), treeH = 40;
+    const px = 8192 / treeW;
+    const trees = new THREE.Mesh(new THREE.PlaneGeometry(treeW, treeH), silhouette(maskTexture(treeLineCanvas(treeW, treeH, px)), v3(0.004, 0.009, 0.006), 1));
+    trees.position.set(0, treeH / 2 - 1, treeZ);
+    const hills = new THREE.Mesh(new THREE.PlaneGeometry(640, 40), silhouette(maskTexture(hillsCanvas()), v3(0, 0, 0), 0));
     hills.position.set(0, 20 - 3, -150);
     this.group.add(trees, hills);
   }

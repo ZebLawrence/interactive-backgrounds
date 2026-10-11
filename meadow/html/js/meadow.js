@@ -88,7 +88,7 @@ export class Meadow {
     this.sky = new Sky();
     this.moonSprite = new Moon();
     this.meteors = new Meteors();
-    this.horizon = new Horizon();
+    this.horizon = new Horizon(layout.halfWidth);
     this.mist = new Mist(layout.halfWidth);
     this.rain = new Rain(groundHeight);
     this.lightning = new Lightning();

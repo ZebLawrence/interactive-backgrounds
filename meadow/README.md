@@ -54,7 +54,10 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
 - `sky.js` paints the Milky Way once onto an equirectangular canvas (core, arms, dust lanes, nebula
   tints) and renders the sky in a fragment shader (gradient, that haze map, three hashed star
   layers with colour temperature and twinkle, the moon's halo, storm cloud), the moon as a canvas sprite, meteors as a streak
-  quad on the sky sphere, and the tree line and hills as alpha-tested silhouettes in the fog.
+  quad on the sky sphere, and the tree line and hills as alpha-tested silhouettes in the fog. The
+  tree line is drawn in metres (trunks, drooping branches with needle tufts, forking limbs, leaf
+  clusters, bare twigs, bushes) onto an 8192-pixel mask, about 45 pixels per metre, so it stays
+  sharp on a 4K display.
 - `storm.js` has the rain (a point cloud that falls and wraps) and lightning (a bolt walked onto a
   canvas each strike, with a flickering flash that every shader reads).
 - Like Fishbowl, it renders at a fixed 30/60 fps, shader time wraps hourly with every frequency
