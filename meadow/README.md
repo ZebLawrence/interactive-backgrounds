@@ -12,14 +12,14 @@ for now; no native app yet.
   into step, so the cloud around your cursor starts to flash in unison.
 - **Click to clap**: a ring runs out through the grass and every firefly nearby flashes at once and
   bolts.
-- **Four species**, each with its real flash and way of flying: the Big Dipper's slow rising "J"
-  flash, the Smokies' synchronous firefly's burst of quick flashes then darkness, Photuris's fast
-  double flicker high over the meadow, and dim blue ghosts creeping low in the grass. Their light
-  falls on the grass and flowers around them.
+- **Four species**, each with its own slow rhythm and way of flying: the Big Dipper's long rising
+  glow, the synchronous firefly's shared pulse, Photuris's pair of glows high over the meadow, and
+  dim blue ghosts creeping low in the grass. Lanterns ease in and out over several seconds; only a
+  fright or a clap switches one abruptly. Their light falls on the grass and flowers around them.
 - **Sky**: stars of every colour and size, a Milky Way with a glowing core, cool outer arms and
   dark dust lanes threaded through it, a gibbous moon with a halo, shooting stars now and then,
-  mist drifting over the grass, and a tree line silhouetted on the horizon before everything fades
-  to black.
+  mist drifting over the grass, and a tree line of spruce, broadleaf and bare winter trees
+  silhouetted on the horizon before everything fades to black.
 - **Moonlight** (menu, `M`): turn the moon off for a darker meadow with brighter stars.
 - **Storm** (menu, `S`): rain, gusting wind, a low cloud ceiling, and lightning that forks down behind
   the trees and lights the whole meadow for an instant. The fireflies shelter in the grass until it

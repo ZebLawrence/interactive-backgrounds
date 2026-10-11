@@ -7,25 +7,26 @@ import { TAU, clamp, lerp, rnd, pick, smoothstep, v3, unit, RGBA } from './util.
 import { G, LIGHT_N } from './shaders.js';
 
 // ---------------------------------------------------------------------------------------------
-// Species. Flash patterns follow the real insects: the Big Dipper's slow rising "J", the Smokies'
-// synchronous firefly's burst of quick flashes then darkness, Photuris's fast double flicker,
-// and the blue ghost's faint steady glow low in the grass.
+// Species. Each lantern glows in a slow, peaceful rhythm of its own, fading in and out rather than
+// flashing: the Big Dipper's long rising glow, the synchronous firefly's shared pulse (which falls
+// into step with its neighbours), Photuris's pair of glows high over the meadow, and the blue
+// ghost's faint steady light low in the grass. Only a fright or a clap switches a lantern abruptly.
 // ---------------------------------------------------------------------------------------------
 
 export const FireflySpecies = {
   dipper: {
     id: 'dipper', name: 'Big Dipper', color: new RGBA(0.88, 1.0, 0.40),
-    count: 48, speed: 0.28, agility: 1.1, height: [0.3, 1.6], period: [5.2, 7.0],
+    count: 48, speed: 0.28, agility: 1.1, height: [0.3, 1.6], period: [9, 13],
     light: 0.7, curious: 0.4, sync: false, zone: [1.5, 20],
   },
   synchronous: {
     id: 'synchronous', name: 'Synchronous', color: new RGBA(0.98, 1.0, 0.50),
-    count: 64, speed: 0.33, agility: 1.4, height: [0.4, 2.0], period: [8.5, 9.5],
+    count: 64, speed: 0.33, agility: 1.4, height: [0.4, 2.0], period: [12, 13.5],
     light: 0.55, curious: 0.85, sync: true, zone: [1.5, 22],
   },
   photuris: {
     id: 'photuris', name: 'Photuris', color: new RGBA(0.62, 1.0, 0.62),
-    count: 20, speed: 0.6, agility: 2.0, height: [1.0, 3.2], period: [2.6, 3.6],
+    count: 20, speed: 0.6, agility: 2.0, height: [1.0, 3.2], period: [8, 11],
     light: 0.45, curious: 0.25, sync: false, zone: [2, 28],
   },
   ghost: {
@@ -36,27 +37,24 @@ export const FireflySpecies = {
 };
 FireflySpecies.all = [FireflySpecies.dipper, FireflySpecies.synchronous, FireflySpecies.photuris, FireflySpecies.ghost];
 
+/** A glow that eases in and out over the fraction `width` of the cycle starting at `from`. */
+function glow(phase, from, width) {
+  const u = (phase - from) / width;
+  return u >= 0 && u < 1 ? Math.pow(Math.sin(u * Math.PI), 1.6) : 0;
+}
+
 /** Brightness 0..1 of a species' lantern at `phase` (0..1 through its cycle). */
 export function flashPattern(species, phase) {
   switch (species.id) {
-    case 'dipper': {
-      // One long flash, ~0.6 s of a 6 s cycle, swelling then fading.
-      const u = phase / 0.1;
-      return u < 1 ? Math.pow(Math.sin(u * Math.PI), 1.3) : 0;
-    }
-    case 'synchronous': {
-      // Six quick flashes half a second apart, then dark for the rest of the cycle.
-      const burst = phase / 0.34;
-      if (burst >= 1) return 0;
-      const u = (burst * 6) % 1;
-      return u < 0.3 ? Math.sin(u / 0.3 * Math.PI) : 0;
-    }
-    case 'photuris': {
-      const p1 = phase / 0.04, p2 = (phase - 0.08) / 0.04;
-      if (p1 >= 0 && p1 < 1) return Math.sin(p1 * Math.PI);
-      if (p2 >= 0 && p2 < 1) return Math.sin(p2 * Math.PI) * 0.8;
-      return 0;
-    }
+    case 'dipper':
+      // One long glow, about three seconds of an eleven-second cycle.
+      return glow(phase, 0, 0.28);
+    case 'synchronous':
+      // A slow shared pulse: five seconds on, eight off.
+      return glow(phase, 0, 0.4);
+    case 'photuris':
+      // Two gentle glows close together, then a long rest.
+      return glow(phase, 0, 0.2) + glow(phase, 0.26, 0.16) * 0.75;
     case 'ghost':
       return 0.26 + 0.12 * Math.sin(phase * TAU);
   }
@@ -113,7 +111,8 @@ export class Firefly {
     this.dark = Math.max(0, this.dark - dt);
     this.clapFlash = Math.max(0, this.clapFlash - dt);
     let b = this.dark > 0 ? 0 : flashPattern(this.species, this.phase);
-    if (this.clapFlash > 0) b = Math.max(b, Math.sin(Math.min(1, this.clapFlash / 0.35) * Math.PI));
+    // A clap switches the lantern on at once; it then fades out over half a second.
+    if (this.clapFlash > 0) b = Math.max(b, Math.min(1, this.clapFlash / 0.5));
     // In the rain they shelter in the grass and barely glow.
     b *= 1 - storm * 0.92;
     this.brightness = b;
@@ -212,7 +211,7 @@ export class Firefly {
     this.phase -= Math.floor(this.phase);
     this.updateLantern(dt, storm);
     // The Big Dipper climbs as it flashes, drawing its "J" in the air.
-    if (sp.id === 'dipper' && this.brightness > 0 && this.dark <= 0) this.vel.y += dt * 1.0;
+    if (sp.id === 'dipper' && this.brightness > 0 && this.dark <= 0) this.vel.y += dt * 0.35 * this.brightness;
 
     this.pos.addScaledVector(this.vel, dt);
     this.bobPhase += dt * this.bobRate;
@@ -306,7 +305,7 @@ export class Swarm {
     for (const f of this.flies) {
       const d = f.pos.distanceTo(point);
       if (d > radius) continue;
-      f.clapFlash = 0.35 + rnd(0, 0.1);
+      f.clapFlash = 0.5 + rnd(0, 0.15);
       f.startle(point, 1.2 + rnd(0, 0.6), 3 + rnd(0, 1.5));
       f.fleeTimer += 0.3;
     }
