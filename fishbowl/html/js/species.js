@@ -1,3 +1,8 @@
+// Fishbowl — Species data, the fish body loft and the painted fish images.
+
+import * as THREE from 'three';
+import { TAU, clamp, lerp, v3, RGBA, Art, Mesh } from './util.js';
+
 // ---------------------------------------------------------------------------------------------
 // Species data (Species.swift) — numbers ported verbatim
 // ---------------------------------------------------------------------------------------------
@@ -5,12 +10,12 @@
 /** One half of the body's side-view outline (the back or the belly) and the shape of that half of
  *  every cross-section. Heights are fractions of half the species' height; positions are fractions
  *  of body length from the tail joint (0) to the nose (1). */
-const BodyProfile = (o) => Object.assign({ depth: 1, peak: 0.5, peduncle: 0.36, head: 2, snout: 0.6, rear: 2, pinch: 0.4, roundness: 2 }, o);
+export const BodyProfile = (o) => Object.assign({ depth: 1, peak: 0.5, peduncle: 0.36, head: 2, snout: 0.6, rear: 2, pinch: 0.4, roundness: 2 }, o);
 BodyProfile.back = BodyProfile({ depth: 1, peak: 0.5, peduncle: 0.36, roundness: 1.7 });
 BodyProfile.belly = BodyProfile({ depth: 1, peak: 0.45, peduncle: 0.34, roundness: 2.4 });
 
 /** Height of this half of the outline at t along the body (0 = tail joint, 1 = nose). */
-function profileHeight(p, t) {
+export function profileHeight(p, t) {
   t = clamp(t, 0, 1);
   if (t < p.peak) {
     // Rising from the peduncle: a smooth swell, or pinched flat just ahead of the tail.
@@ -22,16 +27,16 @@ function profileHeight(p, t) {
   return p.depth * Math.pow(Math.max(0, 1 - Math.pow(v, p.head)), p.snout);
 }
 
-const Fin = (start, end, height, sweep) => ({ start, end, height, sweep });
+export const Fin = (start, end, height, sweep) => ({ start, end, height, sweep });
 
-function makeSpecies(o) {
+export function makeSpecies(o) {
   return Object.assign({
     shape: 'fish', pectoralScale: 1, eyeScale: 1, flex: 1, roughness: null,
     backProfile: BodyProfile.back, bellyProfile: BodyProfile.belly,
   }, o);
 }
 
-const Species = {};
+export const Species = {};
 Species.neonTetra = makeSpecies({
   id: 'tetra', name: 'Neon Tetra',
   length: 34, height: 11, thickness: 0.5, tailLength: 13, tailSpread: 6.5, tailStyle: 'forked',
@@ -110,7 +115,7 @@ Species.named = (id) => Species.all.find((s) => s.id === id);
 // painted skin wrapped round it
 // ---------------------------------------------------------------------------------------------
 
-const FishBody = {
+export const FishBody = {
   /** Vertices round each cross-section (a multiple of 4). */
   ring: 28,
   arcSteps: 4,
@@ -201,7 +206,7 @@ const FishBody = {
 // nose toward +x
 // ---------------------------------------------------------------------------------------------
 
-const FishArt = {
+export const FishArt = {
   cache: {},
   forSpecies(s) {
     return FishArt.cache[s.id] ??= FishArt.make(s);

@@ -1,3 +1,17 @@
+// Fishbowl — Entry point: settings, menu, input, renderer and the frame loop.
+
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { clamp, Art } from './util.js';
+import { snowMaterial } from './shaders.js';
+import { Species } from './species.js';
+import { Shark } from './fish.js';
+import { Tank } from './tank.js';
+
 // ---------------------------------------------------------------------------------------------
 // App shell (AppDelegate.swift, Settings.swift, RenderView.swift): settings, the menu, input,
 // rendering at a fixed 30/60 fps, and rebuilding the tank when the window size changes

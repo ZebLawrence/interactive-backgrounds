@@ -1,10 +1,18 @@
+// Fishbowl — Per-fish rig and eyes, fish behaviour, the shark and food.
+
+import * as THREE from 'three';
+import { TAU, clamp, lerp, rnd, coin, pick, smoothstep, angleDelta, v3, unit, quatAxis, quatFromTo, RGBA, Mesh, sharedGeometry } from './util.js';
+import { quantize } from './shaders.js';
+import { Species } from './species.js';
+import { FishMaterials, FishModel } from './fishmodel.js';
+
 // ---------------------------------------------------------------------------------------------
 // FishRig (FishRig.swift): everything that draws and animates one fish — its nodes, its private
 // materials, the swim wave sent to the shaders, its eyes and, for the shark, its jaw
 // ---------------------------------------------------------------------------------------------
 
 /** Fade a whole object (all its materials) to opacity `a`, switching to blending only while needed. */
-function setObjectOpacity(obj, a) {
+export function setObjectOpacity(obj, a) {
   obj.traverse((o) => {
     if (!o.material) return;
     const m = o.material;
@@ -19,7 +27,7 @@ function setObjectOpacity(obj, a) {
   });
 }
 
-class FishRig {
+export class FishRig {
   constructor(model, size) {
     this.model = model;
     this.node = new THREE.Group();
@@ -275,7 +283,7 @@ class FishRig {
 // otherwise rests with a slow drift and the odd glance. Moves are saccades.
 // ---------------------------------------------------------------------------------------------
 
-class EyeRig {
+export class EyeRig {
   constructor(model, parent) {
     this.model = model;
     this.node = new THREE.Group();
@@ -373,7 +381,7 @@ class EyeRig {
 // ---------------------------------------------------------------------------------------------
 
 /** How a species swims when unhurried: bursts of tail beats separated by glides (seconds). */
-function strokeFor(sp) {
+export function strokeFor(sp) {
   switch (sp.id) {
     case Species.neonTetra.id: return { beat: [0.25, 0.45], glide: [0.3, 0.7], boost: 1.3, pickup: 3, drag: 1.5 };
     case Species.angelfish.id: return { beat: [0.5, 0.9], glide: [1.4, 2.8], boost: 1.35, pickup: 1.6, drag: 0.45 };
@@ -383,7 +391,7 @@ function strokeFor(sp) {
   }
 }
 
-class Fish {
+export class Fish {
   constructor(species, p) {
     this.species = species;
     this.stroke = strokeFor(species);
@@ -668,7 +676,7 @@ Fish.speedUnit = 1.2 / 100;
 // The shark (Shark.swift): lurks in the haze, now and then hunts a fish, then retreats
 // ---------------------------------------------------------------------------------------------
 
-class Shark {
+export class Shark {
   constructor(tank) {
     this.body = new Fish(Species.shark, v3());
     this.body.node.scale.setScalar(1);
@@ -831,11 +839,11 @@ Shark.huntSoon = false;
 // Sinking food flakes (Food.swift)
 // ---------------------------------------------------------------------------------------------
 
-class Food {
+export class Food {
   constructor(p) {
     if (!Food.geometry) {
       Food.geometry = new THREE.SphereGeometry(0.028, 8, 6);
-      Tank.sharedGeometry.add(Food.geometry);
+      sharedGeometry.add(Food.geometry);
     }
     Food.material ??= new THREE.MeshStandardMaterial({ color: new RGBA(0.72, 0.42, 0.18).color, roughness: 0.7, transparent: true });
     this.node = new THREE.Mesh(Food.geometry, Food.material.clone());

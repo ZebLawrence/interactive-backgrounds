@@ -1,12 +1,19 @@
+// Fishbowl — Per-species fish models: fins, eyes, the shark jaw and body materials.
+
+import * as THREE from 'three';
+import { TAU, clamp, rnd, randInt, coin, v3, quatAxis, quatFromTo, RGBA, Art, Detail, Mesh, mat4Translate, mat4Rotate, sharedGeometry } from './util.js';
+import { G, patchMaterial, patchedDepthMaterial, MAP_UNPREMULTIPLY, causticUniforms, FISH_BODY_HEAD, FISH_FINS_HEAD, FIN_GLOW_HEAD, FIN_GLOW, FISH_SKIN_HEAD, FISH_SKIN } from './shaders.js';
+import { Species, FishBody, FishArt } from './species.js';
+
 // ---------------------------------------------------------------------------------------------
 // Fins (FishFins.swift): dorsal, anal, tail, pectoral and pelvic pairs (plus the tetra's adipose
 // fin) share one mesh and one atlas texture. Each vertex carries its fin kind and its distance
 // from where the fin joins the body, so the fin shader can move every fin on its own.
 // ---------------------------------------------------------------------------------------------
 
-const FinKind = { rigid: 0, median: 1, tail: 2, pectoral: 3, pelvic: 4 };
+export const FinKind = { rigid: 0, median: 1, tail: 2, pectoral: 3, pelvic: 4 };
 
-const FishFins = {
+export const FishFins = {
   build(s, art, u) {
     const shark = s.shape === 'shark';
     const flow = FishFins.flowiness(s);
@@ -241,7 +248,7 @@ const FishFins = {
 // a painted iris, and where each eye sits on the head
 // ---------------------------------------------------------------------------------------------
 
-const EyeModel = {
+export const EyeModel = {
   make(s, u) {
     const isShark = s.shape === 'shark';
     const ex = s.length / 2 - 0.17 * s.length;
@@ -337,7 +344,7 @@ const EyeModel = {
 // that swings open on a hinge, a dark mouth interior, and rows of teeth on both jaws
 // ---------------------------------------------------------------------------------------------
 
-const SharkJaw = {
+export const SharkJaw = {
   backFraction: 0.27,
   frontFraction: 0.045,
   spread: 1.05,
@@ -452,7 +459,7 @@ const SharkJaw = {
 // angle-dependent sheen of real scales
 // ---------------------------------------------------------------------------------------------
 
-const FishMaterials = {
+export const FishMaterials = {
   /** How a species' scales play with the light: (mask, swing, glow, sparkle). */
   sheen(s) {
     switch (s.id) {
@@ -577,9 +584,9 @@ const FishMaterials = {
 // ---------------------------------------------------------------------------------------------
 
 /** World units per species point: 1 world unit = 100 screen points, and fish are drawn 1.3x. */
-const FISH_UNIT = 1.3 / 100;
+export const FISH_UNIT = 1.3 / 100;
 
-const FishModel = {
+export const FishModel = {
   cache: {},
   forSpecies(s) {
     return FishModel.cache[s.id] ??= FishModel.make(s);
@@ -610,9 +617,9 @@ const FishModel = {
         ? SharkJaw.make(s, u, (x) => { const c = FishBody.section(s, x); return { hy: c.bottom, hz: c.halfWidth }; })
         : null,
     };
-    for (const g of [model.body, model.fins.geometry, model.eyes.geometry]) Tank.sharedGeometry.add(g);
+    for (const g of [model.body, model.fins.geometry, model.eyes.geometry]) sharedGeometry.add(g);
     if (model.jaw) {
-      for (const g of [model.jaw.shell, model.jaw.lowerTeeth, model.jaw.upperTeeth, model.jaw.palate]) Tank.sharedGeometry.add(g);
+      for (const g of [model.jaw.shell, model.jaw.lowerTeeth, model.jaw.upperTeeth, model.jaw.palate]) sharedGeometry.add(g);
       model.jaw.material.userData.shared = true;
     }
     return model;

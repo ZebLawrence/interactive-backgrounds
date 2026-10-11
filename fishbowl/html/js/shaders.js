@@ -1,3 +1,8 @@
+// Fishbowl — Shader patches for MeshStandardMaterial: caustics, plant sway, fish swim, fin motion, skin.
+
+import * as THREE from 'three';
+import { TAU, clamp, smoothstep, v3 } from './util.js';
+
 // ---------------------------------------------------------------------------------------------
 // Shaders (Shaders.swift, FishShaders.swift, FishMaterials.swift skin). SceneKit shader modifiers
 // become `onBeforeCompile` patches of MeshStandardMaterial.
@@ -5,15 +10,15 @@
 
 /** Shader time wraps every `TIME_WRAP` seconds, keeping float precision however long the page
  *  runs. Every animation frequency is quantised to a whole number of cycles per wrap. */
-const TIME_WRAP = 3600;
-const QK = TIME_WRAP / TAU;
+export const TIME_WRAP = 3600;
+export const QK = TIME_WRAP / TAU;
 /** Quantise an angular frequency on the CPU, matching the shaders' quantisers. */
-const quantize = (w) => Math.round(w * QK) / QK;
-const glslFloat = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
-const quantizer = (name) => `float ${name}(float w) { return floor(w * ${glslFloat(QK)} + 0.5) / ${glslFloat(QK)}; }\n`;
+export const quantize = (w) => Math.round(w * QK) / QK;
+export const glslFloat = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));
+export const quantizer = (name) => `float ${name}(float w) { return floor(w * ${glslFloat(QK)} + 0.5) / ${glslFloat(QK)}; }\n`;
 
 /** Uniforms shared by every material in the tank (time, the night lamp, the cursor). */
-const G = {
+export const G = {
   uTime: { value: 0 },
   // Caustics and the night spotlight (driven by `Lighting`).
   causticNight: { value: 0 },
@@ -44,7 +49,7 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
  *  - fHead: fragment declarations; fMap: replaces the map sample; fAfterNormal / fAfterEmissive /
  *    fBeforeOpaque: code inserted at those stages. `vCauWP` (world position) is always available.
  */
-function patchMaterial(mat, cfg) {
+export function patchMaterial(mat, cfg) {
   const key = cfg.key;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, cfg.uniforms || {});
@@ -67,7 +72,7 @@ function patchMaterial(mat, cfg) {
 }
 
 /** A shadow-casting depth material that applies the same vertex deformation. */
-function patchedDepthMaterial(cfg) {
+export function patchedDepthMaterial(cfg) {
   const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, cfg.uniforms || {});
@@ -82,7 +87,7 @@ function patchedDepthMaterial(cfg) {
 }
 
 /** Texture sampled as premultiplied alpha, un-premultiplied (no dark fringes on cut-outs). */
-const MAP_UNPREMULTIPLY = `
+export const MAP_UNPREMULTIPLY = `
 #ifdef USE_MAP
   vec4 sampledDiffuseColor = texture2D( map, vMapUv );
   sampledDiffuseColor.rgb /= max( sampledDiffuseColor.a, 0.0001 );
@@ -91,7 +96,7 @@ const MAP_UNPREMULTIPLY = `
 
 // ---- Caustics: moving light on upward-facing surfaces (sand, rocks, plants, fish backs) ----
 
-const CAUSTICS_HEAD = quantizer('cauQ') + `
+export const CAUSTICS_HEAD = quantizer('cauQ') + `
 uniform float uTime;
 uniform float causticNight;
 uniform vec3 spotPos;
@@ -135,22 +140,22 @@ vec3 causticLight(vec3 wp, vec3 wn, vec3 diffuse, float strength) {
   return tint * c * up * strength * gain * (0.2 + diffuse);
 }
 `;
-const CAUSTICS_APPLY = (strength) =>
+export const CAUSTICS_APPLY = (strength) =>
   `totalEmissiveRadiance += causticLight(vCauWP, inverseTransformDirection(normal, viewMatrix), diffuseColor.rgb, ${strength});`;
 
-const causticUniforms = () => ({
+export const causticUniforms = () => ({
   uTime: G.uTime, causticNight: G.causticNight, spotPos: G.spotPos, spotT: G.spotT, spotCos: G.spotCos,
 });
 
 // ---- Reef: caustics plus triplanar surface detail (its UVs only index a colour palette) ----
 
-const REEF_HEAD = CAUSTICS_HEAD + `
+export const REEF_HEAD = CAUSTICS_HEAD + `
 uniform sampler2D detailNormal;
 uniform float detailScale;
 uniform float detailStrength;
 uniform float causticStrength;
 `;
-const REEF_DETAIL = `{
+export const REEF_DETAIL = `{
   vec3 dwp = vCauWP;
   vec3 dwn = inverseTransformDirection(normal, viewMatrix);
   vec3 bw = pow(abs(dwn), vec3(4.0));
@@ -165,7 +170,7 @@ const REEF_DETAIL = `{
 
 // ---- Plant sway: per-vertex (height fraction, plant height, phase, amplitude) in aSway ----
 
-const SWAY_HEAD = quantizer('swayQ') + `
+export const SWAY_HEAD = quantizer('swayQ') + `
 attribute vec4 aSway;
 uniform float uTime;
 uniform float curX;
@@ -191,11 +196,11 @@ void plantSway(inout vec3 p) {
   p.z += (0.5 * sway * cos(ph) - abs(bend) * 0.3) * w;
 }
 `;
-const swayUniforms = () => ({ uTime: G.uTime, curX: G.curX, curY: G.curY, curVX: G.curVX, eyeDist: G.eyeDist });
+export const swayUniforms = () => ({ uTime: G.uTime, curX: G.curX, curY: G.curY, curVX: G.curVX, eyeDist: G.eyeDist });
 
 // ---- Fish: the swim wave, shared by body and fins ----
 
-const SWIM_HEAD = `
+export const SWIM_HEAD = `
 uniform float uTime;
 uniform float swimFreq;
 uniform float swimOffset;
@@ -216,7 +221,7 @@ void swimBody(inout vec3 p, inout vec3 n, float s, float env, float wave) {
 `;
 
 /** The body: the swim wave, plus breathing near the head (mouth and gill covers). */
-const FISH_BODY_HEAD = SWIM_HEAD + `
+export const FISH_BODY_HEAD = SWIM_HEAD + `
 uniform float breathFreq;
 uniform float breathPhase;
 uniform float mouthAmp;
@@ -258,7 +263,7 @@ void fishBody(inout vec3 p, inout vec3 bn) {
 
 /** Fins: each moves on its own before following the body's swim wave. Per-vertex data in aFin
  *  (see FishFins.data) says which fin a vertex belongs to and where on it. */
-const FISH_FINS_HEAD = SWIM_HEAD + quantizer('finQ') + `
+export const FISH_FINS_HEAD = SWIM_HEAD + quantizer('finQ') + `
 attribute vec4 aFin;
 uniform float finFreq;
 uniform float finSeed;
@@ -332,12 +337,12 @@ void fishFins(inout vec3 fp, inout vec3 fn) {
 
 /** Light shining through thin fins: they glow warmly where the sun (by day) or the night lamp
  *  lights them from behind. finGlow = (from, to, since, night). */
-const FIN_GLOW_HEAD = `
+export const FIN_GLOW_HEAD = `
 uniform float uTime;
 uniform vec4 finGlow;
 uniform vec3 lampPos;
 `;
-const FIN_GLOW = `{
+export const FIN_GLOW = `{
   float sinceGlow = uTime - finGlow.z;
   float glow = mix(finGlow.x, finGlow.y, sinceGlow < 0.0 ? 1.0 : clamp(sinceGlow / 0.5, 0.0, 1.0));
   if (glow > 0.001) {
@@ -355,7 +360,7 @@ const FIN_GLOW = `{
 }`;
 
 /** The body's surface: each fish's own colouring and iridescence, then caustics. */
-const FISH_SKIN_HEAD = CAUSTICS_HEAD + `
+export const FISH_SKIN_HEAD = CAUSTICS_HEAD + `
 uniform float fishCaustic;
 uniform vec4 fishLook;
 uniform vec4 fishMorph;
@@ -381,7 +386,7 @@ float fmFbm(vec2 p) {
   return 0.6 * fmNoise(p) + 0.28 * fmNoise(p * 2.13 + 1.7) + 0.12 * fmNoise(p * 4.37 + 4.1);
 }
 `;
-const FISH_SKIN = `{
+export const FISH_SKIN = `{
   vec3 fc = diffuseColor.rgb;
   float fcLum = dot(fc, vec3(0.2126, 0.7152, 0.0722));
   // Iridescent parts, judged from the painted colour before it is personalised.
@@ -448,7 +453,7 @@ const FISH_SKIN = `{
 // ---- The night spotlight's visible beam: an additive cone, brightest seen edge-on through its
 // middle, fading in from darkness near the top ----
 
-function beamMaterial() {
+export function beamMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: { beamStrength: { value: 0 }, beamTop: { value: 0 }, beamBottom: { value: 0 } },
     vertexShader: `
@@ -483,7 +488,7 @@ function beamMaterial() {
 
 // ---- Drifting specks ("marine snow"), lit: they glint in the night lamp and fade in the dark ----
 
-function snowMaterial() {
+export function snowMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: G.uTime, spotPos: G.spotPos, spotT: G.spotT, spotCos: G.spotCos, causticNight: G.causticNight,

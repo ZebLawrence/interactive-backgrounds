@@ -1,7 +1,7 @@
 # Porting Fishbowl to JavaScript + Three.js
 
-A guide for re-implementing Fishbowl (this repo: Swift + SceneKit, macOS) as a JavaScript / Three.js
-app. The Swift source is the reference implementation: read the file named in each section before
+A guide for re-implementing Fishbowl (`swift/`: Swift + SceneKit, macOS) as a JavaScript / Three.js
+app (now done in `html/`). The Swift source is the reference implementation: read the file named in each section before
 porting it. This document captures the design, the numbers that were tuned by eye, and the lessons
 that were learned the hard way and aren't obvious from the code.
 

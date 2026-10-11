@@ -1,43 +1,47 @@
+// Fishbowl — Math helpers, colours, procedural images and normal maps, the mesh builder and baked occlusion.
+
+import * as THREE from 'three';
+
 // ---------------------------------------------------------------------------------------------
 // Math helpers (Math.swift)
 // ---------------------------------------------------------------------------------------------
 
-const TAU = Math.PI * 2;
-const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
-const lerp = (a, b, t) => a + (b - a) * t;
-const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
+export const TAU = Math.PI * 2;
+export const clamp = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
 /** Random integer in lo...hi (inclusive, like Swift's `Int.random(in: lo...hi)`). */
-const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
-const coin = () => Math.random() < 0.5;
-const pick = (a) => a[Math.floor(Math.random() * a.length)];
+export const randInt = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+export const coin = () => Math.random() < 0.5;
+export const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
-function smoothstep(e0, e1, x) {
+export function smoothstep(e0, e1, x) {
   const t = clamp((x - e0) / (e1 - e0), 0, 1);
   return t * t * (3 - 2 * t);
 }
 
 /** Shortest signed difference between two angles. */
-function angleDelta(a, b) {
+export function angleDelta(a, b) {
   let d = a - b;
   while (d > Math.PI) d -= TAU;
   while (d < -Math.PI) d += TAU;
   return d;
 }
 
-const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+export const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 /** Normalised copy, or zero for (near) zero vectors. */
-function unit(v) {
+export function unit(v) {
   const l = v.length();
   return l > 1e-5 ? v.clone().divideScalar(l) : v3();
 }
-const quatAxis = (angle, x, y, z) => new THREE.Quaternion().setFromAxisAngle(v3(x, y, z), angle);
-const quatFromTo = (a, b) => new THREE.Quaternion().setFromUnitVectors(unit(a), unit(b));
+export const quatAxis = (angle, x, y, z) => new THREE.Quaternion().setFromAxisAngle(v3(x, y, z), angle);
+export const quatFromTo = (a, b) => new THREE.Quaternion().setFromUnitVectors(unit(a), unit(b));
 
 // ---------------------------------------------------------------------------------------------
 // Colour (Art.swift RGBA): sRGB values that are easy to mix
 // ---------------------------------------------------------------------------------------------
 
-class RGBA {
+export class RGBA {
   constructor(r, g, b, a = 1) { this.r = r; this.g = g; this.b = b; this.a = a; }
   alpha(x) { return new RGBA(this.r, this.g, this.b, x); }
   mix(o, t) { return new RGBA(lerp(this.r, o.r, t), lerp(this.g, o.g, t), lerp(this.b, o.b, t), lerp(this.a, o.a, t)); }
@@ -60,7 +64,7 @@ RGBA.clear = new RGBA(0, 0, 0, 0);
 // the top of the image).
 // ---------------------------------------------------------------------------------------------
 
-const Art = {
+export const Art = {
   /** Images are rendered at 4 pixels per point so fish stay crisp up close to the glass. */
   scale: 4,
 
@@ -173,7 +177,7 @@ Art.glassStreak = () => Art.image(64, 256, 2, (ctx) => {
 // Procedural normal maps (Detail.swift), each generated once from a tileable height field
 // ---------------------------------------------------------------------------------------------
 
-const Detail = {
+export const Detail = {
   /** Tileable value noise: lattice values repeat every `period` cells across the 0...1 square. */
   noise(u, v, period, seed) {
     const x = u * period, y = v * period;
@@ -233,7 +237,7 @@ const Detail = {
   },
 };
 
-let _detailCache = {};
+export let _detailCache = {};
 /** Sand: gentle ripple bars across the floor plus fine grain. Tiles every 2.5 world units. */
 Detail.sand = () => _detailCache.sand ??= Detail.normalMap(512, 5, (u, v) => {
   const warp = Detail.fbm(u, v, 4, 3, 3);
@@ -276,7 +280,7 @@ Detail.scales = () => _detailCache.scales ??= Detail.normalMap(256, 3, (u, v) =>
 // Minimal indexed triangle mesh (Mesh.swift)
 // ---------------------------------------------------------------------------------------------
 
-class Mesh {
+export class Mesh {
   constructor() {
     this.p = [];    // positions, flat xyz
     this.n = [];    // normals, flat xyz
@@ -401,14 +405,14 @@ class Mesh {
   }
 }
 
-const mat4Translate = (v) => new THREE.Matrix4().makeTranslation(v.x, v.y, v.z);
-const mat4Rotate = (q) => new THREE.Matrix4().makeRotationFromQuaternion(q);
+export const mat4Translate = (v) => new THREE.Matrix4().makeTranslation(v.x, v.y, v.z);
+export const mat4Rotate = (q) => new THREE.Matrix4().makeRotationFromQuaternion(q);
 
 // ---------------------------------------------------------------------------------------------
 // Baked contact shadows (Occlusion.swift). Scenery never moves, so this is computed once.
 // ---------------------------------------------------------------------------------------------
 
-const Occlusion = {
+export const Occlusion = {
   /** How much light reaches point `p` (normal `n`): 1 = fully open, lower = tucked in. */
   visibility(px, py, pz, nx, ny, nz, occluders, ignoring, strength) {
     let vis = 1;
@@ -461,4 +465,7 @@ const Occlusion = {
   },
 };
 
-const occluder = (center, radius, piece) => ({ cx: center.x, cy: center.y, cz: center.z, radius, piece });
+export const occluder = (center, radius, piece) => ({ cx: center.x, cy: center.y, cz: center.z, radius, piece });
+
+/** Geometry shared by every tank (the per-species fish models), which a tank must not dispose. */
+export const sharedGeometry = new WeakSet();

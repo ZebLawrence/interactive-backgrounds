@@ -1,16 +1,22 @@
+// Fishbowl — The reef and the plant bed, each merged into one mesh.
+
+import * as THREE from 'three';
+import { TAU, clamp, rnd, randInt, smoothstep, v3, unit, quatAxis, RGBA, Art, Detail, Mesh, mat4Translate, mat4Rotate, Occlusion, occluder } from './util.js';
+import { G, patchMaterial, patchedDepthMaterial, CAUSTICS_HEAD, CAUSTICS_APPLY, causticUniforms, REEF_HEAD, REEF_DETAIL, SWAY_HEAD, swayUniforms } from './shaders.js';
+
 // ---------------------------------------------------------------------------------------------
 // The reef (Coral.swift): brain, branching, table and finger corals, polyps and live rock, merged
 // into one mesh and coloured from a shaded palette (each row a colour, dark u = 0 to pale u = 1)
 // ---------------------------------------------------------------------------------------------
 
-const ReefTone = { pink: 0, orange: 1, purple: 2, tan: 3, teal: 4, bone: 5, red: 6, green: 7, rock: 8, coralline: 9, rockPurple: 10 };
-const REEF_COLORS = [
+export const ReefTone = { pink: 0, orange: 1, purple: 2, tan: 3, teal: 4, bone: 5, red: 6, green: 7, rock: 8, coralline: 9, rockPurple: 10 };
+export const REEF_COLORS = [
   new RGBA(0.92, 0.46, 0.52), new RGBA(0.95, 0.52, 0.22), new RGBA(0.56, 0.32, 0.68), new RGBA(0.82, 0.70, 0.42),
   new RGBA(0.30, 0.62, 0.55), new RGBA(0.88, 0.84, 0.76), new RGBA(0.78, 0.18, 0.18), new RGBA(0.35, 0.78, 0.45),
   new RGBA(0.40, 0.37, 0.33), new RGBA(0.62, 0.42, 0.50), new RGBA(0.42, 0.33, 0.40),
 ];
 
-class CoralReef {
+export class CoralReef {
   constructor() {
     this.mesh = new Mesh();
     this.pieceOfVertex = [];
@@ -245,8 +251,8 @@ class CoralReef {
 // plants, sea anemones and sea fans. Per-vertex sway data travels in the aSway attribute.
 // ---------------------------------------------------------------------------------------------
 
-const PlantTone = { green: 0, brightGreen: 1, darkGreen: 2, olive: 3, lime: 4, red: 5, maroon: 6, rotala: 7, anemone: 8, fanPurple: 9, fanRed: 10 };
-const PLANT_GRADIENTS = [
+export const PlantTone = { green: 0, brightGreen: 1, darkGreen: 2, olive: 3, lime: 4, red: 5, maroon: 6, rotala: 7, anemone: 8, fanPurple: 9, fanRed: 10 };
+export const PLANT_GRADIENTS = [
   [new RGBA(0.06, 0.26, 0.11), new RGBA(0.16, 0.52, 0.22), new RGBA(0.30, 0.66, 0.30)],
   [new RGBA(0.10, 0.32, 0.10), new RGBA(0.24, 0.62, 0.18), new RGBA(0.50, 0.80, 0.30)],
   [new RGBA(0.03, 0.16, 0.10), new RGBA(0.08, 0.36, 0.22), new RGBA(0.16, 0.48, 0.30)],
@@ -259,9 +265,9 @@ const PLANT_GRADIENTS = [
   [new RGBA(0.30, 0.12, 0.38), new RGBA(0.52, 0.24, 0.62), new RGBA(0.70, 0.42, 0.80)],
   [new RGBA(0.40, 0.08, 0.10), new RGBA(0.72, 0.18, 0.20), new RGBA(0.92, 0.40, 0.34)],
 ];
-const plantVeined = (tone) => tone < PlantTone.anemone;
+export const plantVeined = (tone) => tone < PlantTone.anemone;
 
-class PlantBed {
+export class PlantBed {
   constructor() {
     this.mesh = new Mesh();
     this.occluders = [];

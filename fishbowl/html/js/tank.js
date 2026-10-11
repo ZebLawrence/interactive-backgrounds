@@ -1,3 +1,12 @@
+// Fishbowl — Lighting, the cursor, the glass overlay and the tank itself.
+
+import * as THREE from 'three';
+import { TAU, clamp, lerp, rnd, randInt, coin, pick, smoothstep, v3, unit, quatAxis, quatFromTo, RGBA, Art, Detail, Mesh, Occlusion, sharedGeometry } from './util.js';
+import { TIME_WRAP, G, patchMaterial, CAUSTICS_HEAD, CAUSTICS_APPLY, causticUniforms, beamMaterial, snowMaterial } from './shaders.js';
+import { Species } from './species.js';
+import { setObjectOpacity, Fish, Shark, Food } from './fish.js';
+import { ReefTone, CoralReef, PlantTone, PlantBed } from './scenery.js';
+
 // ---------------------------------------------------------------------------------------------
 // Lighting (Lighting.swift): by day sunlight comes down through the surface; at night the tank
 // goes dark apart from a lamp above the water that swivels to aim at the cursor, with a visible
@@ -5,12 +14,12 @@
 // ---------------------------------------------------------------------------------------------
 
 /** SceneKit physically based light intensities (1000 = "normal") → three.js intensities. */
-const LIGHT_K = Math.PI / 1000;
-const DAY_WATER = new RGBA(0.035, 0.2, 0.29);
-const NIGHT_WATER = new RGBA(0.004, 0.022, 0.045);
-const SUN_DIR = v3(0.073, 0.955, 0.287).normalize();
+export const LIGHT_K = Math.PI / 1000;
+export const DAY_WATER = new RGBA(0.035, 0.2, 0.29);
+export const NIGHT_WATER = new RGBA(0.004, 0.022, 0.045);
+export const SUN_DIR = v3(0.073, 0.955, 0.287).normalize();
 
-class Lighting {
+export class Lighting {
   constructor(tank, night) {
     const { scene, surfaceY, depth } = tank;
     const floorY = tank.floorHeight(0, -depth * 0.45);
@@ -170,7 +179,7 @@ class Lighting {
 // The cursor in screen points (y up, origin bottom-left), with smoothed velocity
 // ---------------------------------------------------------------------------------------------
 
-class Cursor {
+export class Cursor {
   constructor() {
     this.screen = { x: -10000, y: -10000 };
     this.present = false;
@@ -198,7 +207,7 @@ class Cursor {
 // the glass, and ripples where the cursor stirs. Plain DOM, blended additively.
 // ---------------------------------------------------------------------------------------------
 
-class Overlay {
+export class Overlay {
   constructor(el) {
     this.el = el;
     el.innerHTML = '';
@@ -242,7 +251,7 @@ class Overlay {
 // of the glass on +z, so any screen point maps to a point on the glass and a ray into the tank.
 // ---------------------------------------------------------------------------------------------
 
-class Tank {
+export class Tank {
   constructor(app, screenW, screenH) {
     this.app = app;
     this.screenW = screenW;
@@ -906,10 +915,9 @@ class Tank {
   /** Free GPU resources of an object tree, except the shared per-species fish models. */
   static disposeObject(root) {
     root.traverse((o) => {
-      if (o.geometry && !Tank.sharedGeometry.has(o.geometry)) o.geometry.dispose();
+      if (o.geometry && !sharedGeometry.has(o.geometry)) o.geometry.dispose();
       if (o.material && !o.material.userData.shared) o.material.dispose();
       if (o.customDepthMaterial) o.customDepthMaterial.dispose();
     });
   }
 }
-Tank.sharedGeometry = new WeakSet();
