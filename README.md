@@ -19,6 +19,15 @@ reflections, fog for depth, animated caustics, HDR bloom and 4x MSAA. It uses ro
 core at 60 fps on an Apple Silicon laptop; Low Power mode (30 fps, no MSAA) uses about 15%.
 Everything (fish models, textures, plants, rocks, sand) is generated procedurally; there are no assets.
 
+## Web version
+
+A JavaScript + Three.js port runs in the browser: **https://zeblawrence.github.io/interactive-backgrounds/**
+
+It's a single page (`docs/index.html`, served by GitHub Pages) built from `web/src/` by `web/build.sh`.
+The same options as the menu bar app are in the fish button at the top right; `?night`, `?day`, `?shark`
+and `?hunt-now` in the URL work like the command-line flags below. See `PORTING.md` for how it maps
+onto the Swift code.
+
 ## Build & run
 
 Requires macOS 14+ and the Xcode command line tools.
