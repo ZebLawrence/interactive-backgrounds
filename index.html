@@ -2,11 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interactive Backgrounds</title>
-<meta http-equiv="refresh" content="0; url=fishbowl/html/">
-<link rel="canonical" href="fishbowl/html/">
+<meta name="description" content="Animated backgrounds that react to the mouse.">
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 48px 16px; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #f6f8fa; color: #1f2328; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  p { margin: 0 0 24px; color: #59636e; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li a { display: block; padding: 14px 16px; margin-bottom: 8px; border: 1px solid #d1d9e0; border-radius: 10px;
+    background: #fff; color: inherit; text-decoration: none; }
+  li a:hover, li a:focus-visible { border-color: #0969da; outline: none; }
+  li strong { display: block; color: #0969da; }
+  li span { color: #59636e; font-size: 14px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0d1117; color: #e6edf3; }
+    p, li span { color: #9198a1; }
+    li a { background: #151b23; border-color: #3d444d; }
+    li strong { color: #4493f8; }
+    li a:hover, li a:focus-visible { border-color: #4493f8; }
+  }
+</style>
 </head>
 <body>
-<p><a href="fishbowl/html/">Fishbowl</a></p>
+<main>
+  <h1>Interactive Backgrounds</h1>
+  <p>Animated backgrounds that react to the mouse.</p>
+  <ul>
+    <li><a href="fishbowl/html/"><strong>Fishbowl</strong><span>A 3D aquarium: fish school, flee a fast cursor, come to inspect a resting one and race for the food you drop in.</span></a></li>
+  </ul>
+</main>
 </body>
 </html>
