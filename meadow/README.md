@@ -19,7 +19,8 @@ for now; no native app yet.
 - **Sky**: stars of every colour and size, a Milky Way with a glowing core, cool outer arms and
   dark dust lanes threaded through it, a gibbous moon with a halo, shooting stars now and then,
   mist drifting over the grass, and a tree line of spruce, broadleaf and bare winter trees
-  silhouetted on the horizon before everything fades to black.
+  silhouetted on the horizon before everything fades to black. The moon is the real one: NASA's
+  Lunar Reconnaissance Orbiter colour and height maps wrapped on a sphere and lit by its own sun.
 - **Moonlight** (menu, `M`): turn the moon off for a darker meadow with brighter stars.
 - **Storm** (menu, `S`): rain, gusting wind, a low cloud ceiling, and lightning that forks down behind
   the trees and lights the whole meadow for an instant. The fireflies shelter in the grass until it
@@ -53,7 +54,8 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   the grass and ground shaders as point lights in their own colours, so blue ghosts cast blue light.
 - `sky.js` paints the Milky Way once onto an equirectangular canvas (core, arms, dust lanes, nebula
   tints) and renders the sky in a fragment shader (gradient, that haze map, three hashed star
-  layers with colour temperature and twinkle, the moon's halo, storm cloud), the moon as a canvas sprite, meteors as a streak
+  layers with colour temperature and twinkle, the moon's halo, storm cloud), the moon as a textured
+  sphere with a directional light for its phase, meteors as a streak
   quad on the sky sphere, and the tree line and hills as alpha-tested silhouettes in the fog. The
   tree line is drawn in metres (trunks, drooping branches with needle tufts, forking limbs, leaf
   clusters, bare twigs, bushes) onto an 8192-pixel mask, about 45 pixels per metre, so it stays
@@ -61,4 +63,7 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
 - `storm.js` has the rain (a point cloud that falls and wraps) and lightning (a bolt walked onto a
   canvas each strike, with a flickering flash that every shader reads).
 - Like Fishbowl, it renders at a fixed 30/60 fps, shader time wraps hourly with every frequency
-  quantised to that period, and there are no assets: every texture is drawn on a canvas at start.
+  quantised to that period, and every texture but two is drawn on a canvas at start. The exceptions
+  are the moon maps in `html/assets/` (`lroc_color_2k.jpg`, `ldem_3_8bit.jpg`), from NASA's
+  Scientific Visualization Studio CGI Moon Kit (https://svs.gsfc.nasa.gov/4720); credit: NASA's
+  Scientific Visualization Studio.

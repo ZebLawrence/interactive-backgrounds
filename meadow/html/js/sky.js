@@ -155,58 +155,58 @@ export class Sky {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The moon: a waxing gibbous with maria, drawn once onto a canvas
+// The moon: a sphere wrapped in NASA's Lunar Reconnaissance Orbiter colour map, with its height
+// map as a bump map, lit by its own sun so the phase and the relief along the terminator are
+// real. (Maps: NASA's Scientific Visualization Studio CGI Moon Kit, svs.gsfc.nasa.gov/4720.)
 // ---------------------------------------------------------------------------------------------
 
 export class Moon {
   constructor() {
-    const canvas = Art.image(256, 256, (ctx, w, h) => {
-      const cx = w / 2, cy = h / 2, r = 100;
-      const img = ctx.createImageData(w, h);
-      const d = img.data;
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const dx = (x - cx) / r, dy = (y - cy) / r;
-          const rr = Math.hypot(dx, dy);
-          const i = (y * w + x) * 4;
-          if (rr > 1) continue;
-          // Surface: bright highlands with a few broad, soft-edged maria and a scatter of craters.
-          const m = fbm2(dx * 1.5 + 5, dy * 1.5 + 9, 3);
-          const maria = clamp((m - 0.47) * 6, 0, 1) * (0.7 + 0.3 * fbm2(dx * 4 + 1, dy * 4 + 2, 2));
-          let v = 0.92 - maria * 0.5 - fbm2(dx * 6, dy * 6, 2) * 0.08;
-          for (const [cx2, cy2, cr] of [[0.35, -0.4, 0.07], [-0.2, 0.55, 0.09], [0.6, 0.3, 0.05], [-0.55, -0.1, 0.06], [0.1, 0.05, 0.04]]) {
-            const dd = Math.hypot(dx - cx2, dy - cy2) / cr;
-            if (dd < 1.3) v += dd < 0.75 ? -0.14 : (dd < 1 ? 0.12 : 0.04 * (1.3 - dd) / 0.3);
-          }
-          // Phase: lit from the right, the terminator an ellipse.
-          const nz = Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy));
-          const lit = dx * 0.92 + nz * 0.4;
-          v *= clamp(lit * 1.6 + 0.3, 0.06, 1);
-          const edge = clamp((1 - rr) * 12, 0, 1);
-          d[i] = (v * 235 + 20) | 0;
-          d[i + 1] = (v * 238 + 17) | 0;
-          d[i + 2] = (v * 245 + 10) | 0;
-          d[i + 3] = (edge * 255) | 0;
-        }
-      }
-      ctx.putImageData(img, 0, 0);
+    this.group = new THREE.Group();
+    const dir = G.uMoonDir.value.clone();
+    const distance = SKY_RADIUS * 0.98;
+    const radius = distance * Math.tan(1.55 * Math.PI / 180);
+    const loader = new THREE.TextureLoader();
+    const base = new URL('../assets/', import.meta.url).href;
+    this.colorMap = loader.load(base + 'lroc_color_2k.jpg');
+    this.colorMap.colorSpace = THREE.SRGBColorSpace;
+    this.colorMap.anisotropy = 8;
+    this.bumpMap = loader.load(base + 'ldem_3_8bit.jpg');
+    this.material = new THREE.MeshStandardMaterial({
+      map: this.colorMap, bumpMap: this.bumpMap, bumpScale: 0.35, roughness: 1, metalness: 0,
+      fog: false, transparent: true,
     });
-    this.texture = Art.texture(canvas);
-    this.material = new THREE.SpriteMaterial({ map: this.texture, transparent: true, depthWrite: false, fog: false, toneMapped: true });
-    this.sprite = new THREE.Sprite(this.material);
-    this.sprite.position.copy(G.uMoonDir.value).multiplyScalar(SKY_RADIUS * 0.98);
-    const size = SKY_RADIUS * 0.055;
-    this.sprite.scale.set(size, size, 1);
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 64), this.material);
+    this.mesh.position.copy(dir).multiplyScalar(distance);
+    // Turn the near side (the middle of the map, on the sphere's +x) to face the viewer.
+    const toViewer = dir.clone().negate();
+    this.mesh.quaternion.setFromUnitVectors(v3(1, 0, 0), toViewer);
+    this.mesh.renderOrder = -5;
+    this.group.add(this.mesh);
+
+    // The moon's sun: off to the right and a little toward us, for a waxing gibbous.
+    const right = unit(dir.clone().cross(v3(0, 1, 0)));
+    const sunDir = unit(right.multiplyScalar(0.9).add(toViewer.clone().multiplyScalar(0.55)).add(v3(0, 0.12, 0)));
+    this.sun = new THREE.DirectionalLight(0xf8f8ff, 2.6);
+    this.sun.position.copy(this.mesh.position).addScaledVector(sunDir, 200);
+    this.sun.target = this.mesh;
+    // A whisper of earthshine on the dark side.
+    this.earthshine = new THREE.AmbientLight(0x6f7fb0, 0.06);
+    this.group.add(this.sun, this.earthshine);
   }
 
   /** Fade with the moonlight setting and hide behind storm clouds. */
   update(moon, storm) {
     this.material.opacity = clamp(moon * (1 - storm), 0, 1);
-    this.material.color.setScalar(lerp(0.7, 1.0, moon));
-    this.sprite.visible = this.material.opacity > 0.01;
+    this.mesh.visible = this.material.opacity > 0.01;
   }
 
-  dispose() { this.texture.dispose(); this.material.dispose(); }
+  dispose() {
+    this.colorMap.dispose();
+    this.bumpMap.dispose();
+    this.material.dispose();
+    this.mesh.geometry.dispose();
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

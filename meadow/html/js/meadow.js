@@ -92,7 +92,7 @@ export class Meadow {
     this.mist = new Mist(layout.halfWidth);
     this.rain = new Rain(groundHeight);
     this.lightning = new Lightning();
-    this.scene.add(this.sky.mesh, this.moonSprite.sprite, this.meteors.mesh, this.horizon.group, this.lightning.mesh,
+    this.scene.add(this.sky.mesh, this.moonSprite.group, this.meteors.mesh, this.horizon.group, this.lightning.mesh,
       this.ground.mesh, this.grass.group, this.mist.group, this.rain.points);
     this.swarm = null;
     this.setDensity(settings.density);
