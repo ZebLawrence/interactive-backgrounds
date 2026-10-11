@@ -187,7 +187,8 @@ export class Moon {
     // The moon's sun: off to the right and a little toward us, for a waxing gibbous.
     const right = unit(dir.clone().cross(v3(0, 1, 0)));
     const sunDir = unit(right.multiplyScalar(0.9).add(toViewer.clone().multiplyScalar(0.55)).add(v3(0, 0.12, 0)));
-    this.sun = new THREE.DirectionalLight(0xf8f8ff, 2.6);
+    // Bright enough that the lit surface spills a little into the bloom pass.
+    this.sun = new THREE.DirectionalLight(0xf8f8ff, 4.6);
     this.sun.position.copy(this.mesh.position).addScaledVector(sunDir, 200);
     this.sun.target = this.mesh;
     // A whisper of earthshine on the dark side.
