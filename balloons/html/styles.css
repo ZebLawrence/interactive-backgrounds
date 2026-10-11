@@ -1,0 +1,35 @@
+/* Balloon Dawn — page layout and the menu. */
+
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #2a1f3a; }
+body { font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; color: #eef0f6; }
+canvas#valley { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+
+#ui { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  transition: opacity .6s; }
+#ui.idle:not(.open) { opacity: 0; }
+#menuBtn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,.16); cursor: pointer;
+  background: rgba(14,18,34,.5); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: #ffd9a8;
+  display: grid; place-items: center; padding: 0; }
+#menuBtn:hover { background: rgba(40,46,80,.6); }
+#menuBtn svg { width: 22px; height: 22px; }
+#menu { min-width: 236px; max-height: calc(100vh - 80px); overflow: auto; padding: 6px; border-radius: 12px;
+  background: rgba(12,16,30,.74); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,.14); box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+#menu[hidden] { display: none; }
+#menu .hdr { padding: 6px 10px 8px; color: rgba(238,240,246,.6); font-weight: 600; }
+#menu hr { border: 0; border-top: 1px solid rgba(255,255,255,.12); margin: 5px 4px; }
+#menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#menu button:hover, #menu button:focus-visible { background: rgba(255,170,90,.25); outline: none; }
+#menu button .check { width: 14px; flex: none; text-align: center; }
+#menu button .label { flex: 1; }
+#menu kbd { font: inherit; color: rgba(238,240,246,.5); }
+#density { padding-left: 22px; }
+#density[hidden] { display: none; }
+#hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 14px; border-radius: 20px;
+  background: rgba(12,16,30,.5); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: rgba(238,240,246,.85);
+  pointer-events: none; transition: opacity 1.2s; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; }
+#hint.gone { opacity: 0; }
+#error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; }
+#error[hidden] { display: none; }

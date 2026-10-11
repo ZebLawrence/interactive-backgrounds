@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Balloon Dawn</title>
+<meta name="description" content="An interactive 3D hot-air balloon fiesta drifting over a misty valley at sunrise: your cursor is the wind, a click fires a burner, and at night the balloons glow like lanterns.">
+<meta name="theme-color" content="#2a1f3a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%88%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="valley"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Balloon Dawn menu" aria-expanded="false" title="Balloon Dawn">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c-3.9 0-7 3.3-7 7.4 0 3.6 2.5 6.6 5.6 7.3l-.6 1.3h4l-.6-1.3c3.1-.7 5.6-3.7 5.6-7.3C19 5.3 15.9 2 12 2Zm-1.2 17h2.4l.6 3h-3.6l.6-3Z"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Balloon Dawn</div>
+    <hr>
+    <button data-act="burn"><span class="check"></span><span class="label">Fire a Burner</span><kbd>B</kbd></button>
+    <button data-act="burnAll"><span class="check"></span><span class="label">All Burn</span><kbd>A</kbd></button>
+    <button data-act="density"><span class="check">▸</span><span class="label">Balloons</span></button>
+    <div id="density" hidden>
+      <button data-density="few"><span class="check"></span><span class="label">A handful</span></button>
+      <button data-density="normal"><span class="check"></span><span class="label">A fiesta</span></button>
+      <button data-density="many"><span class="check"></span><span class="label">The whole sky</span></button>
+    </div>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Morning</span></button>
+    <hr>
+    <button data-toggle="nightGlow"><span class="check"></span><span class="label">Night Glow</span><kbd>N</kbd></button>
+    <button data-toggle="birds"><span class="check"></span><span class="label">Swallows</span></button>
+    <button data-toggle="clickToBurn"><span class="check"></span><span class="label">Click to Burn</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Move the cursor to stir the wind · rest it on a balloon and the crew wave · click a balloon to fire its burner</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
