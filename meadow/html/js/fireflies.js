@@ -15,23 +15,23 @@ import { G, LIGHT_N } from './shaders.js';
 export const FireflySpecies = {
   dipper: {
     id: 'dipper', name: 'Big Dipper', color: new RGBA(0.88, 1.0, 0.40),
-    count: 48, speed: 0.45, agility: 1.6, height: [0.3, 1.6], period: [5.2, 7.0],
+    count: 48, speed: 0.28, agility: 1.1, height: [0.3, 1.6], period: [5.2, 7.0],
     light: 0.7, curious: 0.4, sync: false, zone: [1.5, 20],
   },
   synchronous: {
     id: 'synchronous', name: 'Synchronous', color: new RGBA(0.98, 1.0, 0.50),
-    count: 64, speed: 0.55, agility: 2.0, height: [0.4, 2.0], period: [8.5, 9.5],
-    light: 0.5, curious: 0.85, sync: true, zone: [1.5, 22],
+    count: 64, speed: 0.33, agility: 1.4, height: [0.4, 2.0], period: [8.5, 9.5],
+    light: 0.55, curious: 0.85, sync: true, zone: [1.5, 22],
   },
   photuris: {
     id: 'photuris', name: 'Photuris', color: new RGBA(0.62, 1.0, 0.62),
-    count: 20, speed: 1.0, agility: 3.0, height: [1.0, 3.2], period: [2.6, 3.6],
-    light: 0.4, curious: 0.25, sync: false, zone: [2, 28],
+    count: 20, speed: 0.6, agility: 2.0, height: [1.0, 3.2], period: [2.6, 3.6],
+    light: 0.45, curious: 0.25, sync: false, zone: [2, 28],
   },
   ghost: {
     id: 'ghost', name: 'Blue ghost', color: new RGBA(0.66, 0.78, 1.0),
-    count: 16, speed: 0.2, agility: 1.0, height: [0.08, 0.45], period: [18, 30],
-    light: 0.15, curious: 0.15, sync: false, zone: [1.2, 14],
+    count: 16, speed: 0.12, agility: 0.7, height: [0.08, 0.45], period: [18, 30],
+    light: 0.7, curious: 0.15, sync: false, zone: [1.2, 14],
   },
 };
 FireflySpecies.all = [FireflySpecies.dipper, FireflySpecies.synchronous, FireflySpecies.photuris, FireflySpecies.ghost];
@@ -86,7 +86,7 @@ export class Firefly {
     this.gatherTimer = 0;
     this.gatherDepth = 0;
     this.bobPhase = rnd(0, TAU);
-    this.bobRate = rnd(1.5, 3);
+    this.bobRate = rnd(0.8, 1.6);
     this.brightness = 0;
     this.coupling = 0;
     this.sumSin = 0;
@@ -155,7 +155,7 @@ export class Firefly {
         this.goalTimer -= dt;
         if (this.goalTimer <= 0 || this.pos.distanceTo(this.goal) < 0.3) {
           this.goal.copy(this.randomPoint(meadow));
-          this.goalTimer = rnd(3, 8);
+          this.goalTimer = rnd(5, 12);
         }
         break;
       case 'gather': {
@@ -170,20 +170,20 @@ export class Firefly {
         this.goal.copy(c).add(this.gatherOffset);
         const minY = meadow.groundHeight(this.goal.x, this.goal.z) + 0.2;
         if (this.goal.y < minY) this.goal.y = minY;
-        speed = Math.max(sp.speed, 0.9);
-        agility = sp.agility + 1;
+        speed = Math.max(sp.speed, 0.55);
+        agility = sp.agility + 0.6;
         break;
       }
       case 'flee':
         this.fleeTimer -= dt;
         this.goal.copy(this.pos).addScaledVector(this.fleeDir, 3);
-        speed = 2.6;
-        agility = 6;
+        speed = 1.8;
+        agility = 4;
         if (this.fleeTimer <= 0) { this.mode = 'wander'; this.goalTimer = 0; }
         break;
       case 'hide':
         this.goal.set(this.pos.x, meadow.groundHeight(this.pos.x, this.pos.z) + 0.1, this.pos.z);
-        speed = 0.5;
+        speed = 0.35;
         break;
     }
 
@@ -212,7 +212,7 @@ export class Firefly {
     this.phase -= Math.floor(this.phase);
     this.updateLantern(dt, storm);
     // The Big Dipper climbs as it flashes, drawing its "J" in the air.
-    if (sp.id === 'dipper' && this.brightness > 0 && this.dark <= 0) this.vel.y += dt * 1.6;
+    if (sp.id === 'dipper' && this.brightness > 0 && this.dark <= 0) this.vel.y += dt * 1.0;
 
     this.pos.addScaledVector(this.vel, dt);
     this.bobPhase += dt * this.bobRate;
@@ -339,16 +339,16 @@ export class Swarm {
       this.positions.set([p.x, p.y, p.z], i * 3);
       this.bright[i] = f.brightness;
       const light = f.brightness * f.species.light;
-      if (light > 0.02) lights.push({ p, w: light, score: light / (1 + p.distanceToSquared(meadow.camera.position) / 60) });
+      if (light > 0.02) lights.push({ p, w: light, c: f.species.color.vec, score: light / (1 + p.distanceToSquared(meadow.camera.position) / 60) });
     });
     const geo = this.points.geometry;
     geo.attributes.position.needsUpdate = true;
     geo.attributes.aBright.needsUpdate = true;
     lights.sort((a, b) => b.score - a.score);
-    const u = G.uLights.value;
+    const u = G.uLights.value, uc = G.uLightCol.value;
     for (let i = 0; i < LIGHT_N; i++) {
       const l = lights[i];
-      if (l) u[i].set(l.p.x, l.p.y, l.p.z, l.w); else u[i].set(0, 0, 0, 0);
+      if (l) { u[i].set(l.p.x, l.p.y, l.p.z, l.w); uc[i].copy(l.c); } else u[i].set(0, 0, 0, 0);
     }
   }
 

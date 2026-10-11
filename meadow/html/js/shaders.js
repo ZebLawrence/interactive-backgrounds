@@ -20,15 +20,16 @@ export const G = {
   uTrail: { value: Array.from({ length: TRAIL_N }, () => new THREE.Vector4()) },
   // Expanding rings from claps: (x, z, radius, strength).
   uRings: { value: Array.from({ length: RING_N }, () => new THREE.Vector4()) },
-  // The brightest fireflies: (x, y, z, light).
+  // The brightest fireflies: (x, y, z, light) and each one's colour.
   uLights: { value: Array.from({ length: LIGHT_N }, () => new THREE.Vector4()) },
+  uLightCol: { value: Array.from({ length: LIGHT_N }, () => new THREE.Vector3()) },
   uMoon: { value: 1 },
   uMoonDir: { value: v3(0.42, 0.26, -0.88).normalize() },
   uMoonColor: { value: v3(0.55, 0.65, 0.9) },
   uSkyLight: { value: v3(0.09, 0.11, 0.18) },
   uStorm: { value: 0 },
   uFlash: { value: 0 },
-  uFogColor: { value: v3(0.05, 0.06, 0.1) },
+  uFogColor: { value: v3(0, 0, 0) },
   uFogNear: { value: 15 },
   uFogFar: { value: 160 },
 };
@@ -86,31 +87,29 @@ ${Q}
 vec2 windAt(vec2 p, float phase) {
   float t = uTime;
   float along = dot(p, uWindDir), across = dot(p, vec2(uWindDir.y, -uWindDir.x));
-  float w = 0.55 + 0.45 * sin(t * q(1.1) - along * 0.35 + phase)
-          + 0.3 * sin(t * q(2.3) - along * 0.9 + across * 0.5 + phase * 1.7)
-          + 0.18 * sin(t * q(0.37) - along * 0.08 + across * 0.11);
-  vec2 flutter = vec2(sin(t * q(3.1) + phase * 2.0), cos(t * q(2.6) + phase)) * 0.08;
+  float w = 0.55 + 0.45 * sin(t * q(0.5) - along * 0.35 + phase)
+          + 0.3 * sin(t * q(1.05) - along * 0.9 + across * 0.5 + phase * 1.7)
+          + 0.18 * sin(t * q(0.17) - along * 0.08 + across * 0.11);
+  vec2 flutter = vec2(sin(t * q(1.4) + phase * 2.0), cos(t * q(1.15) + phase)) * 0.08;
   return (uWindDir * w + flutter) * uWind;
 }
 `;
 
-/** Warm light from the brightest fireflies falling on a point. */
+/** Light from the brightest fireflies falling on a point, in each one's own colour. */
 export const LIGHTS_HEAD = `
-uniform vec4 uLights[${LIGHT_N}];
-float fireflyLight(vec3 p) {
-  float glow = 0.0;
+uniform vec4 uLights[${LIGHT_N}]; uniform vec3 uLightCol[${LIGHT_N}];
+vec3 fireflyLight(vec3 p) {
+  vec3 glow = vec3(0.0);
   for (int i = 0; i < ${LIGHT_N}; i++) {
     vec4 L = uLights[i];
     if (L.w <= 0.0) continue;
     vec3 d = L.xyz - p;
     float r2 = dot(d, d);
-    glow += L.w * max(1.0 / (1.0 + r2 * 14.0) - 1.0 / (1.0 + 4.0 * 14.0), 0.0);
+    glow += uLightCol[i] * (L.w * max(1.0 / (1.0 + r2 * 14.0) - 1.0 / (1.0 + 4.0 * 14.0), 0.0));
   }
   return glow;
 }
 `;
-
-export const FIREFLY_LIGHT_COLOR = 'vec3(1.0, 0.82, 0.32)';
 
 /** Moon, sky and lightning on a surface with normal n, before firefly light and fog. */
 export const SHADE_HEAD = `

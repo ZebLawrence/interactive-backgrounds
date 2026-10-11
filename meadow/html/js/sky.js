@@ -2,7 +2,7 @@
 // hills on the horizon, and the mist drifting over the grass.
 
 import * as THREE from 'three';
-import { TAU, rnd, randInt, pick, coin, clamp, lerp, fbm2, v3, unit, Art, quantize } from './util.js';
+import { TAU, rnd, randInt, pick, coin, clamp, lerp, smoothstep, fbm2, v3, unit, Art, quantize } from './util.js';
 import { G, Q } from './shaders.js';
 
 export const SKY_RADIUS = 480;
@@ -17,15 +17,72 @@ float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a
 `;
 
 // ---------------------------------------------------------------------------------------------
-// Sky dome
+// Sky dome. The Milky Way is painted once onto an equirectangular canvas (its glowing core, the
+// cooler outer arms, layered dark dust lanes and a few tinted nebulae); the stars are hashed in
+// the shader so they stay crisp at any resolution, each with its own colour and size.
 // ---------------------------------------------------------------------------------------------
+
+/** The plane of the galaxy, tilted so the band crosses the sky in front of the viewer. */
+const MILKY_WAY_NORMAL = v3(0.6, 0.76, 0.24).normalize();
+
+function milkyWayCanvas(w = 1536, h = 768) {
+  const N = MILKY_WAY_NORMAL;
+  // A basis in the plane of the band, to measure position along it.
+  const T1 = unit(v3(0, 0, -1).sub(N.clone().multiplyScalar(N.z * -1)));
+  const T2 = N.clone().cross(T1);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const d = img.data;
+  const sat = (x) => clamp(x, 0, 1);
+  for (let y = 0; y < h; y++) {
+    const lat = (0.5 - (y + 0.5) / h) * Math.PI;
+    const cl = Math.cos(lat), sl = Math.sin(lat);
+    for (let x = 0; x < w; x++) {
+      const lon = ((x + 0.5) / w - 0.5) * TAU;
+      const dx = cl * Math.cos(lon), dy = sl, dz = cl * Math.sin(lon);
+      const b = dx * N.x + dy * N.y + dz * N.z;
+      const along = Math.atan2(dx * T2.x + dy * T2.y + dz * T2.z, dx * T1.x + dy * T1.y + dz * T1.z);
+      const core = Math.exp(-(b * b) / 0.012);
+      const wide = Math.exp(-(b * b) / 0.09);
+      // Mottled brightness along the band, big patches and finer knots.
+      const patches = fbm2(along * 1.3 + 2, b * 5 + 9, 3);
+      const knots = fbm2(along * 3.5, b * 14 + 3, 4);
+      let haze = wide * 0.28 * (0.3 + patches) + core * (0.35 + 1.0 * knots * knots);
+      // Dust: dark lanes threaded through the core, and the great rift down its middle.
+      const lanes = fbm2(along * 6 + 7, b * 26 + 1, 4);
+      haze *= 1 - 0.85 * smoothstep(0.52, 0.7, lanes) * core;
+      const riftCentre = 0.04 * Math.sin(along * 2.2 + 1) + 0.02 * Math.sin(along * 5.1);
+      const rift = Math.exp(-Math.pow((b - riftCentre) / 0.03, 2)) * (0.35 + 0.65 * fbm2(along * 4 + 5, 1.5, 3));
+      haze *= 1 - 0.7 * rift;
+      // Colour: a warm bulge, cooler blue-white arms, with pink and teal nebulae here and there.
+      const warmth = core * (0.35 + 0.65 * patches);
+      let r = lerp(0.62, 1.0, warmth), g = lerp(0.72, 0.9, warmth), bl = lerp(1.0, 0.72, warmth);
+      const pink = smoothstep(0.62, 0.8, fbm2(along * 3 + 11, b * 12 + 5, 3)) * core;
+      const teal = smoothstep(0.64, 0.82, fbm2(along * 2.6 + 23, b * 10 + 17, 3)) * wide;
+      r += pink * 0.5; g -= pink * 0.15; bl += pink * 0.1;
+      g += teal * 0.35; bl += teal * 0.3; r -= teal * 0.15;
+      const i = (y * w + x) * 4;
+      d[i] = sat(r * haze * 0.9) * 255;
+      d[i + 1] = sat(g * haze * 0.9) * 255;
+      d[i + 2] = sat(bl * haze * 0.9) * 255;
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
 
 export class Sky {
   constructor() {
+    this.hazeTexture = Art.texture(milkyWayCanvas(), { srgb: false });
+    this.hazeTexture.wrapS = THREE.RepeatWrapping;
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: G.uTime, uMoon: G.uMoon, uMoonDir: G.uMoonDir, uStorm: G.uStorm, uFlash: G.uFlash, uFogColor: G.uFogColor,
-        uMilkyWay: { value: v3(0.55, 0.35, 0.76).normalize() },
+        uHaze: { value: this.hazeTexture },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -33,35 +90,43 @@ export class Sky {
         varying vec3 vDir;
         void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uMoon, uStorm, uFlash; uniform vec3 uMoonDir, uFogColor, uMilkyWay;
+        uniform float uTime, uMoon, uStorm, uFlash; uniform vec3 uMoonDir, uFogColor; uniform sampler2D uHaze;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
-        float starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
+        // One layer of stars on a grid of cells: most faint and white, a few bright, each with its
+        // own colour from blue-white through yellow to orange, and a soft halo on the brightest.
+        vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
           vec2 g = uv * vec2(cells * 2.0, cells);
           vec2 cell = floor(g), f = fract(g);
-          float r1 = hash21(cell + seed), r2 = hash21(cell + seed + 7.1), r3 = hash21(cell + seed + 3.3);
+          float r1 = hash21(cell + seed), r2 = hash21(cell + seed + 7.1), r3 = hash21(cell + seed + 3.3), r4 = hash21(cell + seed + 9.7);
+          if (r1 < threshold) return vec3(0.0);
           vec2 off = vec2(r2, r3) * 0.7 + 0.15;
           float dist = length(f - off);
-          float bright = pow(r1, 7.0) * gain;
-          float tw = 0.7 + 0.3 * sin(uTime * q(1.5 + r3 * 4.0) + r2 * 6.2831);
-          return smoothstep(0.14, 0.0, dist) * bright * tw * step(threshold, r1);
+          float bright = pow((r1 - threshold) / (1.0 - threshold), 6.0) * gain + 0.03;
+          float tw = 0.75 + 0.25 * sin(uTime * q(0.8 + r3 * 2.5) + r2 * 6.2831);
+          vec3 tint = r4 < 0.22 ? vec3(0.72, 0.82, 1.0) : r4 < 0.6 ? vec3(0.95, 0.96, 1.0) : r4 < 0.86 ? vec3(1.0, 0.9, 0.72) : vec3(1.0, 0.72, 0.5);
+          float size = 0.07 + 0.12 * pow(bright / (gain + 0.03), 0.5);
+          float star = smoothstep(size, 0.0, dist) * bright * tw;
+          star += exp(-dist * dist / 0.03) * bright * 0.12 * step(0.985, r1);
+          return tint * star;
         }
         void main() {
           vec3 d = normalize(vDir);
           float h = d.y;
-          vec3 zenith = vec3(0.004, 0.007, 0.022);
-          vec3 horizon = vec3(0.05, 0.065, 0.125);
+          vec3 zenith = vec3(0.003, 0.005, 0.016);
+          vec3 horizon = vec3(0.035, 0.045, 0.09);
           vec3 col = mix(horizon, zenith, pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
           // Faint airglow low on the horizon.
           col += vec3(0.02, 0.045, 0.035) * exp(-max(h, 0.0) * 14.0);
 
           vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-          float band = dot(d, uMilkyWay);
-          float mw = exp(-band * band / 0.02) * (0.35 + 0.65 * fbm(vec2(atan(d.z, d.x) * 2.5, d.y * 7.0)));
-          mw *= smoothstep(-0.05, 0.25, h);
-          float stars = starLayer(uv, 420.0, 0.8, 1.6, 0.0) + starLayer(uv, 900.0, 0.86, 0.9, 5.0) * (0.6 + mw);
-          col += vec3(0.09, 0.10, 0.16) * mw * 0.7;
-          col += vec3(0.9, 0.93, 1.0) * stars * (1.0 - uMoon * 0.35);
+          vec3 haze = texture2D(uHaze, uv).rgb;
+          float hazeAmt = dot(haze, vec3(0.33));
+          vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0)
+                     + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                     + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
+          col += haze * 0.3;
+          col += stars * (1.0 - uMoon * 0.3);
 
           // The moon's halo.
           float cosm = dot(d, uMoonDir);
@@ -76,8 +141,8 @@ export class Sky {
           col = mix(col, stormCol, uStorm);
           col += vec3(0.5, 0.55, 0.75) * uFlash * (1.0 - uStorm) * 0.3;
 
-          // Meet the fogged ground seamlessly at the horizon.
-          col = mix(col, uFogColor, smoothstep(0.12, -0.02, h));
+          // Fade into the fog just above the horizon, so the land meets the sky seamlessly.
+          col = mix(col, uFogColor, smoothstep(0.09, 0.0, h));
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -86,7 +151,7 @@ export class Sky {
     this.mesh.renderOrder = -10;
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); }
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -345,8 +410,8 @@ export class Mist {
   update(dt, halfWidth, wind, storm) {
     const dir = G.uWindDir.value;
     for (const s of this.sprites) {
-      s.position.x += dir.x * wind * s.userData.rate * 0.4 * dt;
-      s.position.z += dir.y * wind * s.userData.rate * 0.1 * dt;
+      s.position.x += dir.x * wind * s.userData.rate * 0.2 * dt;
+      s.position.z += dir.y * wind * s.userData.rate * 0.05 * dt;
       const limit = halfWidth(-s.position.z) + 14;
       if (s.position.x > limit) s.position.x = -limit;
       if (s.position.x < -limit) s.position.x = limit;

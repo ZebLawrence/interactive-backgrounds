@@ -3,12 +3,12 @@
 // Everything moves on the GPU; the CPU only places the instances once.
 
 import * as THREE from 'three';
-import { TAU, rnd, pick, lerp, clamp, Art } from './util.js';
-import { G, FOG_HEAD, PUSH_HEAD, WIND_HEAD, LIGHTS_HEAD, SHADE_HEAD, FIREFLY_LIGHT_COLOR } from './shaders.js';
+import { TAU, rnd, pick, lerp, clamp, fbm2, Art } from './util.js';
+import { G, FOG_HEAD, PUSH_HEAD, WIND_HEAD, LIGHTS_HEAD, SHADE_HEAD } from './shaders.js';
 
 const SHARED_UNIFORMS = () => ({
   uTime: G.uTime, uWindDir: G.uWindDir, uWind: G.uWind,
-  uCursor: G.uCursor, uTrail: G.uTrail, uRings: G.uRings, uLights: G.uLights,
+  uCursor: G.uCursor, uTrail: G.uTrail, uRings: G.uRings, uLights: G.uLights, uLightCol: G.uLightCol,
   uMoon: G.uMoon, uMoonDir: G.uMoonDir, uMoonColor: G.uMoonColor, uSkyLight: G.uSkyLight, uFlash: G.uFlash, uStorm: G.uStorm,
   uFogColor: G.uFogColor, uFogNear: G.uFogNear, uFogFar: G.uFogFar,
 });
@@ -55,6 +55,53 @@ function bladeGeometry(rows = 4) {
   return g;
 }
 
+/**
+ * The surface of a blade, tiling along its length: a grooved midrib with raised edges, parallel
+ * veins that wander a little, and fine longitudinal streaks. Grey level is height; the shader
+ * reads it for colour and tilts the normal across the blade from its slope.
+ */
+function bladeSurface() {
+  const w = 128, h = 512;
+  return Art.image(w, h, (ctx) => {
+    const img = ctx.createImageData(w, h);
+    const d = img.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        // Streaks: noise stretched along the blade, tileable top to bottom.
+        const ang = y / h * TAU;
+        const streak = fbm2(x * 0.09, Math.cos(ang) * 1.5, 3) * 0.6 + fbm2(x * 0.25 + 9, Math.sin(ang) * 1.5 + 4, 2) * 0.4;
+        const v = 0.42 + 0.3 * streak;
+        const i = (y * w + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = v * 255;
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    // Veins: raised lines either side of the midrib, each wandering slightly, with a shadow.
+    ctx.lineCap = 'round';
+    for (let k = -4; k <= 4; k++) {
+      if (k === 0) continue;
+      const x0 = w / 2 + k * w * 0.1;
+      ctx.strokeStyle = `rgba(255,255,255,${0.55 + 0.3 * (Math.abs(k) % 2)})`;
+      ctx.lineWidth = Math.abs(k) % 2 ? 2.2 : 3.0;
+      ctx.beginPath();
+      for (let y = 0; y <= h; y += 8) ctx.lineTo(x0 + 1.5 * Math.sin(y / h * TAU * 2 + k), y);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let y = 0; y <= h; y += 8) ctx.lineTo(x0 + 2.4 + 1.5 * Math.sin(y / h * TAU * 2 + k), y);
+      ctx.stroke();
+    }
+    // The midrib: a dark groove with a bright ridge each side.
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(w / 2 - 3.5, 0, 7, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(w / 2 - 6, 0, 2.5, h);
+    ctx.fillRect(w / 2 + 3.5, 0, 2.5, h);
+  });
+}
+
 /** Two crossed blades for a flower: stem and head in one texture cell. */
 function flowerGeometry() {
   const pos = [], uv = [], idx = [];
@@ -82,63 +129,126 @@ function flowerGeometry() {
 
 /** An atlas of four wildflowers on stems: daisy, buttercup, clover and cow parsley. */
 function flowerAtlas() {
-  const cell = 128, h = 256;
+  const cell = 256, h = 512;
   return Art.image(cell * 4, h, (ctx) => {
     const stem = (cx, top) => {
       ctx.strokeStyle = '#3a5a2a';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(cx, h);
-      ctx.quadraticCurveTo(cx + 6, h * 0.6, cx, top);
+      ctx.quadraticCurveTo(cx + 12, h * 0.6, cx, top);
       ctx.stroke();
-      // A leaf or two.
+      ctx.strokeStyle = 'rgba(120,170,90,0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - 2, h);
+      ctx.quadraticCurveTo(cx + 10, h * 0.6, cx - 2, top);
+      ctx.stroke();
+      // A leaf with a midrib.
       ctx.fillStyle = '#3f6a2e';
       ctx.beginPath();
-      ctx.ellipse(cx + 12, h * 0.72, 14, 5, -0.6, 0, TAU);
+      ctx.ellipse(cx + 24, h * 0.72, 28, 10, -0.6, 0, TAU);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(160,200,120,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + 2, h * 0.72 + 14);
+      ctx.lineTo(cx + 46, h * 0.72 - 14);
+      ctx.stroke();
     };
-    const petals = (cx, cy, n, r, len, color, centre) => {
-      ctx.fillStyle = color;
+    /** Petals with veins running out from the base, and a darker base where they meet. */
+    const petals = (cx, cy, n, r, len, wide, color, veinColor) => {
       for (let i = 0; i < n; i++) {
-        const a = i / n * TAU;
+        const a = i / n * TAU + (i % 2) * 0.08;
+        const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+        const g = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r + len);
+        g.addColorStop(0, veinColor);
+        g.addColorStop(0.35, color);
+        g.addColorStop(1, color);
+        ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.ellipse(cx + Math.cos(a) * r, cy + Math.sin(a) * r, len, len * 0.42, a, 0, TAU);
+        ctx.ellipse(px, py, len, len * wide, a, 0, TAU);
+        ctx.fill();
+        // Three veins along the petal.
+        ctx.strokeStyle = veinColor;
+        ctx.lineWidth = 1.2;
+        for (const off of [-0.3, 0, 0.3]) {
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * r * 0.5, cy + Math.sin(a) * r * 0.5);
+          const ex = px + Math.cos(a) * len * 0.8 - Math.sin(a) * len * wide * off;
+          const ey = py + Math.sin(a) * len * 0.8 + Math.cos(a) * len * wide * off;
+          ctx.quadraticCurveTo(px - Math.sin(a) * len * wide * off * 0.6, py + Math.cos(a) * len * wide * off * 0.6, ex, ey);
+          ctx.stroke();
+        }
+      }
+    };
+    /** A disc of tiny florets, like a daisy's eye. */
+    const disc = (cx, cy, r, colors) => {
+      ctx.fillStyle = colors[0];
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TAU);
+      ctx.fill();
+      // Florets spiral outward (Fermat's spiral), darker toward the middle.
+      for (let k = 0; k < 90; k++) {
+        const rr = r * 0.95 * Math.sqrt(k / 90), a = k * 2.39996;
+        ctx.fillStyle = colors[1 + ((k * 7) % (colors.length - 1))];
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, r * 0.085 + rr * 0.04, 0, TAU);
         ctx.fill();
       }
-      ctx.fillStyle = centre;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.55, 0, TAU);
-      ctx.fill();
     };
     // Daisy
-    stem(cell * 0.5, 50);
-    petals(cell * 0.5, 44, 13, 18, 16, '#f2f0e4', '#e8c23a');
-    // Buttercup
-    stem(cell * 1.5, 56);
-    petals(cell * 1.5, 50, 5, 11, 15, '#f4d23c', '#d7a81f');
-    // Clover: a ball of tiny florets
-    stem(cell * 2.5, 58);
-    for (let i = 0; i < 40; i++) {
-      const a = rnd(0, TAU), rr = Math.sqrt(Math.random()) * 20;
-      ctx.fillStyle = pick(['#c58ad6', '#b476c8', '#d9a6e6', '#e6c2ee']);
+    stem(cell * 0.5, 100);
+    petals(cell * 0.5, 88, 15, 36, 32, 0.4, '#f2f0e4', '#cfc9b2');
+    disc(cell * 0.5, 88, 20, ['#c9a52a', '#e8c23a', '#f0d35c', '#b8931f']);
+    // Buttercup: glossy petals with a darker heart and a ring of stamens
+    stem(cell * 1.5, 112);
+    petals(cell * 1.5, 100, 5, 22, 30, 0.75, '#f4d23c', '#d9a51a');
+    ctx.fillStyle = '#b48a14';
+    ctx.beginPath();
+    ctx.arc(cell * 1.5, 100, 11, 0, TAU);
+    ctx.fill();
+    for (let k = 0; k < 18; k++) {
+      const a = k / 18 * TAU, rr = 8 + (k % 2) * 4;
+      ctx.fillStyle = k % 2 ? '#f7e27a' : '#8f6b0c';
       ctx.beginPath();
-      ctx.ellipse(cell * 2.5 + Math.cos(a) * rr, 48 + Math.sin(a) * rr * 0.8, 6, 3, a, 0, TAU);
+      ctx.arc(cell * 1.5 + Math.cos(a) * rr, 100 + Math.sin(a) * rr, 2.2, 0, TAU);
       ctx.fill();
     }
-    // Cow parsley: an umbel of small white clusters
-    stem(cell * 3.5, 48);
-    ctx.strokeStyle = '#4a6a34';
-    ctx.lineWidth = 2;
-    for (let i = -3; i <= 3; i++) {
-      const x = cell * 3.5 + i * 13, y = 30 + Math.abs(i) * 5;
+    // Clover: a ball of tiny florets, each with a pale tip
+    stem(cell * 2.5, 116);
+    for (let i = 0; i < 60; i++) {
+      const a = rnd(0, TAU), rr = Math.sqrt(Math.random()) * 40;
+      const x = cell * 2.5 + Math.cos(a) * rr, y = 96 + Math.sin(a) * rr * 0.8;
+      ctx.fillStyle = pick(['#b476c8', '#a265b8', '#c58ad6']);
       ctx.beginPath();
-      ctx.moveTo(cell * 3.5, 48);
+      ctx.ellipse(x, y, 11, 5, a, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(240,215,250,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(x + Math.cos(a) * 6, y + Math.sin(a) * 6, 4, 2.5, a, 0, TAU);
+      ctx.fill();
+    }
+    // Cow parsley: an umbel of small white clusters on spokes
+    stem(cell * 3.5, 96);
+    ctx.strokeStyle = '#4a6a34';
+    ctx.lineWidth = 3;
+    for (let i = -3; i <= 3; i++) {
+      const x = cell * 3.5 + i * 26, y = 60 + Math.abs(i) * 10;
+      ctx.beginPath();
+      ctx.moveTo(cell * 3.5, 96);
       ctx.lineTo(x, y);
       ctx.stroke();
-      for (let k = 0; k < 7; k++) {
+      for (let k = 0; k < 9; k++) {
+        const fx = x + rnd(-16, 16), fy = y + rnd(-10, 10);
         ctx.fillStyle = pick(['#f4f2ea', '#e8e6dc', '#fbfaf5']);
         ctx.beginPath();
-        ctx.arc(x + rnd(-8, 8), y + rnd(-5, 5), 3.2, 0, TAU);
+        ctx.arc(fx, fy, 6, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(200,190,150,0.7)';
+        ctx.beginPath();
+        ctx.arc(fx, fy, 1.8, 0, TAU);
         ctx.fill();
       }
     }
@@ -200,40 +310,54 @@ export class GrassField {
     geo.instanceCount = count;
     this.bladeCount = count;
 
+    this.bladeTexture = Art.texture(bladeSurface(), { repeat: true, srgb: false });
     this.bladeMaterial = new THREE.ShaderMaterial({
-      uniforms: SHARED_UNIFORMS(),
+      uniforms: { ...SHARED_UNIFORMS(), uSurface: { value: this.bladeTexture } },
       side: THREE.DoubleSide,
       vertexShader: `
         attribute vec4 aInst; attribute vec4 aInst2;
-        varying vec3 vWorld; varying vec3 vNormal; varying float vT; varying float vVar;
+        varying vec3 vWorld; varying vec3 vNormal; varying vec3 vAcross; varying vec2 vUv; varying float vVar; varying float vLen;
         ${BEND_HEAD}
         void main() {
           float t = position.y;
           vec3 base = aInst.xyz; float h = aInst.w;
           float w = aInst2.x, yaw = aInst2.y, phase = aInst2.z;
-          vT = t; vVar = aInst2.w;
+          vVar = aInst2.w; vLen = h;
           vec3 p, tangent;
           bendStalk(base, h, t, phase, 1.0 + 0.8 * aInst2.w, p, tangent);
           vec3 across = vec3(cos(yaw), 0.0, sin(yaw));
           p += across * position.x * w * (1.0 - t * t * 0.9);
           vec3 n = normalize(cross(across, tangent));
-          if (dot(n, cameraPosition - p) < 0.0) n = -n;
+          if (dot(n, cameraPosition - p) < 0.0) { n = -n; across = -across; }
           vNormal = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.35));
+          vAcross = across;
+          vUv = vec2(position.x + 0.5, t);
           vWorld = p;
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: `
-        varying vec3 vWorld; varying vec3 vNormal; varying float vT; varying float vVar;
+        uniform sampler2D uSurface;
+        varying vec3 vWorld; varying vec3 vNormal; varying vec3 vAcross; varying vec2 vUv; varying float vVar; varying float vLen;
         ${FOG_HEAD}${LIGHTS_HEAD}${SHADE_HEAD}
         void main() {
+          float t = vUv.y;
           vec3 root = vec3(0.018, 0.045, 0.022);
           vec3 tip = mix(vec3(0.10, 0.21, 0.08), vec3(0.17, 0.25, 0.10), vVar);
           // Some blades have gone to seed and turned straw-coloured.
           tip = mix(tip, vec3(0.26, 0.22, 0.10), step(0.86, vVar) * 0.7);
-          vec3 albedo = mix(root, tip, vT * vT);
-          float ao = 0.3 + 0.7 * vT;
-          vec3 c = shade(albedo, vNormal, ao);
-          c += (albedo * 2.6 + 0.012) * fireflyLight(vWorld) * ${FIREFLY_LIGHT_COLOR} * ao;
+          vec3 albedo = mix(root, tip, t * t);
+          // Veins and midrib: the surface map gives height; its slope tilts the normal.
+          vec2 suv = vec2(vUv.x, t * vLen * 2.5 + vVar * 3.0);
+          float hgt = texture2D(uSurface, suv).r;
+          float slope = texture2D(uSurface, suv + vec2(0.03, 0.0)).r - texture2D(uSurface, suv - vec2(0.03, 0.0)).r;
+          albedo *= 0.3 + 1.3 * hgt;
+          vec3 n = normalize(vNormal + vAcross * slope * 4.0);
+          float ao = 0.3 + 0.7 * t;
+          vec3 c = shade(albedo, n, ao);
+          // A glint of moonlight along the ridges of the veins.
+          vec3 hv = normalize(uMoonDir + normalize(cameraPosition - vWorld));
+          c += uMoonColor * pow(max(dot(n, hv), 0.0), 18.0) * 0.2 * uMoon * t * (0.5 + hgt);
+          c += (albedo * 2.6 + 0.012) * fireflyLight(vWorld) * ao;
           c = applyFog(c, length(vWorld - cameraPosition));
           gl_FragColor = vec4(c, 1.0);
         }`,
@@ -294,7 +418,7 @@ export class GrassField {
           if (tex.a < 0.5) discard;
           vec3 albedo = tex.rgb * 0.42;
           vec3 c = shade(albedo, vNormal, 0.5 + 0.5 * vT);
-          c += (albedo * 2.2 + 0.01) * fireflyLight(vWorld) * ${FIREFLY_LIGHT_COLOR};
+          c += (albedo * 2.2 + 0.01) * fireflyLight(vWorld);
           c = applyFog(c, length(vWorld - cameraPosition));
           gl_FragColor = vec4(c, 1.0);
         }`,
@@ -307,6 +431,7 @@ export class GrassField {
   dispose() {
     this.blades.geometry.dispose();
     this.bladeMaterial.dispose();
+    this.bladeTexture.dispose();
     this.flowers.geometry.dispose();
     this.flowerMaterial.dispose();
     this.flowerTexture.dispose();

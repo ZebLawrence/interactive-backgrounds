@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { Art } from './util.js';
-import { G, FOG_HEAD, LIGHTS_HEAD, SHADE_HEAD, FIREFLY_LIGHT_COLOR } from './shaders.js';
+import { G, FOG_HEAD, LIGHTS_HEAD, SHADE_HEAD } from './shaders.js';
 
 /** Height of the meadow at (x, z): gentle swells, sloping down a little toward the trees. */
 export function groundHeight(x, z) {
@@ -27,7 +27,7 @@ export class Ground {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uMap: { value: this.texture },
-        uTime: G.uTime, uLights: G.uLights, uMoon: G.uMoon, uMoonDir: G.uMoonDir, uMoonColor: G.uMoonColor,
+        uTime: G.uTime, uLights: G.uLights, uLightCol: G.uLightCol, uMoon: G.uMoon, uMoonDir: G.uMoonDir, uMoonColor: G.uMoonColor,
         uSkyLight: G.uSkyLight, uFlash: G.uFlash, uStorm: G.uStorm,
         uFogColor: G.uFogColor, uFogNear: G.uFogNear, uFogFar: G.uFogFar,
       },
@@ -48,7 +48,7 @@ export class Ground {
           // Wetter and darker in the rain.
           albedo *= 1.0 - 0.35 * uStorm;
           vec3 c = shade(albedo, normalize(vNormal), 0.8);
-          c += (albedo * 2.0 + 0.01) * fireflyLight(vWorld) * ${FIREFLY_LIGHT_COLOR};
+          c += (albedo * 2.0 + 0.01) * fireflyLight(vWorld);
           c = applyFog(c, length(vWorld - cameraPosition));
           gl_FragColor = vec4(c, 1.0);
         }`,

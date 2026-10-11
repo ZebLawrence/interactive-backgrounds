@@ -44,8 +44,9 @@ export class Cursor {
 // looking toward -z; the tree line is ~75 m away.
 // ---------------------------------------------------------------------------------------------
 
-const NIGHT_FOG = v3(0.05, 0.065, 0.125);
-const STORM_FOG = v3(0.028, 0.032, 0.046);
+// Distance fades to pure black, so the horizon is only what the sky lights.
+const NIGHT_FOG = v3(0, 0, 0);
+const STORM_FOG = v3(0, 0, 0);
 const NIGHT_SKYLIGHT = v3(0.09, 0.11, 0.18);
 const STORM_SKYLIGHT = v3(0.05, 0.055, 0.075);
 
@@ -225,9 +226,9 @@ export class Meadow {
     this.moon += clamp((settings.moonlight ? 1 : 0) - this.moon, -dt * 0.5, dt * 0.5);
     // Gusts come and go, more in a storm.
     this.gustTimer -= dt;
-    if (this.gustTimer <= 0) { this.gustTimer = rnd(3, 9); this.gustTarget = rnd(0, 0.5) + this.storm * rnd(0.3, 1.2); }
-    this.gust += clamp((this.gustTarget ?? 0) - this.gust, -dt * 0.6, dt * 0.6);
-    G.uWind.value = lerp(0.9, 2.6, this.storm) + this.gust;
+    if (this.gustTimer <= 0) { this.gustTimer = rnd(5, 14); this.gustTarget = rnd(0, 0.45) + this.storm * rnd(0.3, 1.0); }
+    this.gust += clamp((this.gustTarget ?? 0) - this.gust, -dt * 0.25, dt * 0.25);
+    G.uWind.value = lerp(0.7, 2.0, this.storm) + this.gust;
     if (before[0] !== this.storm || before[1] !== this.moon) this.applyBlends();
   }
 
