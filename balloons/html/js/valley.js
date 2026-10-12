@@ -99,8 +99,8 @@ export class Valley {
     this.scene.add(this.sky.mesh, this.mountains.group, this.ground.mesh, this.grass.mesh, this.mist.group);
     this.balloons = [];
     this.setDensity(settings.density);
-    // Starting at night, the balloons are already down on the field.
-    if (this.night > 0.5) for (const b of this.balloons) { b.pos.copy(b.tether); b.vel.set(0, 0, 0); }
+    // Starting at night, the fleet begins low over the field, lit for the glow, then flies on.
+    if (this.night > 0.5) for (const b of this.balloons) { b.pos.copy(b.tether); b.vel.set(0, 0, 0); b.heat = 0.5; }
     this.flock = null;
     this.setBirds(settings.birds);
     this.applyBlends();
@@ -161,7 +161,7 @@ export class Valley {
   /** The prevailing wind at a point: slow, and veering round over the minutes. */
   windAt(p) {
     const t = this.clock * 0.02 + this.windPhase;
-    const strength = 0.9 + 0.3 * Math.sin(t * 0.7 + p.y * 0.01);
+    const strength = 1.4 + 0.5 * Math.sin(t * 0.7 + p.y * 0.01);
     const base = v3(Math.sin(t) * strength, 0, Math.cos(t * 0.83 + 1.0) * strength * 0.6);
     // A passing gust, uneven across the valley.
     const g = this.ambient;
@@ -221,7 +221,7 @@ export class Valley {
     b.dispose();
   }
 
-  /** Where each balloon settles for the night glow: spaced out across the field below the hill. */
+  /** Where each balloon starts when the page opens at night: spaced out low over the field. */
   assignTethers() {
     const taken = [];
     for (const b of this.balloons) {
@@ -335,7 +335,7 @@ export class Valley {
       if (g.active) {
         const a = rnd(0, TAU);
         g.dir.set(Math.cos(a), 0, Math.sin(a) * 0.5).normalize();
-        g.target = rnd(0.5, 1.6);
+        g.target = rnd(0.8, 2.2);
         g.timer = rnd(4, 10);
       } else {
         g.target = 0;

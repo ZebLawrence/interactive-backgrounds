@@ -429,14 +429,9 @@ export class Balloon {
       this.flame.scale.set(1, 0.85 + 0.15 * Math.sin(valley.clock * 27 + this.index), 1);
     }
 
-    // Where this balloon wants to be: drifting at dawn, tethered to the field at night.
+    // Flying, by day or by night.
     const wind = valley.windAt(this.pos);
-    if (night > 0.5 && this.tether) {
-      const t = this.tether;
-      const desired = t.clone().sub(this.pos).multiplyScalar(0.2);
-      desired.clampLength(0, 12);
-      this.vel.lerp(desired, Math.min(1, dt * 0.8));
-    } else {
+    {
       const floor = valley.groundHeight(this.pos.x, this.pos.z);
       // Stay above the ground and above the line of sight over the brow of the knoll (so the
       // hill never hides a balloon's lower half), and no higher than keeps it in frame.
@@ -455,7 +450,7 @@ export class Balloon {
         this.fire(rnd(2, 4));
         this.pilotTimer = rnd(25, 70);
       }
-      const vy = clamp((this.heat - 0.5) * 3.0, -0.5, 1.0);
+      const vy = clamp((this.heat - 0.5) * 3.0, -0.6, 1.2);
       this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.5);
       this.vel.x += (wind.x - this.vel.x) * Math.min(1, dt * 0.25);
       this.vel.z += (wind.z - this.vel.z) * Math.min(1, dt * 0.25);

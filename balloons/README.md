@@ -14,9 +14,9 @@ reacts to your cursor. A web page for now; no native app yet.
 - **Left alone**, the valley flies itself: envelopes slowly cool and sink, pilots fire their burners
   when they get low or just now and then, and gusts of wind come and go across the valley, pushing
   the balloons, leaning them, and bending the grass.
-- **Night Glow** (menu, `N`): the fiesta's night show. The balloons settle onto the field under a
-  starry sky, and each click lights one up like a lantern; **All Burn** (`A`) lights the lot in a
-  ragged wave.
+- **Night Glow** (menu, `N`): the fiesta's night show. The fleet flies on under a starry sky,
+  starting low over the field, and each burn lights an envelope up like a lantern; **All Burn**
+  (`A`) lights the lot in a ragged wave.
 - **Every balloon is different**: a quilted envelope of 24 gores painted with its own pattern
   (gores, checkers, chevrons, diamonds, rainbow bands, sunburst, spiral, bands with a badge) in its
   own palette, with fabric weave, load tapes, a parachute vent, cables, a burner frame, a woven
