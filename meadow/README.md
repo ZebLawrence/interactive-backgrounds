@@ -1,7 +1,7 @@
 # Firefly Meadow
 
-An animated 3D meadow at night, seen from low in the grass, that reacts to your cursor. A web page
-for now; no native app yet.
+An animated 3D meadow at night, seen from low in the grass, that reacts to your cursor: a macOS
+desktop background (`swift/`) and a web page (`html/`).
 
 **Live:** https://zeblawrence.github.io/interactive-backgrounds/meadow/html/
 
@@ -28,7 +28,46 @@ for now; no native app yet.
 - **Fireflies**: a few, a meadow full, or a swarm. **New Meadow** re-seeds the grass, flowers and
   tree line.
 
-## Running it
+## macOS app
+
+`swift/` is a native port: a menu-bar app that draws the meadow behind your desktop icons and
+windows, on every screen. Requires macOS 14+ and the Xcode command line tools.
+
+```sh
+cd swift
+./build.sh             # builds build/Meadow.app ("Firefly Meadow")
+open build/Meadow.app
+./build.sh --install   # or: copy to /Applications and launch
+```
+
+Control it from the sparkles icon in the menu bar: Clap, Fireflies (a few / a meadow full / a
+swarm), New Meadow, Moonlight, Storm, Click Desktop to Clap, Low Power (30 fps, no MSAA), Launch at
+Login, and Quit. Clicking empty desktop claps (a `CGWindowList` hit test ignores clicks on windows),
+and the cursor is polled each frame, so no Accessibility permission is needed. Run only one of Fishbowl
+and Firefly Meadow at a time: both draw at the same desktop level.
+
+Developer flags:
+
+```sh
+swift run Meadow --preview                        # a normal window instead of the desktop
+swift run Meadow --snapshot out.png --at 6        # render with a resting cursor, save a frame, exit
+swift run Meadow --snapshot out.png --clap-at 5.5 # ... clapping first
+swift run Meadow --storm                          # force the storm (or --calm); --dark / --moon likewise
+swift run Meadow --lightning-now                  # a storm whose first strike comes after a second
+swift run Meadow --preview --stats                # log the GPU time per frame
+```
+
+It's a straight port of the web version, file for file (`Meadow.swift` ← `meadow.js`, `Grass.swift` ←
+`grass.js`, and so on), but it renders with Metal directly rather than SceneKit: the scene is almost
+all custom shaders, the grass is ~27k instanced blades, and 32 firefly lights, the cursor's 24-point
+trail and the clap rings change every frame, all of which SceneKit handles poorly. The GLSL is ported
+to Metal in `Shaders.swift`, and `RenderView` reproduces three.js's post-processing: 4x MSAA into a
+16-bit float target, UnrealBloomPass (bright pass, five blur levels), the grade, and ACES filmic tone
+mapping. The procedural textures are drawn with Core Graphics using the same calls as the canvas
+code; the moon maps are copied from `html/assets` into the app bundle. At 60 fps it uses about 10% of
+one CPU core and ~7 ms of GPU time per frame at 2560x1600 on an Apple Silicon laptop.
+
+## Web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with
 Three.js loaded from a CDN), so there's no build step: serve the folder with any static server, e.g.
