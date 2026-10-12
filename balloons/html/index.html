@@ -8,10 +8,20 @@
 <meta name="theme-color" content="#2a1f3a">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%88%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=1",
+  "./js/balloon.js": "./js/balloon.js?v=1",
+  "./js/birds.js": "./js/birds.js?v=1",
+  "./js/grass.js": "./js/grass.js?v=1",
+  "./js/shaders.js": "./js/shaders.js?v=1",
+  "./js/sky.js": "./js/sky.js?v=1",
+  "./js/terrain.js": "./js/terrain.js?v=1",
+  "./js/util.js": "./js/util.js?v=1",
+  "./js/valley.js": "./js/valley.js?v=1"
 } }
 </script>
 </head>
@@ -44,6 +54,6 @@
 </div>
 <div id="hint">Move the cursor to stir the wind · rest it on a balloon and the crew wave · click a balloon to fire its burner</div>
 <div id="error" hidden></div>
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/app.js?v=1"></script>
 </body>
 </html>

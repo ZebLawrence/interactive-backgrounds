@@ -8,10 +8,19 @@
 <meta name="theme-color" content="#092f40">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A0%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=1",
+  "./js/fish.js": "./js/fish.js?v=1",
+  "./js/fishmodel.js": "./js/fishmodel.js?v=1",
+  "./js/scenery.js": "./js/scenery.js?v=1",
+  "./js/shaders.js": "./js/shaders.js?v=1",
+  "./js/species.js": "./js/species.js?v=1",
+  "./js/tank.js": "./js/tank.js?v=1",
+  "./js/util.js": "./js/util.js?v=1"
 } }
 </script>
 </head>
@@ -41,6 +50,6 @@
 </div>
 <div id="hint">Move fast to startle the fish · rest the cursor and they come to look · click to feed</div>
 <div id="error" hidden></div>
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/app.js?v=1"></script>
 </body>
 </html>
