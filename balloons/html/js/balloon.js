@@ -437,19 +437,23 @@ export class Balloon {
       // hill never hides a balloon's lower half), and no higher than keeps it in frame.
       const depth = -this.pos.z;
       const minAlt = Math.max(floor + 25, valley.camera.position.y - depth * 0.02);
-      // The crown must stay under the top of the frame (about 27 degrees up at this distance).
-      const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.45 - 20 * this.scale);
+      // The crown stays under the top of the view, which is about 0.42 x depth above the eye.
+      const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.36 - 20 * this.scale);
       // The burner heats the envelope; the heat leaks away slowly, so a burn keeps lifting for a
       // while after the flame, and a balloon left alone gradually cools and sinks.
-      this.heat += this.burn * dt * 0.1 - dt * 0.006;
-      if (this.pos.y > maxAlt) this.heat -= dt * 0.05; // the pilot vents
+      // A burn's lift fades over about fifteen seconds; then the balloon cools on and sinks.
+      this.heat += this.burn * dt * 0.1 - dt * 0.02;
+      if (this.pos.y > maxAlt) this.heat -= dt * 0.12; // the pilot vents
       this.heat = clamp(this.heat, 0, 1);
-      // The pilot: burns when sinking low or cool, and now and then for the sake of it.
+      // The pilot: burns when sinking low or cool, and now and then when there's room above.
       this.pilotTimer -= dt;
-      if (this.burnTimer <= 0 && (this.heat < 0.4 || this.pos.y < minAlt + 3 || this.pilotTimer <= 0)) {
+      const roomAbove = this.pos.y < minAlt + (maxAlt - minAlt) * 0.6;
+      const belowCeiling = this.pos.y < maxAlt - 4;
+      if (this.burnTimer <= 0 && ((this.heat < 0.4 && belowCeiling) || this.pos.y < minAlt + 3 || (this.pilotTimer <= 0 && roomAbove))) {
         this.fire(rnd(2, 4));
-        this.pilotTimer = rnd(25, 70);
+        this.pilotTimer = rnd(20, 60);
       }
+      if (this.pilotTimer <= 0) this.pilotTimer = rnd(10, 30);
       const vy = clamp((this.heat - 0.5) * 3.0, -0.6, 1.2);
       this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.5);
       this.vel.x += (wind.x - this.vel.x) * Math.min(1, dt * 0.25);
