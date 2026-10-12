@@ -8,15 +8,17 @@ reacts to your cursor. A web page for now; no native app yet.
 - **Move the cursor** and you stir the wind: balloons near its path drift with it and lean into the
   gust, baskets swinging gently beneath them, and the long grass on the hill bends too.
 - **Rest the cursor** on a balloon and its crew wave back.
-- **Click a balloon** to fire its burner: a roaring flame lights the envelope from inside and it
-  climbs. Click empty sky and the nearest balloon fires instead.
+- **Click a balloon** to fire its burner: a roaring flame lights the envelope from inside, throws
+  warm light over the basket and rigging, and the balloon climbs. Click empty sky and the nearest
+  balloon fires instead.
 - **Night Glow** (menu, `N`): the fiesta's night show. The balloons settle onto the field under a
   starry sky, and each click lights one up like a lantern; **All Burn** (`A`) lights the lot in a
   ragged wave.
 - **Every balloon is different**: a quilted envelope of 24 gores painted with its own pattern
   (gores, checkers, chevrons, diamonds, rainbow bands, sunburst, spiral, bands with a badge) in its
-  own palette, with fabric weave, load tapes, a parachute vent, cables, a burner frame, a wicker
-  basket with a leather rim, and a crew of two or three.
+  own palette, with fabric weave, load tapes, a parachute vent, cables, a burner frame, a woven
+  wicker basket with a leather rim, and a crew of two or three. Balloons shoulder past one another
+  rather than passing through.
 - **The valley**: a patchwork of fields, hedges, woods, a lane with farms along it and a river
   catching the sky, under banks of mist; three mountain ridges in dawn haze; a low sun with cirrus
   overhead; and a flock of swallows that scatters from a fast cursor and wheels around a resting one.
@@ -40,13 +42,16 @@ URL override the saved setting for testing.
   of the quilting; the pattern is painted on a 2048x1024 canvas and dressed with seams, tapes and a
   weave. Flying is simple physics: velocity relaxes toward the local wind, altitude toward a slowly
   wandering target that the burner raises, and a damped pendulum leans the whole balloon into any
-  horizontal acceleration. The burner is a noise-driven flame billboard plus an emissive term in the
-  envelope's shader that glows brightest near the throat.
+  horizontal acceleration. The burner is a noise-driven flame billboard, an emissive term in the
+  envelope's shader that glows brightest near the throat, and one of a small pool of point lights
+  that follow whichever burners are firing. The basket's wicker is a bump map as well as a colour.
 - `terrain.js` draws the valley onto a 4096-pixel canvas (jittered field quads with hedgerows and
   furrows, copses, a lane, farms, the river) and displaces a large plane into the knoll, the floor,
-  the river's dip and the foothills, multiplying in a tiled grass detail map close up. `grass.js` is
-  a reduced version of the meadow's instanced grass, lit by the low sun with a backlit glow in the
-  tips, bending in the wind and the cursor's gusts.
+  the river's dip and the foothills, multiplying in a tiled grass detail map close up and shading the
+  ground under the long grass. `grass.js` is the meadow's instanced grass with a veined surface map,
+  lit by the low sun with a backlit glow in the tips, bending in the wind and easing into the
+  cursor's gusts. The sun casts a 2048-pixel shadow map over the knoll: blades shade each other (a
+  custom depth pass bends them the same way), balloons cast onto the grass, the ground receives.
 - `sky.js` renders the dawn gradient, sun disc and glow, drifting cirrus and the night's stars in one
   dome shader; the mountain ridges are fbm silhouettes on planes in the fog; the mist is soft sprites
   drifting over the valley floor.

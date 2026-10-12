@@ -96,9 +96,9 @@ export class Mountains {
     this.textures = [];
     this.materials = [];
     const layers = [
-      { z: -2600, w: 9000, h: 800, seed: 1.3, rough: 0.14, tint: v3(0.08, 0.09, 0.16), maxFog: 0.38 },
-      { z: -3900, w: 13000, h: 1300, seed: 4.1, rough: 0.09, tint: v3(0.1, 0.11, 0.19), maxFog: 0.72 },
-      { z: -5400, w: 17000, h: 2000, seed: 8.7, rough: 0.05, tint: v3(0.12, 0.13, 0.22), maxFog: 0.86 },
+      { z: -2600, w: 9000, h: 800, seed: 1.3, rough: 0.14, tint: v3(0.07, 0.08, 0.15), maxFog: 0.3 },
+      { z: -3900, w: 13000, h: 1300, seed: 4.1, rough: 0.09, tint: v3(0.09, 0.1, 0.19), maxFog: 0.5 },
+      { z: -5400, w: 17000, h: 2000, seed: 8.7, rough: 0.05, tint: v3(0.11, 0.12, 0.22), maxFog: 0.66 },
     ];
     for (const L of layers) {
       const tex = Art.texture(ridgeCanvas(L.seed, L.rough));

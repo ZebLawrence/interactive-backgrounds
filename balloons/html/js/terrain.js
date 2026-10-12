@@ -136,10 +136,13 @@ export class Ground {
       fEmissive: `
         // Grass detail close to the viewer, so the hill isn't a blur of one texel.
         vec3 det = texture2D(uDetail, vWPos.xz / 9.0).rgb * texture2D(uDetail, vWPos.xz / 61.0 + 0.3).rgb;
-        diffuseColor.rgb *= mix(vec3(1.0), det, 0.8);`,
+        diffuseColor.rgb *= mix(vec3(1.0), det, 0.8);
+        // Under the long grass the ground is in its shade.
+        diffuseColor.rgb *= 1.0 - 0.55 * (1.0 - smoothstep(12.0, 85.0, length(vWPos.xz)));`,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
+    this.mesh.receiveShadow = true;
   }
 
   dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.map.dispose(); this.detail.dispose(); }

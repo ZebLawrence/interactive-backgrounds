@@ -73,9 +73,20 @@ export class Valley {
     this.setCameraTurn(0, 0);
 
     this.sun = new THREE.DirectionalLight(0xffc693, 2.0);
-    this.sun.position.copy(G.uSunDir.value).multiplyScalar(1000);
+    // The sun's shadows cover the knoll and the air just above it.
+    this.sun.target.position.set(0, 20, -45);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(G.uSunDir.value, 400);
+    this.sun.castShadow = true;
+    const sc = this.sun.shadow.camera;
+    sc.left = -90; sc.right = 90; sc.top = 90; sc.bottom = -60; sc.near = 200; sc.far = 650;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.05;
+    this.sun.shadow.radius = 3;
     this.hemi = new THREE.HemisphereLight(0x8a9ad8, 0x9a6a48, 0.6);
     this.scene.add(this.sun, this.sun.target, this.hemi);
+    // A pool of point lights that follow whichever burners are firing.
+    this.burnLights = Array.from({ length: 6 }, () => { const l = new THREE.PointLight(0xffa552, 0, 30, 2); this.scene.add(l); return l; });
 
     this.sky = new Sky();
     this.mountains = new Mountains();
@@ -243,6 +254,39 @@ export class Valley {
     this.balloons.forEach((b) => this.burnQueue.push({ at: this.clock + rnd(0, 1.6), b }));
   }
 
+  /** Envelopes shoulder past each other rather than passing through. */
+  separateBalloons(dt) {
+    const bs = this.balloons;
+    for (let i = 0; i < bs.length; i++) {
+      for (let j = i + 1; j < bs.length; j++) {
+        const a = bs[i], b = bs[j];
+        const ca = a.pos.clone().add(v3(0, 9 * a.scale, 0)), cb = b.pos.clone().add(v3(0, 9 * b.scale, 0));
+        const d = ca.distanceTo(cb);
+        const minD = 8.6 * (a.scale + b.scale) + 1.5;
+        if (d >= minD || d < 1e-3) continue;
+        const dir = cb.clone().sub(ca).divideScalar(d);
+        const push = (minD - d);
+        // Move them apart and bleed off the closing speed, softly, like two soft hulls meeting.
+        const k = Math.min(1, dt * 2.5);
+        a.pos.addScaledVector(dir, -push * 0.5 * k);
+        b.pos.addScaledVector(dir, push * 0.5 * k);
+        const closing = b.vel.clone().sub(a.vel).dot(dir);
+        if (closing < 0) { a.vel.addScaledVector(dir, closing * 0.5); b.vel.addScaledVector(dir, -closing * 0.5); }
+      }
+    }
+  }
+
+  /** Hand the pool of burner lights to the brightest burners. */
+  updateBurnLights() {
+    const burning = this.balloons.filter((b) => b.burn > 0.02).sort((p, q) => q.burn - p.burn);
+    this.burnLights.forEach((light, i) => {
+      const b = burning[i];
+      if (!b) { light.intensity = 0; return; }
+      light.position.copy(b.pos).add(v3(0, -2.4 * b.scale, 0));
+      light.intensity = b.burn * 900 * b.scale;
+    });
+  }
+
   // MARK: - Frame loop
 
   updateCamera(dt) {
@@ -307,7 +351,9 @@ export class Valley {
     this.updateGust(dt);
     this.burnQueue = this.burnQueue.filter((q) => { if (q.at <= this.clock) { q.b.fire(this.night > 0.5 ? 5 : 3); return false; } return true; });
     for (const b of this.balloons) b.update(dt, this);
-    this.grass.setGust(this.gust.dir, this.gust.strength);
+    this.separateBalloons(dt);
+    this.updateBurnLights();
+    this.grass.update(dt, this.gust.dir, this.gust.strength);
     this.flock?.update(dt, this);
     this.mist.update(dt, this.night);
   }

@@ -213,22 +213,35 @@ export const Parts = {
     this.arm.translate(0, 0.2, 0);
     this.flame = new THREE.PlaneGeometry(1.4, 2.8);
     this.weave = Art.weave(256, 5);
+    // Wicker: strands woven over and under, as colour and as a height map for bump shading.
+    const weaveAt = (x, y) => {
+      const row = Math.floor(y / 12), col = Math.floor(x / 20);
+      const across = Math.sin((x % 20) / 20 * Math.PI), along = Math.sin((y % 12) / 12 * Math.PI);
+      return (row + col) % 2 ? across : along;
+    };
     const wicker = Art.image(256, 256, (ctx, w, h) => {
       const img = ctx.createImageData(w, h);
       const d = img.data;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const row = Math.floor(y / 10), col = Math.floor(x / 16);
-        const under = (row + col) % 2;
-        const across = Math.sin((x % 16) / 16 * Math.PI), along = Math.sin((y % 10) / 10 * Math.PI);
-        const hgt = under ? across : along;
-        const v = 0.45 + 0.5 * hgt + (hash2(x, y) - 0.5) * 0.1;
+        const v = 0.4 + 0.55 * (weaveAt(x, y) * 0.9 + 0.1) + (hash2(x, y) - 0.5) * 0.1;
         const i = (y * w + x) * 4;
         d[i] = (v * 190 + 20) | 0; d[i + 1] = (v * 140 + 15) | 0; d[i + 2] = (v * 80 + 8) | 0; d[i + 3] = 255;
       }
       ctx.putImageData(img, 0, 0);
     });
+    const wickerHeight = Art.image(256, 256, (ctx, w, h) => {
+      const img = ctx.createImageData(w, h);
+      const d = img.data;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = weaveAt(x, y) * 255; d[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    });
     this.wicker = Art.texture(wicker, { repeat: true });
-    this.wicker.repeat.set(2, 2);
+    this.wicker.repeat.set(3, 3);
+    this.wickerBump = Art.texture(wickerHeight, { repeat: true, srgb: false });
+    this.wickerBump.repeat.set(3, 3);
     this.normalMap = Art.texture(envelopeNormalMap(), { repeat: true, srgb: false });
     this.normalMap.repeat.set(2, 4);
   },
@@ -266,7 +279,7 @@ function mergeGeometries(list) {
 // One balloon
 // ---------------------------------------------------------------------------------------------
 
-const WICKER_MATERIAL = () => new THREE.MeshStandardMaterial({ map: Parts.wicker, roughness: 0.9, color: 0xffffff });
+const WICKER_MATERIAL = () => new THREE.MeshStandardMaterial({ map: Parts.wicker, bumpMap: Parts.wickerBump, bumpScale: 0.6, roughness: 0.85, color: 0xffffff });
 const DARK_METAL = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.5, metalness: 0.7 });
 const LEATHER = new THREE.MeshStandardMaterial({ color: 0x3b2416, roughness: 0.8 });
 const CABLE = new THREE.MeshStandardMaterial({ color: 0x8c8c88, roughness: 0.6, metalness: 0.5 });
@@ -320,6 +333,7 @@ export class Balloon {
         totalEmissiveRadiance += diffuseColor.rgb * uBurn * 2.4 * pow(clamp(1.0 - vMapUv.y, 0.0, 1.0), 1.3);`,
     });
     const envelope = new THREE.Mesh(Parts.envelope, this.envelopeMaterial);
+    envelope.castShadow = true;
     node.add(envelope);
     const crown = new THREE.Mesh(Parts.crown, DARK_METAL);
     crown.rotation.x = Math.PI / 2;
@@ -336,7 +350,9 @@ export class Balloon {
       node.add(b);
     }
     this.wickerMaterial = WICKER_MATERIAL();
-    node.add(new THREE.Mesh(Parts.basket, this.wickerMaterial));
+    const basket = new THREE.Mesh(Parts.basket, this.wickerMaterial);
+    basket.castShadow = true;
+    node.add(basket);
     node.add(new THREE.Mesh(Parts.basketRim, LEATHER));
 
     // The crew: two or three figures, one of whom waves when you rest the cursor on them.
