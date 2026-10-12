@@ -296,6 +296,9 @@ export class Balloon {
     this.pos = v3();
     this.vel = v3();
     this.targetAlt = 0;
+    // Heat in the envelope: 0.5 is neutral buoyancy; burning adds heat, which slowly leaks away.
+    this.heat = 0.5 + rnd(-0.06, 0.06);
+    this.pilotTimer = rnd(5, 60);
     this.tilt = new THREE.Vector2();
     this.tiltVel = new THREE.Vector2();
     this.burn = 0;
@@ -434,24 +437,31 @@ export class Balloon {
       desired.clampLength(0, 12);
       this.vel.lerp(desired, Math.min(1, dt * 0.8));
     } else {
-      this.altWander += dt * 0.05;
       const floor = valley.groundHeight(this.pos.x, this.pos.z);
       // Stay above the ground and above the line of sight over the brow of the knoll (so the
       // hill never hides a balloon's lower half), and no higher than keeps it in frame.
       const depth = -this.pos.z;
       const minAlt = Math.max(floor + 25, valley.camera.position.y - depth * 0.02);
-      const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.12);
-      this.targetAlt = clamp(this.targetAlt - dt * 1.2 + Math.sin(this.altWander) * dt * 2.0, minAlt, maxAlt);
-      // Balloons climb and sink gently; a burning burner adds a slow, steady lift, and the
-      // balloon keeps whatever height it gains rather than sinking back when the flame goes out.
-      if (this.burn > 0.5) this.targetAlt = Math.max(this.targetAlt, this.pos.y);
-      const vy = clamp((this.targetAlt - this.pos.y) * 0.04, -0.6, 0.7) + this.burn * 0.45;
-      this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.4);
+      // The crown must stay under the top of the frame (about 27 degrees up at this distance).
+      const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.45 - 20 * this.scale);
+      // The burner heats the envelope; the heat leaks away slowly, so a burn keeps lifting for a
+      // while after the flame, and a balloon left alone gradually cools and sinks.
+      this.heat += this.burn * dt * 0.1 - dt * 0.006;
+      if (this.pos.y > maxAlt) this.heat -= dt * 0.05; // the pilot vents
+      this.heat = clamp(this.heat, 0, 1);
+      // The pilot: burns when sinking low or cool, and now and then for the sake of it.
+      this.pilotTimer -= dt;
+      if (this.burnTimer <= 0 && (this.heat < 0.4 || this.pos.y < minAlt + 3 || this.pilotTimer <= 0)) {
+        this.fire(rnd(2, 4));
+        this.pilotTimer = rnd(25, 70);
+      }
+      const vy = clamp((this.heat - 0.5) * 3.0, -0.5, 1.0);
+      this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.5);
       this.vel.x += (wind.x - this.vel.x) * Math.min(1, dt * 0.25);
       this.vel.z += (wind.z - this.vel.z) * Math.min(1, dt * 0.25);
     }
-    // The cursor's gust pushes it along and sets it swinging.
-    const gust = valley.gustAt(this);
+    // The cursor's gust pushes it along and sets it swinging; so does any change in the wind.
+    const gust = valley.gustAt(this).add(wind.clone().sub(this.vel).setY(0).multiplyScalar(0.25));
     this.vel.addScaledVector(gust, dt);
     this.pos.addScaledVector(this.vel, dt);
     valley.keepInView(this);

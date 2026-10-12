@@ -9,8 +9,11 @@ reacts to your cursor. A web page for now; no native app yet.
   gust, baskets swinging gently beneath them, and the long grass on the hill bends too.
 - **Rest the cursor** on a balloon and its crew wave back.
 - **Click a balloon** to fire its burner: a roaring flame lights the envelope from inside, throws
-  warm light over the basket and rigging, and the balloon climbs. Click empty sky and the nearest
-  balloon fires instead.
+  warm light over the basket and rigging, and the balloon lifts, slowly, and keeps rising for a
+  while after the flame as the heat lingers. Click empty sky and the nearest balloon fires instead.
+- **Left alone**, the valley flies itself: envelopes slowly cool and sink, pilots fire their burners
+  when they get low or just now and then, and gusts of wind come and go across the valley, pushing
+  the balloons, leaning them, and bending the grass.
 - **Night Glow** (menu, `N`): the fiesta's night show. The balloons settle onto the field under a
   starry sky, and each click lights one up like a lantern; **All Burn** (`A`) lights the lot in a
   ragged wave.
@@ -40,9 +43,10 @@ URL override the saved setting for testing.
 - `balloon.js` builds each balloon from shared geometry: the envelope is a lathe of a resampled
   Catmull-Rom profile, bulged between gore seams in the vertex shader and shaded with a normal map
   of the quilting; the pattern is painted on a 2048x1024 canvas and dressed with seams, tapes and a
-  weave. Flying is simple physics: velocity relaxes toward the local wind, altitude toward a slowly
-  wandering target that the burner raises, and a damped pendulum leans the whole balloon into any
-  horizontal acceleration. The burner is a noise-driven flame billboard, an emissive term in the
+  weave. Flying is simple physics: velocity relaxes toward the local wind (a slow veering breeze
+  plus passing gusts), vertical speed follows the envelope's heat, which the burner raises and
+  which leaks away slowly, a pilot burns when low or cool, and a damped pendulum leans the whole
+  balloon into any horizontal acceleration. The burner is a noise-driven flame billboard, an emissive term in the
   envelope's shader that glows brightest near the throat, and one of a small pool of point lights
   that follow whichever burners are firing. The basket's wicker is a bump map as well as a colour.
 - `terrain.js` draws the valley onto a 4096-pixel canvas (jittered field quads with hedgerows and

@@ -63,6 +63,8 @@ export class Valley {
     this.gust = { dir: v3(), strength: 0, screen: { x: 0, y: 0 }, speed: 0 };
     this.cameraAngles = new THREE.Vector2();
     this.windPhase = rnd(0, TAU);
+    // Ambient gusts that come and go on their own.
+    this.ambient = { dir: v3(1, 0, 0), strength: 0, target: 0, timer: rnd(3, 10), active: false };
     this.burnQueue = [];
 
     this.scene = new THREE.Scene();
@@ -160,7 +162,10 @@ export class Valley {
   windAt(p) {
     const t = this.clock * 0.02 + this.windPhase;
     const strength = 0.9 + 0.3 * Math.sin(t * 0.7 + p.y * 0.01);
-    return v3(Math.sin(t) * strength, 0, Math.cos(t * 0.83 + 1.0) * strength * 0.6);
+    const base = v3(Math.sin(t) * strength, 0, Math.cos(t * 0.83 + 1.0) * strength * 0.6);
+    // A passing gust, uneven across the valley.
+    const g = this.ambient;
+    return base.addScaledVector(g.dir, g.strength * (0.7 + 0.5 * Math.sin(p.x * 0.013 + p.z * 0.009 + this.clock * 0.3)));
   }
 
   /** The cursor's gust on a balloon: a push along the cursor's motion, fading with distance from it. */
@@ -321,6 +326,25 @@ export class Valley {
     if (c.present && c.stillTime > 0.6) this.balloonAt(c.screen, 0)?.wave();
   }
 
+  /** Gusts of wind that arrive on their own: a few seconds of push, then calm. */
+  updateAmbient(dt) {
+    const g = this.ambient;
+    g.timer -= dt;
+    if (g.timer <= 0) {
+      g.active = !g.active;
+      if (g.active) {
+        const a = rnd(0, TAU);
+        g.dir.set(Math.cos(a), 0, Math.sin(a) * 0.5).normalize();
+        g.target = rnd(0.5, 1.6);
+        g.timer = rnd(4, 10);
+      } else {
+        g.target = 0;
+        g.timer = rnd(8, 28);
+      }
+    }
+    g.strength += clamp(g.target - g.strength, -dt * 0.4, dt * 0.6);
+  }
+
   updateBlends(dt, settings) {
     const before = this.night;
     this.night += clamp((settings.nightGlow ? 1 : 0) - this.night, -dt * 0.25, dt * 0.25);
@@ -350,11 +374,15 @@ export class Valley {
     this.updateCamera(dt);
     this.updateBlends(dt, settings);
     this.updateGust(dt);
+    this.updateAmbient(dt);
     this.burnQueue = this.burnQueue.filter((q) => { if (q.at <= this.clock) { q.b.fire(this.night > 0.5 ? 5 : 3); return false; } return true; });
     for (const b of this.balloons) b.update(dt, this);
     this.separateBalloons(dt);
     this.updateBurnLights();
-    this.grass.update(dt, this.gust.dir, this.gust.strength);
+    // The grass feels the cursor's gust and the ambient one together.
+    const combined = this.gust.dir.clone().multiplyScalar(this.gust.strength).addScaledVector(this.ambient.dir, this.ambient.strength * 0.7);
+    const cs = combined.length();
+    this.grass.update(dt, cs > 1e-4 ? combined.divideScalar(cs) : v3(1, 0, 0), cs);
     this.flock?.update(dt, this);
     this.mist.update(dt, this.night);
   }
