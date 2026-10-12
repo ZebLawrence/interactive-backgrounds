@@ -403,10 +403,9 @@ export class Balloon {
     node.scale.setScalar(this.scale);
   }
 
-  /** Fire the burner for `seconds`; the balloon lights up and climbs. */
+  /** Fire the burner for `seconds`; the balloon lights up and lifts, slowly, while it burns. */
   fire(seconds = 2.5) {
     this.burnTimer = Math.max(this.burnTimer, seconds);
-    this.targetAlt += 25;
   }
 
   wave() { this.waveTimer = 2.5; }
@@ -443,7 +442,10 @@ export class Balloon {
       const minAlt = Math.max(floor + 25, valley.camera.position.y - depth * 0.02);
       const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.12);
       this.targetAlt = clamp(this.targetAlt - dt * 1.2 + Math.sin(this.altWander) * dt * 2.0, minAlt, maxAlt);
-      const vy = clamp((this.targetAlt - this.pos.y) * 0.06, -1.4, 2.2) + this.burn * 1.5;
+      // Balloons climb and sink gently; a burning burner adds a slow, steady lift, and the
+      // balloon keeps whatever height it gains rather than sinking back when the flame goes out.
+      if (this.burn > 0.5) this.targetAlt = Math.max(this.targetAlt, this.pos.y);
+      const vy = clamp((this.targetAlt - this.pos.y) * 0.04, -0.6, 0.7) + this.burn * 0.45;
       this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.4);
       this.vel.x += (wind.x - this.vel.x) * Math.min(1, dt * 0.25);
       this.vel.z += (wind.z - this.vel.z) * Math.min(1, dt * 0.25);
