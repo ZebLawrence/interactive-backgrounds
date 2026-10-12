@@ -11,3 +11,6 @@ static web page.
 
 The web pages are served by GitHub Pages straight from this repository (no build step):
 `https://zeblawrence.github.io/interactive-backgrounds/<background>/html/`.
+
+Building a new one? Read [guidelines.md](guidelines.md) first: the quality bar, the conventions, and the
+traps the existing backgrounds fell into.
