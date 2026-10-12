@@ -1,7 +1,7 @@
 # Balloon Dawn
 
 A hot-air balloon fiesta drifting over a misty valley at sunrise, seen from a grassy hill, that
-reacts to your cursor. A web page for now; no native app yet.
+reacts to your cursor: a macOS desktop background (`swift/`) and a web page (`html/`).
 
 **Live:** https://zeblawrence.github.io/interactive-backgrounds/balloons/html/
 
@@ -27,7 +27,53 @@ reacts to your cursor. A web page for now; no native app yet.
   overhead; and a flock of swallows that scatters from a fast cursor and wheels around a resting one.
 - **Balloons**: a handful, a fiesta, or the whole sky. **New Morning** re-seeds everything.
 
-## Running it
+## macOS app
+
+`swift/` is a native port: a menu-bar app that draws the valley behind your desktop icons and
+windows, on every screen. Requires macOS 14+ and the Xcode command line tools.
+
+```sh
+cd swift
+./build.sh             # builds build/Balloons.app ("Balloon Dawn")
+open build/Balloons.app
+./build.sh --install   # or: copy to /Applications and launch
+```
+
+Control it from the balloon icon in the menu bar: Fire a Burner, All Burn, Balloons (a handful / a
+fiesta / the whole sky), New Morning, Night Glow, Swallows, Click Desktop to Burn, Low Power (30 fps,
+no MSAA), Launch at Login, and Quit. Clicking empty desktop fires the balloon under the click, or the
+nearest one (a `CGWindowList` hit test ignores clicks on windows), and the cursor is polled each
+frame, so no Accessibility permission is needed. Run only one of Fishbowl, Firefly Meadow and Balloon
+Dawn at a time: they all draw at the same desktop level.
+
+Developer flags:
+
+```sh
+swift run Balloons --preview                         # a normal window instead of the desktop
+swift run Balloons --snapshot out.png --at 6         # render with a resting cursor, save a frame, exit
+swift run Balloons --snapshot out.png --burn-at 2    # ... firing the balloon under the cursor first
+swift run Balloons --snapshot out.png --all-burn-at 2 --night   # the night glow, everyone burning
+swift run Balloons --snapshot out.png --sweep        # a cursor sweeping fast across the screen (gusts)
+swift run Balloons --snapshot out.png --cursor 0.3 0.6 --log    # rest the cursor elsewhere; print the fleet
+swift run Balloons --night                           # force the night glow (or --dawn)
+swift run Balloons --preview --fov 20                # narrow the camera to inspect detail at 4K density
+swift run Balloons --preview --stats                 # log the GPU time per frame
+```
+
+Like Firefly Meadow's, it's a straight port of the web version, file for file (`Valley.swift` ←
+`valley.js`, `Balloon.swift` ← `balloon.js`, `Grass.swift` ← `grass.js`, and so on), rendered with
+Metal directly. Since the web version leans on three.js's built-in materials, the port brings the
+relevant parts across too: MeshStandardMaterial's physically based lighting (the sun, the hemisphere
+light and the six burner point lights, with GGX highlights), its normal and bump mapping (tangent
+frames from screen-space derivatives, as three.js builds them), the geometry generators (lathe,
+torus, cylinder, box, capsule, sphere and the Catmull-Rom profile, laid out as three.js lays them
+out), the sun's 4096-pixel shadow map with the grass bending the same way in the shadow pass, and
+the post-processing (4x MSAA into a 16-bit float target, UnrealBloomPass, the grade and ACES filmic
+tone mapping). Every texture is drawn with Core Graphics using the same calls as the canvas code. At
+60 fps it uses about 7% of one CPU core and costs about the same GPU time per frame as Firefly
+Meadow.
+
+## Web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with
 Three.js loaded from a CDN), so there's no build step: serve the folder with any static server, e.g.
