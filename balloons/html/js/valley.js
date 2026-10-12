@@ -74,15 +74,16 @@ export class Valley {
 
     this.sun = new THREE.DirectionalLight(0xffc693, 2.0);
     // The sun's shadows cover the knoll and the air just above it.
-    this.sun.target.position.set(0, 20, -45);
+    this.sun.target.position.set(0, 12, -32);
     this.sun.position.copy(this.sun.target.position).addScaledVector(G.uSunDir.value, 400);
     this.sun.castShadow = true;
+    // A tight, high-resolution map over the near grass: blades are only a few centimetres wide.
     const sc = this.sun.shadow.camera;
-    sc.left = -90; sc.right = 90; sc.top = 90; sc.bottom = -60; sc.near = 200; sc.far = 650;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.05;
-    this.sun.shadow.radius = 3;
+    sc.left = -60; sc.right = 60; sc.top = 55; sc.bottom = -45; sc.near = 250; sc.far = 600;
+    this.sun.shadow.mapSize.set(4096, 4096);
+    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.normalBias = 0.12;
+    this.sun.shadow.radius = 2;
     this.hemi = new THREE.HemisphereLight(0x8a9ad8, 0x9a6a48, 0.6);
     this.scene.add(this.sun, this.sun.target, this.hemi);
     // A pool of point lights that follow whichever burners are firing.
@@ -198,7 +199,7 @@ export class Valley {
     const x = rnd(-0.8, 0.8) * this.halfWidth(depth);
     const z = -depth;
     // Low enough to stay in frame: between a little below eye level and a third of the depth above it.
-    const alt = Math.max(groundHeight(x, z) + 25, lerp(this.camera.position.y - depth * 0.3, this.camera.position.y + depth * 0.12, Math.random()));
+    const alt = Math.max(groundHeight(x, z) + 25, this.camera.position.y - depth * 0.02, lerp(this.camera.position.y - depth * 0.3, this.camera.position.y + depth * 0.12, Math.random()));
     b.pos.set(x, alt, z);
     b.targetAlt = alt;
     b.vel.copy(this.windAt(b.pos));

@@ -195,7 +195,11 @@ export class Grass {
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
-    this.material.uniforms.uSurface.value = this.surface;
+    // UniformsUtils.merge clones its inputs, so re-point the shared uniforms at the live objects.
+    Object.assign(this.material.uniforms, {
+      uTime: G.uTime, uNight: G.uNight, uSunDir: G.uSunDir, uGust: this.uGust, uSurface: { value: this.surface },
+      uFogColor: G.uFogColor, uFogNear: G.uFogNear, uFogFar: G.uFogFar,
+    });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;

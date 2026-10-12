@@ -437,8 +437,11 @@ export class Balloon {
     } else {
       this.altWander += dt * 0.05;
       const floor = valley.groundHeight(this.pos.x, this.pos.z);
-      // Climb no higher than keeps the balloon in frame at its distance.
-      const minAlt = floor + 25, maxAlt = Math.max(minAlt + 10, valley.camera.position.y + -this.pos.z * 0.12);
+      // Stay above the ground and above the line of sight over the brow of the knoll (so the
+      // hill never hides a balloon's lower half), and no higher than keeps it in frame.
+      const depth = -this.pos.z;
+      const minAlt = Math.max(floor + 25, valley.camera.position.y - depth * 0.02);
+      const maxAlt = Math.max(minAlt + 10, valley.camera.position.y + depth * 0.12);
       this.targetAlt = clamp(this.targetAlt - dt * 1.2 + Math.sin(this.altWander) * dt * 2.0, minAlt, maxAlt);
       const vy = clamp((this.targetAlt - this.pos.y) * 0.06, -1.4, 2.2) + this.burn * 1.5;
       this.vel.y += (vy - this.vel.y) * Math.min(1, dt * 0.4);
