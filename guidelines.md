@@ -81,6 +81,11 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   appears upside down or missing, check the plane's vertical placement before blaming the flip.
 - Alpha-tested silhouettes on planes work well for horizons (tree lines, ridges), but size
   them from real-world elevation angles: a tree line reaching 16 degrees up fills the sky.
+- A varying must be linear in world space to interpolate correctly across a big triangle. A
+  view-space *depth* is; a view-space *distance* (`length(mvPosition)`) is not, and on a 9 km water
+  plane with 140 m triangles it came out thirty times too big. Compute lengths per fragment.
+- Three r155+ lights are in physical units: a hemisphere light of intensity 1 gives a dull surface
+  about 1/π of its albedo. Dusk needs hemisphere intensities around 3, not 0.6.
 - Point lights have a range; a burner's 30 m light will never reach a hill 100 m away. Fake the
   far effect deliberately (a stylised glint) instead of stretching the range.
 
@@ -94,6 +99,8 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
 - The browser pane throttles `requestAnimationFrame` when it is not in front, so time-based
   behaviour may appear frozen. Drive the simulation by hand (`step(dt)` in a loop) to test
   anything that takes seconds or minutes: burn cycles, gathering, synchronisation, drift.
+  A helper that runs `step(1/60)` N times and then renders once (Loon Lake's testing used one
+  defined from the console) makes a minute of lake time cost a second.
 - Measure rather than eyeball when the question is "does it move/light/shadow at all": read back
   pixel means with and without the effect, log positions over simulated time, count overlaps.
 - Watch for balloons (or anything) wandering out of frame, through terrain, or behind a

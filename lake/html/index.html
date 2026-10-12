@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Loon Lake</title>
+<meta name="description" content="An interactive 3D mountain lake at dusk: your fingertip stirs the water, trout rise to it, dragonflies land on it, a click skips a stone, and the whole shore is reflected in the ripples.">
+<meta name="theme-color" content="#1a1626">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%AA%B6%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=22",
+  "./js/bedlife.js": "./js/bedlife.js?v=22",
+  "./js/dragonflies.js": "./js/dragonflies.js?v=22",
+  "./js/fish.js": "./js/fish.js?v=22",
+  "./js/lake.js": "./js/lake.js?v=22",
+  "./js/lilies.js": "./js/lilies.js?v=22",
+  "./js/loons.js": "./js/loons.js?v=22",
+  "./js/reeds.js": "./js/reeds.js?v=22",
+  "./js/shaders.js": "./js/shaders.js?v=22",
+  "./js/sky.js": "./js/sky.js?v=22",
+  "./js/util.js": "./js/util.js?v=22",
+  "./js/water.js": "./js/water.js?v=22"
+} }
+</script>
+</head>
+<body>
+<canvas id="lake"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Loon Lake menu" aria-expanded="false" title="Loon Lake">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="2.6"/><path d="M12 5.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6Z" opacity=".75"/><path d="M12 1.6a10.4 10.4 0 1 0 0 20.8 10.4 10.4 0 0 0 0-20.8Z" opacity=".45"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Loon Lake</div>
+    <hr>
+    <button data-act="skip"><span class="check"></span><span class="label">Skip a Stone</span><kbd>S</kbd></button>
+    <button data-act="density"><span class="check">▸</span><span class="label">Life</span></button>
+    <div id="density" hidden>
+      <button data-density="few"><span class="check"></span><span class="label">A quiet evening</span></button>
+      <button data-density="normal"><span class="check"></span><span class="label">A living lake</span></button>
+      <button data-density="many"><span class="check"></span><span class="label">Teeming</span></button>
+    </div>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Evening</span></button>
+    <hr>
+    <button data-toggle="night"><span class="check"></span><span class="label">Night</span><kbd>N</kbd></button>
+    <button data-toggle="rain"><span class="check"></span><span class="label">Rain</span><kbd>R</kbd></button>
+    <button data-toggle="clickToSkip"><span class="check"></span><span class="label">Click to Skip a Stone</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Drag through the water to stir it · hold still and the trout and dragonflies come to your fingertip · click to skip a stone</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=22"></script>
+</body>
+</html>
