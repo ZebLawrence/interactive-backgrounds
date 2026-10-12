@@ -102,6 +102,8 @@ export class Grass {
   /** @param {object} layout  { halfWidth(d), groundHeight(x, z) } */
   constructor(layout) {
     this.uGust = { value: new THREE.Vector4(0, 0, 0, 0) }; // (dir.x, dir.z, strength, unused)
+    // Burners lighting the grass from afar: (x, y, z, intensity) for each of the valley's burner lights.
+    this.uBurners = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
     this.gustDir = new THREE.Vector2();
     this.gustStrength = 0;
     const near = 0.8, far = 80;
@@ -160,7 +162,7 @@ export class Grass {
         #include <common>
         #include <packing>
         #include <shadowmap_pars_fragment>
-        uniform float uNight; uniform vec3 uSunDir; uniform sampler2D uSurface;
+        uniform float uNight; uniform vec3 uSunDir; uniform sampler2D uSurface; uniform vec4 uBurners[6];
         varying vec3 vWorld; varying vec3 vNormal; varying vec3 vAcross; varying vec2 vUv; varying float vVar; varying float vLen;
         ${FOG_HEAD}
         void main() {
@@ -189,15 +191,31 @@ export class Grass {
           float ao = 0.3 + 0.7 * t;
           vec3 c = albedo * (sun + sky) * ao;
           // A glint of sunlight along the ridges of the veins.
-          vec3 hv = normalize(uSunDir + normalize(cameraPosition - vWorld));
+          vec3 viewDir = normalize(cameraPosition - vWorld);
+          vec3 hv = normalize(uSunDir + viewDir);
           c += sunCol * pow(max(dot(n, hv), 0.0), 18.0) * 0.22 * shadow * t * (0.5 + hgt);
+          // Burners across the valley catch the blades: a warm highlight where the burner's light
+          // reflects off a blade toward the eye, plus a gentle glow on faces turned toward it.
+          vec3 burnerCol = vec3(1.0, 0.62, 0.28);
+          for (int i = 0; i < 6; i++) {
+            vec4 L = uBurners[i];
+            if (L.w <= 0.0) continue;
+            vec3 toL = L.xyz - vWorld;
+            float d = length(toL);
+            vec3 l = toL / max(d, 0.1);
+            float fall = L.w / (1.0 + d * d / 12000.0);
+            vec3 hb = normalize(l + viewDir);
+            float spec = pow(max(dot(n, hb), 0.0), 28.0) * (0.6 + hgt);
+            float diff = max(dot(n, l), 0.0);
+            c += burnerCol * (spec * 1.5 + diff * 0.12 * albedo.g * 4.0) * fall * (0.3 + 0.7 * t) * mix(0.5, 1.3, uNight);
+          }
           c = applyFog(c, length(vWorld - cameraPosition));
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
     // UniformsUtils.merge clones its inputs, so re-point the shared uniforms at the live objects.
     Object.assign(this.material.uniforms, {
-      uTime: G.uTime, uNight: G.uNight, uSunDir: G.uSunDir, uGust: this.uGust, uSurface: { value: this.surface },
+      uTime: G.uTime, uNight: G.uNight, uSunDir: G.uSunDir, uGust: this.uGust, uSurface: { value: this.surface }, uBurners: this.uBurners,
       uFogColor: G.uFogColor, uFogNear: G.uFogNear, uFogFar: G.uFogFar,
     });
     this.mesh = new THREE.Mesh(geo, this.material);

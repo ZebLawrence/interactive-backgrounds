@@ -285,11 +285,14 @@ export class Valley {
   /** Hand the pool of burner lights to the brightest burners. */
   updateBurnLights() {
     const burning = this.balloons.filter((b) => b.burn > 0.02).sort((p, q) => q.burn - p.burn);
+    const burners = this.grass.uBurners.value;
     this.burnLights.forEach((light, i) => {
       const b = burning[i];
-      if (!b) { light.intensity = 0; return; }
+      if (!b) { light.intensity = 0; burners[i].set(0, 0, 0, 0); return; }
       light.position.copy(b.pos).add(v3(0, -2.4 * b.scale, 0));
-      light.intensity = b.burn * 900 * b.scale;
+      const flicker = 0.85 + 0.15 * Math.sin(this.clock * 23 + i * 1.7) * Math.sin(this.clock * 31 + i);
+      light.intensity = b.burn * 900 * b.scale * flicker;
+      burners[i].set(light.position.x, light.position.y, light.position.z, b.burn * b.scale * flicker);
     });
   }
 

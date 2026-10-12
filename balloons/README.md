@@ -9,7 +9,7 @@ reacts to your cursor. A web page for now; no native app yet.
   gust, baskets swinging gently beneath them, and the long grass on the hill bends too.
 - **Rest the cursor** on a balloon and its crew wave back.
 - **Click a balloon** to fire its burner: a roaring flame lights the envelope from inside, throws
-  warm light over the basket and rigging, and the balloon lifts, slowly, and keeps rising for a
+  warm light over the basket and rigging, glints off the long grass on the hill, and the balloon lifts, slowly, and keeps rising for a
   while after the flame as the heat lingers. Click empty sky and the nearest balloon fires instead.
 - **Left alone**, the valley flies itself: envelopes slowly cool and sink, pilots fire their burners
   when they get low or just now and then, and gusts of wind come and go across the valley, pushing
