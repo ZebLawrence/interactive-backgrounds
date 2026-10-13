@@ -1,7 +1,7 @@
 # Loon Lake
 
 A still mountain lake in the last hour of sun, seen from the water's edge, that reacts to your cursor as if it were
-your fingertip in the water. A web page for now; no native app yet.
+your fingertip in the water: a macOS desktop background (`swift/`) and a web page (`html/`).
 
 **Live:** https://zeblawrence.github.io/interactive-backgrounds/lake/html/
 
@@ -27,7 +27,54 @@ your fingertip in the water. A web page for now; no native app yet.
 - **Life**: a quiet evening, a living lake, or teeming. **New Evening** re-seeds the reeds and the
   shore and starts the creatures over.
 
-## Running it
+## macOS app
+
+`swift/` is a native port: a menu-bar app that draws the lake behind your desktop icons and
+windows, on every screen. Requires macOS 14+ and the Xcode command line tools.
+
+```sh
+cd swift
+./build.sh             # builds build/Lake.app ("Loon Lake")
+open build/Lake.app
+./build.sh --install   # or: copy to /Applications and launch
+```
+
+Control it from the waves icon in the menu bar: Skip a Stone, Life (a quiet evening / a living
+lake / teeming), New Evening, Night, Rain, Click Desktop to Skip a Stone, Low Power (30 fps, no
+MSAA, a smaller wave simulation), Launch at Login, and Quit. Clicking empty desktop skips a stone
+toward the click (a `CGWindowList` hit test ignores clicks on windows), and the cursor is polled each
+frame, so no Accessibility permission is needed. Run only one of the backgrounds at a time: they all
+draw at the same desktop level.
+
+Developer flags:
+
+```sh
+swift run Lake --preview                          # a normal window instead of the desktop
+swift run Lake --snapshot out.png --at 6          # rest the cursor on the near water, save a frame, exit
+swift run Lake --snapshot out.png --skip-at 2     # ... skipping a stone first
+swift run Lake --snapshot out.png --sweep         # a hand dragged fast through the water
+swift run Lake --snapshot out.png --cursor 0.3 0.2 --log   # rest the cursor elsewhere; print what everyone is doing
+swift run Lake --night                            # force night (or --dusk); --rain / --dry likewise
+swift run Lake --preview --fov 14                 # narrow the camera to inspect detail at 4K density
+swift run Lake --preview --stats                  # log the GPU time per frame
+swift run Lake --preview --bench                  # render as fast as the display allows and log the frame time
+```
+
+Like the other ports it follows the web version file for file (`Lake.swift` ← `lake.js`,
+`Water.swift` ← `water.js`, `Fish.swift` ← `fish.js`, and so on) and renders with Metal directly.
+Each frame runs the wave simulation as compute kernels (the height field ping-ponged in a 2048²
+float texture, then a mipmapped half-float slope map), the key light's 4096-pixel shadow map (the
+reeds, rocks, weeds, logs and trout, each deformed the same way as when drawn), the reflection from
+a camera mirrored in the water with its near plane tilted onto the surface, the refraction of the
+bed and fish with its depth, then the main pass with 4x MSAA, three.js's UnrealBloomPass, the grade
+and ACES tone mapping. The parts of three.js the web version relies on come across too:
+MeshStandardMaterial's lighting (the key and hemisphere lights with GGX highlights), fog, and the
+geometry generators (lathe, tube with parallel-transported frames, icosahedron, capsule, centripetal
+Catmull-Rom curves). The textures are drawn with Core Graphics using the same calls as the canvas
+code; the moon maps are copied from `meadow/html/assets` into the app bundle. At 60 fps it uses about
+11 ms of GPU time per frame at 2560x1600 on an M3 laptop (Firefly Meadow uses about 7.5).
+
+## Web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with
 Three.js loaded from a CDN), so there's no build step: serve the folder with any static server, e.g.
