@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Boreal Night</title>
+<meta name="description" content="An interactive 3D spruce clearing under the northern lights: a great grey owl watches your cursor, a click rustles a vole under the snow and the owl plunges for it, and a fast cursor is a gust that shakes snow from the trees.">
+<meta name="theme-color" content="#03050a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A6%89%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=1",
+  "./js/aurora.js": "./js/aurora.js?v=1",
+  "./js/boreal.js": "./js/boreal.js?v=1",
+  "./js/ground.js": "./js/ground.js?v=1",
+  "./js/owl.js": "./js/owl.js?v=1",
+  "./js/shaders.js": "./js/shaders.js?v=1",
+  "./js/sky.js": "./js/sky.js?v=1",
+  "./js/snow.js": "./js/snow.js?v=1",
+  "./js/spruce.js": "./js/spruce.js?v=1",
+  "./js/util.js": "./js/util.js?v=1"
+} }
+</script>
+</head>
+<body>
+<canvas id="forest"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Boreal Night menu" aria-expanded="false" title="Boreal Night">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 8.6 7.2h2.1L7.2 12h2.4l-4.1 5.4H11V22h2v-4.6h5.5L14.4 12h2.4l-3.5-4.8h2.1L12 2Z"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Boreal Night</div>
+    <hr>
+    <button data-act="hunt"><span class="check"></span><span class="label">Rustle a Vole</span><kbd>H</kbd></button>
+    <button data-act="substorm"><span class="check"></span><span class="label">Aurora Substorm</span><kbd>A</kbd></button>
+    <button data-act="owls"><span class="check">▸</span><span class="label">Owls</span></button>
+    <div id="owls" hidden>
+      <button data-owls="one"><span class="check"></span><span class="label">A lone owl</span></button>
+      <button data-owls="pair"><span class="check"></span><span class="label">A pair</span></button>
+      <button data-owls="three"><span class="check"></span><span class="label">Three</span></button>
+    </div>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Night</span></button>
+    <hr>
+    <button data-toggle="snowfall"><span class="check"></span><span class="label">Snowfall</span><kbd>S</kbd></button>
+    <button data-toggle="moonlight"><span class="check"></span><span class="label">Moonlight</span><kbd>M</kbd></button>
+    <button data-toggle="clickToHunt"><span class="check"></span><span class="label">Click to Rustle</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Rest the cursor and the owl turns to look · click the snow and it hunts the vole there · move fast for a gust</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=1"></script>
+</body>
+</html>
