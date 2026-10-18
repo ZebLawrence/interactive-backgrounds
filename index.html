@@ -203,7 +203,7 @@ function showMode(i, mode, inBox = false) {
   state[i].mode = mode;
   const s = SCENES[i];
   const card = grid.children[i];
-  card.querySelectorAll('.shot img').forEach((img) => { const on = img.dataset.mode === mode; img.classList.toggle('on', on); if (on && !img.src) img.src = img.dataset.src; });
+  card.querySelectorAll('.shot img').forEach((img) => { const on = img.dataset.mode === mode; img.classList.toggle('on', on); if (on && !img.getAttribute('src')) img.src = img.dataset.src; });
   card.querySelectorAll('.modes button').forEach((b) => { b.classList.toggle('on', b.dataset.mode === mode); b.setAttribute('aria-pressed', b.dataset.mode === mode); });
   if (inBox) { boxImg.src = shot(s, mode, true); boxImg.alt = `${s.title}, ${label(s, mode)}`; boxModes.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode)); }
 }
@@ -234,19 +234,21 @@ function span(svg) { const sp = document.createElement('span'); sp.innerHTML = s
 const slides = document.getElementById('slides'), heroNow = document.getElementById('heroNow'), heroTitle = document.getElementById('heroTitle'), heroDots = document.getElementById('heroDots');
 const HERO = SCENES.map((s) => ({ s, mode: s.modes[s.key === 'arch' ? 0 : s.key === 'balloons' ? 1 : s.key === 'meadow' ? 0 : 0][0] }));
 HERO.forEach(({ s, mode }, i) => {
-  slides.append(el('img', { alt: '', src: i ? '' : shot(s, mode, true), 'data-src': shot(s, mode, true), class: i ? '' : 'on' }));
+  const img = el('img', { alt: '', 'data-src': shot(s, mode, true), class: i ? '' : 'on' });
+  if (!i) img.src = shot(s, mode, true);
+  slides.append(img);
   heroDots.append(el('button', { type: 'button', role: 'tab', 'aria-label': s.title, class: i ? '' : 'on', onclick: () => { heroTo(i); heroHold = 14; } }, el('i')));
 });
 let heroAt = 0, heroHold = 0;
 function heroTo(i) {
   heroAt = (i + HERO.length) % HERO.length;
   const { s } = HERO[heroAt];
-  [...slides.children].forEach((img, k) => { if (k === heroAt && !img.src) img.src = img.dataset.src; img.classList.toggle('on', k === heroAt); });
+  [...slides.children].forEach((img, k) => { if (k === heroAt && !img.getAttribute('src')) img.src = img.dataset.src; img.classList.toggle('on', k === heroAt); });
   [...heroDots.children].forEach((b, k) => b.classList.toggle('on', k === heroAt));
   heroTitle.textContent = s.title;
   heroNow.href = `${s.key}/html/`;
   document.getElementById('hero').style.setProperty('--accent', s.accent);
-  const next = slides.children[(heroAt + 1) % HERO.length]; if (!next.src) next.src = next.dataset.src;
+  const next = slides.children[(heroAt + 1) % HERO.length]; if (!next.getAttribute('src')) next.src = next.dataset.src;
 }
 heroTo(0);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
