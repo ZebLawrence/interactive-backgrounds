@@ -74,6 +74,8 @@ function furCards(count, surface, flow, rng, opts = {}) {
     f = unit(f.sub(n.clone().multiplyScalar(f.dot(n))));
     if (f.lengthSq() < 1e-6) f = dt.clone();
     const side = unit(f.clone().cross(n));
+    // A card with no width direction would have no normal (and shade as NaN): leave it out.
+    if (side.lengthSq() < 0.5) continue;
     const dir = unit(f.clone().multiplyScalar(Math.cos(lift)).addScaledVector(n, Math.sin(lift)));
     const root = p.clone().addScaledVector(n, -0.002);
     const L = len * (0.7 + 0.6 * rng()), W = wid * (0.7 + 0.6 * rng());
@@ -108,19 +110,27 @@ function furCards(count, surface, flow, rng, opts = {}) {
 // Materials
 // ---------------------------------------------------------------------------------------------
 
+/** The sky's shading of a white coat: the belly and undersides in a cool shade, never darker than `floor` of the way up. */
+const FORM_GLSL = `
+vec3 hareForm(float up, float floor) {
+  float form = smoothstep(-0.9, 0.9, up);
+  return mix(vec3(0.50, 0.56, 0.69), vec3(1.0), floor + (1.0 - floor) * form);
+}
+`;
+
 const FUR_HEAD = `
 varying vec2 vFUv;
 varying vec3 vFN;
 `;
 
 /** The pelt: white with the faint grey of the underfur in the shade, soft at the edges. */
-function peltMaterial(kind) {
+function peltMaterial(kind, tint = 1) {
   const mat = patchMaterial(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 }), {
     key: 'hare-pelt-' + kind,
-    uniforms: { uTime: G.uTime, uSkyLight: G.uSkyLight, uTint: { value: new THREE.Vector3(1, 1, 1) } },
+    uniforms: { uTime: G.uTime, uSkyLight: G.uSkyLight, uTint: { value: new THREE.Vector3(tint, tint, tint) } },
     vHead: `varying vec2 vPUv; varying vec3 vPN; varying float vUp;`,
     vMain: `vPUv = uv; vPN = normalize(normalMatrix * gNormal); vUp = normalize(mat3(modelMatrix) * gNormal).y;`,
-    fHead: `varying vec2 vPUv; varying vec3 vPN; varying float vUp; uniform vec3 uSkyLight, uTint;\n${NOISE_GLSL}`,
+    fHead: `varying vec2 vPUv; varying vec3 vPN; varying float vUp; uniform vec3 uSkyLight, uTint;\n${NOISE_GLSL}${FORM_GLSL}`,
     fColor: `
       {
         // The coat lies in strands along the body: fine streaks, fading out before they alias.
@@ -131,13 +141,13 @@ function peltMaterial(kind) {
         float g = vnoise(vPUv * vec2(30.0, 60.0));
         vec3 fur = mix(vec3(0.86, 0.88, 0.91), vec3(0.97, 0.97, 0.98), smoothstep(0.2, 0.8, g * 0.5 + streak * 0.5));
         // The sky lights the back and leaves the belly and the undersides in a cool shade, which
-        // is what gives a white animal its shape on a white day.
-        float form = smoothstep(-0.9, 0.9, vUp);
-        fur *= mix(vec3(0.66, 0.70, 0.78), vec3(1.0), 0.35 + 0.65 * form);
+        // is what gives a white animal its shape on a white day. (Deep enough to measure: lighter,
+        // the back came out at 202 against snow at 201 and the hare merged into the snow.)
+        fur *= hareForm(vUp, 0.15);
         ${kind === 'ear' ? `
         // Ears: black tips, and the inside greyish-pink where the fur is thin.
-        float tip = smoothstep(0.84, 0.9, vPUv.y + (vnoise(vPUv * 40.0) - 0.5) * 0.06);
-        fur = mix(fur, vec3(0.03, 0.028, 0.026), tip);
+        float tip = smoothstep(0.82, 0.88, vPUv.y + (vnoise(vPUv * 40.0) - 0.5) * 0.06);
+        fur = mix(fur, vec3(0.025, 0.023, 0.022), tip);
         float inner = smoothstep(0.2, 0.5, sin(vPUv.x * 6.2831) * -1.0);
         fur = mix(fur, vec3(0.5, 0.42, 0.42), inner * 0.5 * (1.0 - tip));` : ''}
         ${kind === 'head' ? `
@@ -145,7 +155,8 @@ function peltMaterial(kind) {
         fur = mix(fur, vec3(0.7, 0.7, 0.72), smoothstep(0.85, 1.0, vPUv.y) * 0.4);` : ''}
         ${kind === 'tail' ? `
         fur = mix(fur, vec3(0.45, 0.45, 0.47), smoothstep(0.5, 0.9, sin(vPUv.x * 6.2831)) * 0.45);` : ''}
-        diffuseColor.rgb = fur * uTint;
+        // A winter coat is a touch creamier than fresh snow, which is blue-white: just enough to part them.
+        diffuseColor.rgb = fur * uTint * vec3(1.0, 0.985, 0.95);
       }`,
     fBeforeOpaque: `
       {
@@ -159,18 +170,18 @@ function peltMaterial(kind) {
 }
 
 /** The hair cards: three strands per card, alpha-tested. */
-function strandMaterial() {
+function strandMaterial(tint = 1) {
   const mat = patchMaterial(new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, alphaToCoverage: true,
   }), {
     key: 'hare-strands',
-    uniforms: { uTime: G.uTime, uSkyLight: G.uSkyLight, uTint: { value: new THREE.Vector3(1, 1, 1) } },
-    vHead: `attribute float aSeed; varying vec2 vSUv; varying float vSeed; uniform float uTime;`,
+    uniforms: { uTime: G.uTime, uSkyLight: G.uSkyLight, uTint: { value: new THREE.Vector3(tint, tint, tint) } },
+    vHead: `attribute float aSeed; varying vec2 vSUv; varying float vSeed; varying float vSUp; uniform float uTime;`,
     vMain: `
-      vSUv = uv; vSeed = aSeed;
+      vSUv = uv; vSeed = aSeed; vSUp = normalize(mat3(modelMatrix) * gNormal).y;
       // The tips stir a little in the air.
       gPos += vec3(sin(uTime * 2.1 + aSeed * 20.0), 0.0, cos(uTime * 1.7 + aSeed * 30.0)) * 0.0008 * uv.y * uv.y;`,
-    fHead: `varying vec2 vSUv; varying float vSeed; uniform vec3 uSkyLight, uTint;\n${NOISE_GLSL}`,
+    fHead: `varying vec2 vSUv; varying float vSeed; varying float vSUp; uniform vec3 uSkyLight, uTint;\n${NOISE_GLSL}${FORM_GLSL}`,
     fColor: `
       {
         float x = vSUv.x * 3.0 + vSeed * 0.5;
@@ -181,7 +192,10 @@ function strandMaterial() {
         a *= 1.0 - smoothstep(0.8, 1.0, vSUv.y);
         if (a < 0.03) discard;
         diffuseColor.a = a;
-        diffuseColor.rgb = mix(vec3(0.82, 0.83, 0.86), vec3(0.97, 0.97, 0.98), vSUv.y) * uTint;
+        diffuseColor.rgb = mix(vec3(0.82, 0.83, 0.86), vec3(0.97, 0.97, 0.98), vSUv.y) * uTint * vec3(1.0, 0.985, 0.95);
+        // The same sky shading as the pelt beneath, gentler, so the coat keeps its form (unshaded,
+        // the strands washed the body's shape out).
+        diffuseColor.rgb *= hareForm(gl_FrontFacing ? vSUp : -vSUp, 0.3);
       }`,
   });
   return mat;
@@ -268,7 +282,7 @@ export function makeHareKit() {
     pelt: peltMaterial('body'), head: peltMaterial('head'), ear: peltMaterial('ear'), tail: peltMaterial('tail'), strands: strandMaterial(),
     eye: new THREE.MeshStandardMaterial({ color: 0x120c08, roughness: 0.12, metalness: 0 }),
     nose: new THREE.MeshStandardMaterial({ color: 0x3a2a2a, roughness: 0.5 }),
-    ring: new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.9 }),
+    ring: new THREE.MeshStandardMaterial({ color: 0x1e1a17, roughness: 0.9 }),
     glint: new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }),
     shadow: new THREE.MeshBasicMaterial({ map: Art.texture(Art.blob(128, 0.2)), color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false, fog: false }),
   };
@@ -373,11 +387,14 @@ export class Hare {
     const { geo, fur, mats } = this.kit;
     const s = this.size;
     const tint = this.traits.tint;
-    this.materials = [];
-    const pelt = (kind) => {
-      const m = kind === 'ear' ? mats.ear : kind === 'head' ? mats.head : kind === 'tail' ? mats.tail : mats.pelt;
-      return m;
+    // Each hare has its own coat materials (the same shader programs), so its coat tint applies,
+    // and its own contact shadow, whose opacity follows its own bounds.
+    this.mats = {
+      pelt: peltMaterial('body', tint), head: peltMaterial('head', tint), ear: peltMaterial('ear', tint), tail: peltMaterial('tail', tint),
+      strands: strandMaterial(tint), shadow: mats.shadow.clone(),
     };
+    const own = this.mats;
+    const pelt = (kind) => (kind === 'ear' ? own.ear : kind === 'head' ? own.head : kind === 'tail' ? own.tail : own.pelt);
     const mesh = (g, m, cast = true) => {
       const me = new THREE.Mesh(g, m);
       me.castShadow = cast;
@@ -389,7 +406,7 @@ export class Hare {
     this.body.scale.setScalar(s);
     this.root.add(this.body);
     this.torso = mesh(geo.torso, pelt('body'));
-    this.torsoFur = mesh(fur.torso, mats.strands, false);
+    this.torsoFur = mesh(fur.torso, own.strands, false);
     this.body.add(this.torso, this.torsoFur);
     // Head on the neck.
     this.neck = new THREE.Group();
@@ -398,7 +415,7 @@ export class Hare {
     this.headG = new THREE.Group();
     this.neck.add(this.headG);
     this.head = mesh(geo.head, pelt('head'));
-    this.headFur = mesh(fur.head, mats.strands, false);
+    this.headFur = mesh(fur.head, own.strands, false);
     this.headG.add(this.head, this.headFur);
     this.headG.scale.setScalar(1.1);
     this.eyes = [];
@@ -432,7 +449,7 @@ export class Hare {
       this.headG.add(pivot);
       const ear = mesh(geo.ear, pelt('ear'));
       ear.material.side = THREE.DoubleSide;
-      const earFur = mesh(fur.ear, mats.strands, false);
+      const earFur = mesh(fur.ear, own.strands, false);
       pivot.add(ear, earFur);
       this.ears.push({ pivot, side });
     }
@@ -443,7 +460,7 @@ export class Hare {
       hip.position.set(-0.09, -0.012, side * 0.045);
       this.body.add(hip);
       const thigh = mesh(geo.thigh, pelt('body'));
-      const thighFur = mesh(fur.thigh, mats.strands, false);
+      const thighFur = mesh(fur.thigh, own.strands, false);
       hip.add(thigh, thighFur);
       const knee = new THREE.Group();
       knee.position.set(0.1, 0, 0);
@@ -467,11 +484,11 @@ export class Hare {
       const shoulder = new THREE.Group();
       shoulder.position.set(0.078, -0.028, side * 0.034);
       this.body.add(shoulder);
-      shoulder.add(mesh(geo.upper, pelt('body')), mesh(fur.upper, mats.strands, false));
+      shoulder.add(mesh(geo.upper, pelt('body')), mesh(fur.upper, own.strands, false));
       const elbow = new THREE.Group();
       elbow.position.set(0.075, 0, 0);
       shoulder.add(elbow);
-      elbow.add(mesh(geo.lower, pelt('body')), joint(0.014), mesh(fur.lower, mats.strands, false));
+      elbow.add(mesh(geo.lower, pelt('body')), joint(0.014), mesh(fur.lower, own.strands, false));
       const wrist = new THREE.Group();
       wrist.position.set(0.07, 0, 0);
       elbow.add(wrist);
@@ -486,7 +503,7 @@ export class Hare {
     tail.rotation.y = Math.PI;
     this.tail.add(tail);
     // Contact shadow on the snow.
-    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mats.shadow);
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), own.shadow);
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.renderOrder = 2;
     this.root.add(this.shadow);
@@ -543,8 +560,11 @@ export class Hare {
     // The nose works when it is alert.
     this.noseMesh.position.y = -0.012 + Math.sin(this.nose) * 0.0015;
     this.noseMesh.scale.x = 0.7 + Math.sin(this.nose) * 0.08;
-    this.shadow.scale.set(0.75 * s, 0.55 * s, 1);
-    this.shadow.position.set(0.0, 0.01, 0);
+    // A little larger and (below) darker than it was, so the hare sits on the snow. Its height is
+    // set in update(), which keeps it on the snow while the hare is in the air.
+    this.shadow.scale.set(0.8 * s, 0.6 * s, 1);
+    this.shadow.position.x = 0;
+    this.shadow.position.z = 0;
   }
 
   // MARK: - Behaviour
@@ -840,7 +860,7 @@ export class Hare {
     this.root.position.set(this.pos.x, this.pos.y + (this.airY || 0), this.pos.z);
     this.root.rotation.y = this.yaw;
     this.shadow.visible = true;
-    this.shadow.material.opacity = 0.45 * (1 - 0.6 * G.uNight.value) * (1 - smoothstep(0, 0.3, this.airY || 0) * 0.6);
+    this.shadow.material.opacity = 0.7 * (1 - 0.6 * G.uNight.value) * (1 - smoothstep(0, 0.3, this.airY || 0) * 0.6);
     this.shadow.position.y = -(this.airY || 0) + 0.012;
     this.apply(p, dt);
     if (this.look && !(c.pointer.inside && (c.attention || c.rest > 0.5))) {
@@ -851,5 +871,6 @@ export class Hare {
 
   dispose() {
     this.shadow.geometry.dispose();
+    for (const m of Object.values(this.mats)) m.dispose();
   }
 }

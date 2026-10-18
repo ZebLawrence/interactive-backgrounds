@@ -101,25 +101,26 @@ side twigs left out of them (they are under a shadow texel).
 
 ### Tried here first
 
-Changes made in the Swift version only, to carry back to the web version if they look right:
+Changes tried in the Swift version before the web version. The first three are now in both:
 
 - **The rough bark at the foot of the trunks** read as near-black, burnt-looking bands. It is now a
   weathered grey-brown (the rough tile's colours lifted and its contrast softened), each trunk has
   its own tone, its height varies continuously from a dark collar a hand high on most trunks to
   nearly two metres on the oldest, the edge is crisp at any distance (it blended over 7 cm, which
   blurred close up), and above the edge it breaks into plates and islands rather than stopping at
-  one line (`aspenBark` in `Tree.swift`, `paintRough` in `Bark.swift`).
+  one line (`aspenBark` in `tree.js` / `Tree.swift`, `paintRough` in `bark.js` / `Bark.swift`).
 - **The hares were hard to see**, white on white: the back measured 202 against snow at 201. The
   undersides now fall into a deeper, cooler shade, the fur strands are shaded by the sky as the body
   is, the coat has a faint cream cast against the blue-white snow, the contact shadow is darker, and
-  the eye rims and black ear tips are a little stronger (`Hare.swift`).
-- **Grouse fixes**: both wings now have their rounded tip outboard (the web flips the wrong wing's
-  texture), the pale breast sits on the belly and throat rather than one flank, the first flush on
-  its own comes after four to eight minutes (on the web it often bursts out in the first second), and
-  a click on a trunk may send a perched grouse off to another crown (on the web it only startles the
-  hares).
+  the eye rims and black ear tips are a little stronger (`hare.js` / `Hare.swift`).
 - **Hare fixes**: the contact shadow stays on the snow during a bound instead of riding up with the
-  hare, and each hare's coat tint is applied (computed but unused on the web).
+  hare, each hare's coat tint is applied (it was computed but unused), each hare's contact shadow has
+  its own opacity (they shared one), and fur cards with no width are left out.
+- **Grouse fixes**, Swift only so far: both wings now have their rounded tip outboard (the web flips
+  the wrong wing's texture), the pale breast sits on the belly and throat rather than one flank, the
+  first flush on its own comes after four to eight minutes (on the web it often bursts out in the
+  first second), and a click on a trunk may send a perched grouse off to another crown (on the web it
+  only startles the hares).
 
 ## Running the web page
 
@@ -148,7 +149,8 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   cankers), a fine-grain tile at five pixels a millimetre, and a tile of the rough furrowed bark
   of a trunk's foot (narrow wandering ridges over dark furrows, broken into plates), which the
   older trunks wear to a metre or two up and the rest only as a dark collar at the snow, with a
-  sharp tongued edge. Each trunk samples them at its own offset, squeezed to its own
+  sharp tongued edge that breaks into plates and islands above it, its height and tone different on
+  every trunk. Each trunk samples them at its own offset, squeezed to its own
   circumference, so no two show the same eyes. A ridge of snow lies along
   the top of every branch and twig, bending it a little; its coverage follows the tree's load.
   Each tree is a damped spring at its own natural frequency (0.2-0.5 Hz, slower when taller); a
