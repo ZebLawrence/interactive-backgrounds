@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aspen Snow</title>
+<meta name="description" content="An interactive 3D aspen grove in falling snow: snowshoe hares watch a resting cursor and bolt from a fast one, a click on the snow flushes a ruffed grouse from its snow roost, and a click on a trunk brings its snow down in a cascade.">
+<meta name="theme-color" content="#c9cdd2">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%87%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=42",
+  "./js/bark.js": "./js/bark.js?v=42",
+  "./js/aspen.js": "./js/aspen.js?v=42",
+  "./js/ground.js": "./js/ground.js?v=42",
+  "./js/grouse.js": "./js/grouse.js?v=42",
+  "./js/hare.js": "./js/hare.js?v=42",
+  "./js/shaders.js": "./js/shaders.js?v=42",
+  "./js/sky.js": "./js/sky.js?v=42",
+  "./js/snow.js": "./js/snow.js?v=42",
+  "./js/tree.js": "./js/tree.js?v=42",
+  "./js/util.js": "./js/util.js?v=42"
+} }
+</script>
+</head>
+<body>
+<canvas id="grove"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Aspen Snow menu" aria-expanded="false" title="Aspen Snow">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 2h2v20h-2zM6.5 4h1.6v18H6.5zM15.9 3h1.6v19h-1.6zM3 7h1.2v15H3zM19.8 6H21v16h-1.2z"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Aspen Snow</div>
+    <hr>
+    <button data-act="flush"><span class="check"></span><span class="label">Flush the Grouse</span><kbd>G</kbd></button>
+    <button data-act="hares"><span class="check">▸</span><span class="label">Hares</span></button>
+    <div id="hares" hidden>
+      <button data-hares="one"><span class="check"></span><span class="label">A lone hare</span></button>
+      <button data-hares="two"><span class="check"></span><span class="label">A pair</span></button>
+      <button data-hares="three"><span class="check"></span><span class="label">Three</span></button>
+    </div>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Grove</span></button>
+    <hr>
+    <button data-toggle="snowfall"><span class="check"></span><span class="label">Snowfall</span><kbd>S</kbd></button>
+    <button data-toggle="sunlight"><span class="check"></span><span class="label">Sunlight</span><kbd>L</kbd></button>
+    <button data-toggle="night"><span class="check"></span><span class="label">Night</span><kbd>N</kbd></button>
+    <button data-toggle="clickToFlush"><span class="check"></span><span class="label">Click to Flush</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Rest the cursor and a hare comes to look · click the snow to flush the grouse · click a trunk to shake its snow down · move fast for a gust</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=42"></script>
+</body>
+</html>
