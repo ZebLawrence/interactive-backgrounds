@@ -395,6 +395,8 @@ export class Aspen {
   /** Something sudden at `p`: the hares nearby react. */
   startle(p, strength) {
     for (const h of this.hares) h.startle(p, strength);
+    // A perched grouse may take off for another crown.
+    this.grouse?.startle(p, strength);
   }
 
   // MARK: - Wind
