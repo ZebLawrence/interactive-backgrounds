@@ -75,16 +75,24 @@ breaking up.
   coverage follow the tree's load; the load also bends the boughs down. Each tree is a damped spring
   at its own natural frequency (0.25-1.2 Hz, slower when taller); a hard swing sheds snow. Snags are
   silver-grey dead spruce with the stubs of every whorl and a cap of snow.
-- `owl.js` builds the owl from a heavy, fluffed lathe body, one big round head whose front is
-  flattened and dished into the facial disc (concentric rings centred on each eye, a dark rim,
-  white brows, black chin, white bow tie), yellow eyes with lids, a fanning tail, and feathered
-  legs with four toes and black talons that grip, splay or tuck. The wings are skinned meshes on
-  a bird's skeleton (shoulder, elbow, wrist, outer hand) with feather-fan bones that close the
-  feathers up along the bones: folding is the real Z-fold, so folded wings lie along the flanks
-  with the primaries crossing over the tail, and the joints flex on each upstroke and lag on each
-  downstroke. Plumage is drawn in the shader (vermiculation, breast streaks, coverts, barred
-  flight feathers, feather rows). Its behaviour is a small state machine: perch, listen, take
-  off, fly, hover, plunge, in the snow, land.
+- `plumage.js` makes the owl's coat. The body is lofted from cross-sections taken off side and
+  front views (a broad breast, a shallow back that the folded wings cover, the head sitting
+  right down on it) and clothed in about 2,500 contour feathers: small cards rooted under the
+  surface in overlapping rows, flowing down the body and back over the head from the face,
+  lifted a little off it (the loose belly feathers most), each with a frayed vane, a shaft,
+  fine bars, a pale tip and downy base, coloured from the plumage pattern where it grows. A ruff
+  of stiff feathers stands round the facial disc. The feathers ruffle when the owl fluffs out
+  and stir in the breeze, and with the moon behind the owl its fringe catches a silvery rim. The
+  tail is 12 separate feathers that fan out to brake.
+- `owl.js` builds the rest: a big round head whose front is flattened and dished into the
+  facial disc (rings centred on each eye, a dark rim broken by the white bow tie, white brows,
+  black chin), yellow eyes with lids, and feathered legs with four toes and black talons that
+  grip, splay or tuck. The wings are skinned on a bird's skeleton (shoulder, elbow, wrist, outer
+  hand): a sheet of coverts over 14 secondaries and 10 primaries, each feather a separate vane
+  on its own bone, so the outer primaries spread as fingers in flight and every feather swings
+  round on its root to point back toward the tail as the wing folds; folded, the wings lie down
+  the flanks and over the back with the tips crossing over the tail. Its behaviour is a small
+  state machine: perch, listen, take off, fly, hover, plunge, in the snow, land.
 - `ground.js` makes the snowpack: a mesh that is dense in the clearing and coarse toward the
   horizon, with drifts, buried hummocks and tree wells. Fine wind ripples and the owls' prints
   (a 1024-texel map over 48 m) shade it through the normal, and a sparse glitter of crystal
