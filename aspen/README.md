@@ -101,7 +101,7 @@ side twigs left out of them (they are under a shadow texel).
 
 ### Tried here first
 
-Changes tried in the Swift version before the web version. The first three are now in both:
+Changes tried in the Swift version before the web version, now in both:
 
 - **The rough bark at the foot of the trunks** read as near-black, burnt-looking bands. It is now a
   weathered grey-brown (the rough tile's colours lifted and its contrast softened), each trunk has
@@ -116,11 +116,11 @@ Changes tried in the Swift version before the web version. The first three are n
 - **Hare fixes**: the contact shadow stays on the snow during a bound instead of riding up with the
   hare, each hare's coat tint is applied (it was computed but unused), each hare's contact shadow has
   its own opacity (they shared one), and fur cards with no width are left out.
-- **Grouse fixes**, Swift only so far: both wings now have their rounded tip outboard (the web flips
-  the wrong wing's texture), the pale breast sits on the belly and throat rather than one flank, the
-  first flush on its own comes after four to eight minutes (on the web it often bursts out in the
-  first second), and a click on a trunk may send a perched grouse off to another crown (on the web it
-  only startles the hares).
+- **Grouse fixes**: both wings have their rounded tip outboard (the left wing's texture was flipped
+  instead of the right's, leaving square ends outboard), the pale breast sits on the belly and throat
+  rather than one flank, the first flush on its own comes after four to eight minutes (it often burst
+  out in the first second), and a click on a trunk may send a perched grouse off to another crown (it
+  only startled the hares) (`grouse.js` / `Grouse.swift`, `startle` in `aspen.js` / `Aspen.swift`).
 
 ## Running the web page
 

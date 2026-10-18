@@ -78,7 +78,7 @@ function plumageMaterial(part) {
         vec3 c;
         ${part === 'body' ? `
         // Round the body: uv.x is the angle (0.25 = top, 0.75 = belly), uv.y runs tail to breast.
-        float side = cos(vGUv.x * 6.2831);        // 1 at the top of the back, -1 on the belly
+        float side = sin(vGUv.x * 6.2831);        // 1 at the top of the back, -1 on the belly
         c = mottle(vec2(vGUv.x * 2.0, vGUv.y * 3.0), 26.0);
         // Pale barred breast and belly.
         // Pale feathers each with a dark crescent at the tip: barred underparts.
@@ -90,7 +90,7 @@ function plumageMaterial(part) {
         ${part === 'head' ? `
         c = mottle(vec2(vGUv.x * 2.0, vGUv.y), 30.0);
         // The pale throat and the thin pale line behind the eye.
-        float side = cos(vGUv.x * 6.2831);
+        float side = sin(vGUv.x * 6.2831);
         c = mix(c, vec3(0.5, 0.45, 0.38), smoothstep(0.2, 0.8, -side) * 0.6);` : ''}
         ${part === 'card' ? `
         // Wings and tail cards: the silhouette is in vGUv (x across 0..1, y along 0..1).
@@ -149,7 +149,9 @@ export class Grouse {
     this.yaw = 0;
     this.pitch = 0;
     this.state = 'roost';
-    this.timer = rnd(240, 480);
+    // It first comes out on its own after four to eight minutes of roosting.
+    this.timer = 0;
+    this.nextSelf = rnd(240, 480);
     this.flap = 0;              // wing phase
     this.flapRate = 0;          // beats per second, eased
     this.wingK = 0;             // 0 folded .. 1 spread
@@ -209,9 +211,10 @@ export class Grouse {
       const g = new THREE.PlaneGeometry(0.11, 0.19, 4, 8);
       g.rotateX(-Math.PI / 2);                       // lie flat: x chord, z span
       g.translate(-0.03, 0, side * 0.095);
-      // Flip the uv's span direction for the left wing so the tips match.
+      // uv.y must run from the shoulder (0) to the tip (1) on both wings. The plane's v is 1 at
+      // the shoulder of the right wing and at the tip of the left, so the right one is flipped.
       const uv = g.attributes.uv;
-      for (let i = 0; i < uv.count; i++) uv.setY(i, side > 0 ? uv.getY(i) : 1 - uv.getY(i));
+      for (let i = 0; i < uv.count; i++) uv.setY(i, side > 0 ? 1 - uv.getY(i) : uv.getY(i));
       const wing = mesh(g, mats.wing);
       pivot.add(wing);
       // A second, ghost copy for the blur of a fast beat.
