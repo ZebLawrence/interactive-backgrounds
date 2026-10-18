@@ -73,7 +73,7 @@ const TRACE = {
   ],
   // The underside of the span: the opening's upper edge, running down the buttress faces at
   // each end and on below the water, where the legs stand.
-  archBottom: [[560, 700], [590, 620], [610, 560], [650, 500], [700, 430], [760, 380], [850, 350], [900, 342], [925, 338], [950, 336], [975, 333], [1000, 333], [1025, 336], [1050, 338], [1075, 340], [1100, 343], [1125, 347], [1150, 354], [1175, 362], [1200, 370], [1250, 372], [1300, 375], [1350, 380], [1400, 385], [1450, 390], [1500, 398], [1550, 408], [1600, 440], [1640, 520], [1660, 620], [1680, 700]],
+  archBottom: [[480, 700], [497, 583], [504, 565], [560, 496], [659, 422], [783, 360], [850, 352], [900, 342], [925, 338], [950, 336], [975, 333], [1000, 333], [1025, 336], [1050, 338], [1075, 340], [1100, 343], [1125, 347], [1150, 354], [1175, 362], [1200, 370], [1250, 372], [1300, 375], [1350, 380], [1400, 385], [1450, 390], [1500, 398], [1550, 408], [1600, 440], [1640, 520], [1660, 620], [1680, 700]],
   // The far wall seen through the opening.
   far: [[0, 352], [850, 352], [900, 348], [925, 352], [950, 354], [975, 358], [1000, 364], [1025, 369], [1050, 392], [1075, 396], [1100, 403], [1125, 410], [1150, 406], [1175, 399], [1200, 395], [2200, 395]],
   // The nearer wall on the canyon's right, behind the craft.
@@ -446,7 +446,7 @@ const RELIEF_GLSL = `
 
 const PHOTO_GLSL = `
   uniform sampler2D uWall, uWall2, uWall3, uStreaks, uRef, uRefMask;
-  uniform vec4 uBeam; uniform vec3 uBeamDir;
+  uniform vec4 uBeam; uniform vec3 uBeamDir; uniform float uBeamReach; uniform vec4 uLamp; uniform mat4 uCraftMat; uniform vec2 uLampRing; uniform float uLampEye;
   uniform float uHasRef; uniform mat4 uRefMatrix;
   uniform float uHasWall, uHasWall2, uHasWall3, uHasStreaks, uWallSize, uWall2Size, uWall3Size, uStreaksSize, uPhoto, uDrips, uTint;
   // One photo, tiled in metres, offset per plate so no two slabs show the same patch.
@@ -547,7 +547,8 @@ export function makeRockMaterial(tint = 1) {
     uHasWall: { value: 0 }, uHasWall2: { value: 0 }, uHasWall3: { value: 0 }, uHasStreaks: { value: 0 },
     uWallSize: { value: 50 }, uWall2Size: { value: 45 }, uWall3Size: { value: 70 }, uStreaksSize: { value: 55 }, uTint: { value: tint },
     uRef: { value: empty }, uHasRef: { value: 0 }, uRefMatrix: { value: new THREE.Matrix4() }, uRefMask: { value: refMask() },
-    uBeam: { value: new THREE.Vector4(0, 0, 0, 0) }, uBeamDir: { value: new THREE.Vector3(0, 0, -1) },
+    uBeam: { value: new THREE.Vector4(0, 0, 0, 0) }, uBeamDir: { value: new THREE.Vector3(0, 0, -1) }, uBeamReach: { value: 900 },
+    uLamp: { value: new THREE.Vector4(0, 0, 0, 0) }, uCraftMat: { value: new THREE.Matrix4() }, uLampRing: { value: new THREE.Vector2(17, 14) }, uLampEye: { value: 0 },
   };
   patchMaterial(mat, {
     key: 'rock-relief-' + tint,
@@ -573,7 +574,32 @@ export function makeRockMaterial(tint = 1) {
         float cone = smoothstep(0.955, 0.988, dot(dir, uBeamDir));
         float facing = max(dot(normalize(vWN), -dir), 0.0);
         float fall = 1.0 / (1.0 + dist * dist * 0.0003);
-        totalEmissiveRadiance += vec3(1.0, 0.16, 0.08) * cone * (0.35 + 0.65 * facing) * fall * uBeam.w * 1.4;
+        // It stops at the first rock it strikes: nothing beyond that distance is lit, so it
+        // cannot seem to shine out of the inside of a mass.
+        float reach = 1.0 - smoothstep(uBeamReach * 1.08 + 4.0, uBeamReach * 1.2 + 12.0, dist);
+        totalEmissiveRadiance += vec3(1.0, 0.16, 0.08) * cone * (0.25 + 0.75 * facing) * fall * reach * uBeam.w * 0.35;
+      }
+      // The craft's running lights: sixteen small spots round its waist, each at its place on
+      // the ring and shining outward in a tight cone that dies within a few dozen metres, so the
+      // underside of the span picks up a row of small discs as it passes beneath; brighter when roused.
+      if (uLamp.w > 0.001) {
+        mat3 rot = mat3(uCraftMat);
+        vec3 nrm = normalize(vWN);
+        float glow = 0.0;
+        for (int i = 0; i < 16; i++) {
+          float a = (float(i) + 0.5) / 16.0 * 6.2831853;
+          if (abs(atan(sin(a - uLampEye), cos(a - uLampEye))) < 0.3) continue;
+          vec3 lp = (uCraftMat * vec4(cos(a) * uLampRing.x, 0.0, sin(a) * uLampRing.y, 1.0)).xyz;
+          vec3 ld = normalize(rot * vec3(cos(a) / uLampRing.x, 0.0, sin(a) / uLampRing.y));
+          vec3 toP = vWPos - lp;
+          float dist = length(toP);
+          vec3 dir = toP / dist;
+          // A tight cone: a small disc that never meets its neighbours'.
+          float cone = smoothstep(0.985, 0.997, dot(dir, ld));
+          float facing = max(dot(nrm, -dir), 0.0);
+          glow += cone * (0.2 + 0.8 * facing) / (1.0 + dist * dist * 0.008);
+        }
+        totalEmissiveRadiance += vec3(1.0, 0.6, 0.22) * glow * uLamp.w * 0.3;
       }`,
     fNormal: `
       {

@@ -249,6 +249,11 @@ export class Scene {
   /** The first rock (ground or bridge) along a screen ray. */
   rockHit(s, maxDist = 900) {
     const { origin, dir } = this.ray(s);
+    return this.rockRay(origin, dir, maxDist);
+  }
+
+  /** The first rock along a world ray, marched in steps that grow with distance. */
+  rockRay(origin, dir, maxDist = 900) {
     const p = origin.clone();
     let step = 0.5;
     for (let d = 0; d < maxDist; d += step) {

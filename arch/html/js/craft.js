@@ -10,9 +10,11 @@ import * as THREE from 'three';
 import { TAU, clamp, lerp, rnd, smoothstep, v3, unit, quatAxis, approach, Art } from './util.js';
 import { G, Q, NOISE_GLSL, patchMaterial, LAYER, setLayers } from './shaders.js';
 
-const CRAFT = { length: 36, height: 21, width: 29, home: v3(46, 16, -156) };
+const CRAFT = { length: 27, height: 16, width: 22, home: v3(46, 16, -156) };
 // The eye's place on the hull, as a direction from the centre (forward-left, a little low).
 const EYE_DIR = v3(-0.9, -0.1, 0.45).normalize();
+// The eye's bearing round the hull from the local +x axis: the yaw that aims the eye at a point.
+const EYE_YAW = Math.atan2(EYE_DIR.z, EYE_DIR.x);
 // The hull's relief, in fractions of the radius: the channel round the waist (in unit-sphere
 // y), the eye's dish and bezel (in radians from the eye's direction).
 const RELIEF = { channelHalf: 0.075, channelDepth: 0.04, eyeR: 0.17, dishDepth: 0.035, bezelH: 0.012, bezelW: 0.025 };
@@ -22,7 +24,7 @@ const LAMPS = 16;
 // it comes back small out of the distance.
 const ROUTE = [
   { at: v3(46, 16, -156), look: v3(95, 22, -172) },    // its post under the right of the span: the abutment face
-  { at: v3(12, 13, -152), look: v3(8, 36, -150) },     // under the crown, looking up at the underside
+  { at: v3(12, 13, -152), look: v3(-30, 33, -151) },   // under the crown, looking up at the underside
   { at: v3(8, 18, -124), look: v3(-45, 26, -140) },    // out front, the lit buttress
   { at: v3(-22, 22, -118), look: v3(-48, 3, -105) },   // over the near lake, the beach
   { at: v3(15, 22, -220), look: v3(-75, 45, -300) },   // behind the span, the canyon's left wall
@@ -320,13 +322,16 @@ export class Craft {
     if (!look) look = this.vel.lengthSq() > 0.5 ? this.pos.clone().addScaledVector(unit(this.vel.clone()), 80) : stop.look;
     this.eye = approach(this.eye, studying ? 1 : 0.15, studying ? 1.2 : 2.5, dt);
     this.lookAt.lerp(look, Math.min(1, dt * 1.5));
-    const wantYaw = Math.atan2(-(this.lookAt.z - this.pos.z), this.lookAt.x - this.pos.x) + Math.PI;
+    // Turn so the eye itself, not the nose, bears on the look; tilt so its gaze rises or falls to it.
+    const toLook = this.lookAt.clone().sub(this.pos);
+    const wantYaw = EYE_YAW - Math.atan2(toLook.z, toLook.x);
+    const gaze = studying ? clamp(-(Math.atan2(toLook.y, Math.hypot(toLook.x, toLook.z)) + 0.1), -0.5, 0.5) : 0;
     let d = wantYaw - this.yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.yawVel += (d * 0.4 - this.yawVel * 0.8) * dt;
     this.yaw += this.yawVel * dt;
     this.roll = lerp(this.roll, clamp(-this.yawVel * 0.4, -0.15, 0.15) + Math.sin(t * 0.37) * 0.02, Math.min(1, dt * 2));
-    this.pitch = lerp(this.pitch, clamp(this.vel.y * 0.05, -0.1, 0.1) + Math.sin(t * 0.23) * 0.015, Math.min(1, dt * 2));
+    this.pitch = lerp(this.pitch, clamp(this.vel.y * 0.05, -0.1, 0.1) + Math.sin(t * 0.23) * 0.015 + gaze, Math.min(1, dt * 2));
     this.wake = Math.max(0, this.wake - dt * 0.35);
     this.uniforms.uWake.value = this.wake;
     this.uniforms.uEye.value = this.eye;
@@ -334,16 +339,24 @@ export class Craft {
     this.group.quaternion.copy(quatAxis(this.yaw, 0, 1, 0)).multiply(quatAxis(this.pitch, 0, 0, 1)).multiply(quatAxis(this.roll, 1, 0, 0));
     this.group.updateMatrixWorld();
     this.uniforms.uRot.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(this.group.quaternion));
-    // The beam follows the look, brightening as the eye does: the rock draws it from the eye's
-    // place and direction.
+    // The beam shines straight out of the eye, wherever the hull has it pointing just now, so
+    // it sweeps with the hull as it turns and lands only where the eye looks. The rock draws
+    // it from the eye's place and direction.
     if (scene) {
       const eyePos = this.group.localToWorld(this.eyeLight.position.clone());
-      const dir = unit(this.lookAt.clone().sub(eyePos));
+      const dir = unit(EYE_DIR.clone().applyQuaternion(this.group.quaternion));
       const on = Math.max(0, this.eye - 0.15) / 0.85;
+      // Where the beam first strikes rock, so it lights nothing beyond.
+      const hit = on > 0.01 && scene.rockRay ? scene.rockRay(eyePos, dir, 700) : null;
       for (const m of [scene.rockMaterial, scene.blockMaterial]) {
         const u = m.userData.uniforms;
         u.uBeam.value.set(eyePos.x, eyePos.y, eyePos.z, on);
         u.uBeamDir.value.copy(dir);
+        u.uBeamReach.value = hit ? hit.dist : 700;
+        u.uLamp.value.set(this.pos.x, this.pos.y, this.pos.z, 1 + this.wake * 1.5);
+        u.uCraftMat.value.copy(this.group.matrixWorld);
+        u.uLampRing.value.set(CRAFT.length / 2 * (1 - RELIEF.channelDepth), CRAFT.width / 2 * (1 - RELIEF.channelDepth));
+        u.uLampEye.value = parseFloat(EYE_AZ);
       }
     }
     this.lampLight.intensity = 50 + 80 * this.wake;
