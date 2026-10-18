@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sandstone Arch</title>
+<meta name="description" content="An interactive 3D natural bridge over a still lake at night under the aurora, with a craft hovering beneath it: a fingertip stirs the water, a click tosses a stone or rouses the craft, and the aurora answers a click in the sky.">
+<meta name="theme-color" content="#06101a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%8C%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<!-- Module URLs carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS changes. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=85",
+  "./js/scene.js": "./js/scene.js?v=85",
+  "./js/terrain.js": "./js/terrain.js?v=85",
+  "./js/craft.js": "./js/craft.js?v=85",
+  "./js/water.js": "./js/water.js?v=85",
+  "./js/shore.js": "./js/shore.js?v=85",
+  "./js/sky.js": "./js/sky.js?v=85",
+  "./js/aurora.js": "./js/aurora.js?v=85",
+  "./js/shaders.js": "./js/shaders.js?v=85",
+  "./js/util.js": "./js/util.js?v=85"
+} }
+</script>
+</head>
+<body>
+<canvas id="canyon"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Sandstone Arch menu" aria-expanded="false" title="Sandstone Arch">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 20h20v2H2zM3 19V9.5C3 5 7 2 12 2s9 3 9 7.5V19h-4v-8c0-2.8-2.2-5-5-5s-5 2.2-5 5v8z"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Sandstone Arch</div>
+    <hr>
+    <button data-act="surge"><span class="check"></span><span class="label">Aurora Surge</span><kbd>S</kbd></button>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Night</span></button>
+    <hr>
+    <button data-toggle="aurora"><span class="check"></span><span class="label">Aurora</span><kbd>A</kbd></button>
+    <button data-toggle="moonlight"><span class="check"></span><span class="label">Moonlight</span><kbd>M</kbd></button>
+    <button data-toggle="craft"><span class="check"></span><span class="label">The Craft</span><kbd>C</kbd></button>
+    <button data-toggle="clickToSplash"><span class="check"></span><span class="label">Click to Splash</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Rest a fingertip on the water to stir it · click the water to toss a stone · click the craft · click the sky for the aurora</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=85"></script>
+</body>
+</html>
