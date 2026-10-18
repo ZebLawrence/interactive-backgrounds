@@ -22,10 +22,12 @@ const Settings = {
   write(key, value) {
     try { localStorage.setItem('arch.' + key, String(value)); } catch { /* private mode */ }
   },
-  // `?aurora` / `?noaurora`, `?moon` / `?nomoon`, `?craft` / `?nocraft` override the saved settings for testing.
+  // `?aurora` / `?noaurora`, `?moon` / `?nomoon`, `?craft` / `?nocraft`, `?rain` / `?norain` override the
+  // saved settings for testing.
   auroraOverride: flag('aurora', 'noaurora'),
   moonOverride: flag('moon', 'nomoon'),
   craftOverride: flag('craft', 'nocraft'),
+  rainOverride: flag('rain', 'norain'),
   get lowPower() { return this.read('lowPower', false); },
   set lowPower(v) { this.write('lowPower', v); },
   get aurora() { return this.auroraOverride ?? this.read('aurora', true); },
@@ -34,6 +36,8 @@ const Settings = {
   set moonlight(v) { this.moonOverride = null; this.write('moonlight', v); },
   get craft() { return this.craftOverride ?? this.read('craft', true); },
   set craft(v) { this.craftOverride = null; this.write('craft', v); },
+  get rain() { return this.rainOverride ?? this.read('rain', false); },
+  set rain(v) { this.rainOverride = null; this.write('rain', v); },
   get clickToSplash() { return this.read('clickToSplash', true); },
   set clickToSplash(v) { this.write('clickToSplash', v); },
   get fps() { return this.lowPower ? 30 : 60; },
@@ -161,6 +165,7 @@ class App {
       else if (k === 'a') this.toggle('aurora');
       else if (k === 'm') this.toggle('moonlight');
       else if (k === 'c') this.toggle('craft');
+      else if (k === 'r') this.toggle('rain');
       else if (k === 'escape') this.closeMenu();
     });
 

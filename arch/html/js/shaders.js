@@ -12,6 +12,8 @@ export const G = {
   uAurora: { value: 1 },
   // The aurora's light on the ground, linear RGB (set by aurora.js).
   uAuroraLight: { value: v3() },
+  uRain: { value: 0 },
+  uFlash: { value: new THREE.Vector4(0, 1, 0, 0) },
   // Toward the sun: low down the canyon ahead of us (-z), a little left, 26 degrees up, so it
   // hides behind the crown of the arch and pours its light under it toward the viewer (20.5 degrees up, 4 left).
   uSunDir: { value: v3(-0.0653, 0.3502, -0.9344).normalize() },

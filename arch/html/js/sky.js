@@ -61,12 +61,12 @@ export class Sky {
     this.hazeTexture = Art.texture(milkyWayCanvas(), { srgb: false });
     this.hazeTexture.wrapS = THREE.RepeatWrapping;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uTime: G.uTime, uAurora: G.uAurora, uMoonDir: G.uMoonDir, uMoonI: { value: 1 }, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture }, uAuroraLight: G.uAuroraLight },
+      uniforms: { uTime: G.uTime, uAurora: G.uAurora, uMoonDir: G.uMoonDir, uMoonI: { value: 1 }, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture }, uAuroraLight: G.uAuroraLight, uRain: G.uRain, uFlash: G.uFlash },
       side: THREE.BackSide,
       depthWrite: false,
       vertexShader: `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uAurora, uMoonI; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform sampler2D uHaze;
+        uniform float uTime, uAurora, uMoonI, uRain; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform vec4 uFlash; uniform sampler2D uHaze;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
@@ -101,6 +101,18 @@ export class Sky {
           float cosm = dot(d, uMoonDir);
           night += vec3(0.6, 0.6, 0.75) * (exp((cosm - 1.0) * 90.0) * 0.12 + exp((cosm - 1.0) * 600.0) * 0.3) * uMoonI;
           vec3 col = night;
+          // Rain: a lid of grey cloud slides over the vault, drifting on the wind, lit from
+          // within where the lightning is and faintly everywhere by each flash.
+          if (uRain > 0.001) {
+            vec2 cp = d.xz / max(h, 0.08) * 0.9 + vec2(uTime * 0.01, 0.0);
+            float cloud = fbm(cp);
+            vec3 grey = vec3(0.025, 0.03, 0.045) * (0.5 + 1.1 * cloud);
+            // Lit from within by the lightning, hardest round the bolt.
+            float near = exp((dot(d, uFlash.xyz) - 1.0) * 6.0);
+            grey += vec3(0.6, 0.66, 0.9) * uFlash.w * (0.15 + 0.6 * cloud) * (0.35 + 0.65 * near);
+            float lid = uRain * smoothstep(-0.02, 0.15, h);
+            col = mix(col, grey, lid);
+          }
           col = mix(col, uFogColor, smoothstep(0.04, -0.01, h));
           gl_FragColor = vec4(col, 1.0);
         }`,
@@ -186,9 +198,10 @@ export class Moon {
 const mix3 = (a, b, t) => v3(lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.z, b.z, t));
 
 export class Light {
-  constructor() {
-    this.moon = 1;
-    this.aurora = 1;
+  /** Starts where the settings have it, so nothing shows at load that was switched off. */
+  constructor(settings = null) {
+    this.moon = settings && !settings.moonlight ? 0 : 1;
+    this.aurora = settings && !settings.aurora ? 0 : 1;
   }
 
   update(dt, settings, out, auroraLevel) {

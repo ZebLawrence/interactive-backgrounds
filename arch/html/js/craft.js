@@ -45,8 +45,9 @@ function hullMaterial(uniforms) {
     vHead: `varying vec3 vLocal; varying vec3 vLN;`,
     vMain: `vLocal = gPos; vLN = gNormal;`,
     fHead: `
-      uniform float uTime, uWake, uEye; uniform vec3 uEyeDir; uniform mat3 uRot;
+      uniform float uTime, uWake, uEye, uRain; uniform vec3 uEyeDir; uniform mat3 uRot;
       varying vec3 vLocal; varying vec3 vLN;
+      float gWet = 0.0;
       ${NOISE_GLSL}${Q}
       const vec3 HALF = ${half};
       // The hull in unit-sphere terms: longitude round it, and y up it (-1 at the keel, 1 on top).
@@ -100,12 +101,33 @@ function hullMaterial(uniforms) {
         // The gutter: 14 cm wide, the panel edge rounding over 30 cm beyond it.
         return smoothstep(0.07, 0.35, d);
       }
+      // Rain on the dome: a ring where each drop strikes, spreading and dying in half a
+      // second, and the film running down the meridians in rivulets.
+      float rainFilm(vec3 q, float lon) { return pow(fbm(vec2(lon * 70.0, q.y * 9.0 + uTime * 0.7)), 3.0); }
+      float rainHeight(vec3 q, float lon) {
+        float upper = smoothstep(0.05, 0.3, q.y);
+        if (upper <= 0.0) return 0.0;
+        vec2 uv = vec2(lon * 48.0, q.y * 14.0);
+        vec2 cell = floor(uv);
+        float h1 = hash21(cell + 3.0), h2 = hash21(cell + 29.0);
+        float period = 0.8 + h1 * 1.4;
+        float age = mod(uTime + h2 * period, period) / 0.6;
+        float ring = 0.0;
+        if (age < 1.0) {
+          vec2 c = cell + 0.5 + (hash22(cell + 11.0) - 0.5) * 0.6;
+          vec2 dd = (uv - c) * vec2(1.8, 0.75);
+          float r = length(dd), R = age * 0.45;
+          ring = exp(-pow((r - R) / 0.07, 2.0)) * (1.0 - age) * 0.01;
+        }
+        return (ring + rainFilm(q, lon) * 0.012) * upper;
+      }
       // The skin's height in metres at a local point, for the bump.
       float skinHeight(vec3 p) {
         vec3 q = sphereOf(p);
         float lon = atan(q.z, q.x) / (2.0 * PI) + 0.5;
         float id, hatch, below;
         float h = panels(q, lon, id, hatch, below) * 0.06;
+        if (uRain > 0.001) h += rainHeight(q, lon) * uRain;
         h *= 1.0 - channelAt(q.y) * eyeZone(q);
         return h;
       }`,
@@ -169,8 +191,15 @@ function hullMaterial(uniforms) {
         float bezel = smoothstep(R, R + 0.012, a) * (1.0 - smoothstep(R + ${(RELIEF.bezelW * 2).toFixed(3)}, R + ${(RELIEF.bezelW * 2 + 0.015).toFixed(3)}, a));
         col = mix(col, vec3(0.55, 0.55, 0.56), bezel);
         col *= 1.0 - smoothstep(0.008, 0.0, abs(a - R - ${(RELIEF.bezelW * 2 + 0.02).toFixed(3)})) * 0.5;
+        // Rain: the top goes dark and glossy under its film, darker still along the rivulets.
+        if (uRain > 0.001) {
+          gWet = uRain * smoothstep(0.02, 0.3, q.y) * (0.6 + 0.4 * smoothstep(0.02, 0.1, rainFilm(q, lon)));
+          col *= 1.0 - 0.22 * gWet;
+        }
         diffuseColor.rgb = col;
       }`,
+    fRough: `
+      roughnessFactor = mix(roughnessFactor, 0.1, gWet);`,
     fEmissive: `
       {
         // Small round running lights set in the channel, evenly round the hull, each with a
@@ -211,7 +240,7 @@ export class Craft {
   constructor(scene) {
     this.scene = scene;
     this.group = new THREE.Group();
-    this.uniforms = { uTime: G.uTime, uWake: { value: 0 }, uEye: { value: 0 }, uEyeDir: { value: EYE_DIR.clone() }, uRot: { value: new THREE.Matrix3() } };
+    this.uniforms = { uTime: G.uTime, uWake: { value: 0 }, uEye: { value: 0 }, uEyeDir: { value: EYE_DIR.clone() }, uRot: { value: new THREE.Matrix3() }, uRain: { value: 0 } };
     this.material = hullMaterial(this.uniforms);
     // The hull: an ellipsoid, blunter below than above, with the channel cut round its waist
     // and the eye's dish sunk forward behind a raised bezel.
@@ -260,6 +289,9 @@ export class Craft {
     this.direction = 1;
     this.dwell = rnd(6, 12);
     this.lookAt = ROUTE[0].look.clone();
+    // Rain: when the next drip leaves the rim, and the drips in the air with when they land.
+    this.dripTimer = 0;
+    this.drips = [];
     this.update(0);
   }
 
@@ -361,6 +393,24 @@ export class Craft {
     }
     this.lampLight.intensity = 50 + 80 * this.wake;
     this.eyeLight.intensity = 25 + 45 * this.eye;
+    // Rain: the film running off the dome gathers at the channel's lip and drips from it,
+    // each drop falling to the lake and ringing the water where it lands.
+    if (scene) {
+      this.uniforms.uRain.value = scene.rain;
+      if (scene.rain > 0.15) {
+        this.dripTimer -= dt;
+        if (this.dripTimer <= 0) {
+          this.dripTimer = rnd(0.04, 0.16) / scene.rain;
+          const a = rnd(0, TAU);
+          const local = v3(Math.cos(a) * CRAFT.length / 2, -RELIEF.channelHalf * CRAFT.height / 2, Math.sin(a) * CRAFT.width / 2);
+          const pos = this.group.localToWorld(local.clone());
+          const out = unit(v3(local.x / CRAFT.length, 0, local.z / CRAFT.width)).applyQuaternion(this.group.quaternion);
+          scene.drops.p.push({ pos, vel: out.clone().multiplyScalar(rnd(0.3, 1.0)).add(this.vel.clone().multiplyScalar(0.5)), age: 0, life: 4, size: rnd(0.07, 0.12) });
+          this.drips.push({ t: scene.clock + Math.sqrt(2 * Math.max(pos.y, 0.1) / 9.81), x: pos.x + out.x, z: pos.z + out.z });
+        }
+      }
+      while (this.drips.length && this.drips[0].t <= scene.clock) { const dr = this.drips.shift(); scene.disturb(dr.x, dr.z, 0.14, -0.005, 0); }
+    }
   }
 
   dispose() { this.material.dispose(); this.hull.geometry.dispose(); }

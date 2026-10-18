@@ -7,11 +7,12 @@ import * as THREE from 'three';
 import { TAU, clamp, lerp, rnd, smoothstep, v3, unit, quatAxis, seeded, approach, TIME_WRAP } from './util.js';
 import { G, LAYER } from './shaders.js';
 import { Terrain, Bridge, makeRockMaterial, loadPhotos, groundHeight, shoreX, bridgeContact, insideRock, BRIDGE, REF } from './terrain.js';
-import { WaveSim, Rings, Water, Floor, inSim, floorHeight } from './water.js';
+import { WaveSim, Rings, Water, Floor, inSim, floorHeight, SIM_ORIGIN, SIM_EXTENT } from './water.js';
 import { Shrubs, Blocks, Puffs } from './shore.js';
 import { Sky, Moon, Light, SKY_RADIUS } from './sky.js';
 import { Aurora } from './aurora.js';
 import { Craft } from './craft.js';
+import { Rain, Lightning } from './rain.js';
 
 const EYE = 1.7;
 const FOV = 50;
@@ -176,7 +177,7 @@ export class Scene {
     this.sky = new Sky();
     this.moon = new Moon();
     this.aurora = new Aurora();
-    this.lightState = new Light();
+    this.lightState = new Light(settings);
     this.scene.add(this.sky.mesh, this.moon.mesh, this.aurora.group);
     this.aurora.group.traverse((o) => o.layers.enable(LAYER.ABOVE));
 
@@ -189,6 +190,11 @@ export class Scene {
     this.whiteTex = white;
     this.floor = new Floor(this.sim, white);
     this.scene.add(this.water.mesh, this.floor.mesh);
+    // The rain: off until asked for, eased in and out.
+    this.rain = 0;
+    this.rainfall = new Rain();
+    this.lightning = new Lightning();
+    this.scene.add(this.rainfall.mesh, this.lightning.mesh);
 
     // --- The shore ----------------------------------------------------------------------------
     this.shrubs = new Shrubs(rng);
@@ -417,9 +423,38 @@ export class Scene {
     this.updateCamera(dt);
     this.aurora.update(dt, this.camera);
     this.aurora.group.visible = this.lightState.aurora > 0.01;
-    if (this.lightState.aurora < 0.999) G.uAuroraLight.value.multiplyScalar(this.lightState.aurora);
+    if (this.lightState.aurora < 0.999) {
+      G.uAuroraLight.value.multiplyScalar(this.lightState.aurora);
+      // The curtains fade with the setting rather than switching off at the end of the fade.
+      for (const c of this.aurora.curtains) c.uniforms.uI.value *= this.lightState.aurora;
+    }
     this.lightState.update(dt, settings, this.light, this.aurora.level);
     this.applyLight();
+    // Rain: the night closes in. The aurora and the moon dim behind the cloud, the fog draws
+    // nearer, the lake is peppered with drops near the viewer (the far water's patter is drawn
+    // by its shader), and the rock, the water and the craft are told how wet they are.
+    this.rain = approach(this.rain, settings.rain ? 1 : 0, 2.5, dt);
+    const rain = this.rain;
+    if (rain > 0.001) {
+      this.scene.fog.near = lerp(this.light.fogNear, 50, rain);
+      this.scene.fog.far = lerp(this.light.fogFar, 420, rain);
+      this.key.intensity *= 1 - 0.55 * rain;
+      this.hemi.intensity *= 1 - 0.2 * rain;
+      for (const c of this.aurora.curtains) c.uniforms.uI.value *= 1 - 0.995 * rain;
+      G.uAuroraLight.value.multiplyScalar(1 - 0.9 * rain);
+      const n = Math.round(rain * 7);
+      for (let i = 0; i < n; i++) this.sim.splat(SIM_ORIGIN.x + Math.random() * SIM_EXTENT, SIM_ORIGIN.z + Math.random() * SIM_EXTENT, 0.1, -0.003);
+    }
+    // Lightning: now and then under the rain a bolt forks down the sky ahead, in a stutter of
+    // strokes; its flash lights the clouds, the whole canyon and everything in it.
+    this.lightning.update(dt, rain, this.camera);
+    const flash = this.lightning.flash;
+    G.uRain.value = rain;
+    if (flash > 0.001) { this.key.intensity += flash * 2.5; this.hemi.intensity += flash * 2.5; }
+    this.water.uniforms.uRain.value = rain;
+    this.rockMaterial.userData.uniforms.uWet.value = rain;
+    this.blockMaterial.userData.uniforms.uWet.value = rain;
+    this.rainfall.update(this.camera, rain);
     this.updateBreeze(dt);
     this.startles = [];
     this.updateFinger(dt);
@@ -432,7 +467,7 @@ export class Scene {
       for (const s of this.startles) if (Math.hypot(s.x - this.craft.pos.x, s.z - this.craft.pos.z) < 40) this.craft.startle(v3(s.x, 0, s.z), 0.6);
       this.craft.update(dt, this);
     }
-    this.moon.update(this.lightState.moon);
+    this.moon.update(this.lightState.moon * (1 - 0.97 * this.rain));
     this.water.uniforms.uRingCount.value = this.rings.update(this.clock);
     this.sim.step(dt);
   }
@@ -520,7 +555,7 @@ export class Scene {
   dispose() {
     for (const s of this.stones) s.dispose();
     for (const m of this.keptStones) this.scene.remove(m);
-    for (const part of [this.craft, this.sky, this.moon, this.aurora, this.water, this.sim, this.floor, this.shrubs, this.blocks, this.puffs, this.drops, this.terrain, this.bridge]) part?.dispose();
+    for (const part of [this.craft, this.rainfall, this.lightning, this.sky, this.moon, this.aurora, this.water, this.sim, this.floor, this.shrubs, this.blocks, this.puffs, this.drops, this.terrain, this.bridge]) part?.dispose();
     for (const t of Object.values(this.photos)) t.dispose();
     this.rockMaterial.dispose();
     this.blockMaterial.dispose();

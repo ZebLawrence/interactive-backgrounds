@@ -446,7 +446,7 @@ const RELIEF_GLSL = `
 
 const PHOTO_GLSL = `
   uniform sampler2D uWall, uWall2, uWall3, uStreaks, uRef, uRefMask;
-  uniform vec4 uBeam; uniform vec3 uBeamDir; uniform float uBeamReach; uniform vec4 uLamp; uniform mat4 uCraftMat; uniform vec2 uLampRing; uniform float uLampEye;
+  uniform vec4 uBeam; uniform vec3 uBeamDir; uniform float uBeamReach; uniform vec4 uLamp; uniform float uWet; uniform vec4 uFlash; uniform mat4 uCraftMat; uniform vec2 uLampRing; uniform float uLampEye;
   uniform float uHasRef; uniform mat4 uRefMatrix;
   uniform float uHasWall, uHasWall2, uHasWall3, uHasStreaks, uWallSize, uWall2Size, uWall3Size, uStreaksSize, uPhoto, uDrips, uTint;
   // One photo, tiled in metres, offset per plate so no two slabs show the same patch.
@@ -548,6 +548,7 @@ export function makeRockMaterial(tint = 1) {
     uWallSize: { value: 50 }, uWall2Size: { value: 45 }, uWall3Size: { value: 70 }, uStreaksSize: { value: 55 }, uTint: { value: tint },
     uRef: { value: empty }, uHasRef: { value: 0 }, uRefMatrix: { value: new THREE.Matrix4() }, uRefMask: { value: refMask() },
     uBeam: { value: new THREE.Vector4(0, 0, 0, 0) }, uBeamDir: { value: new THREE.Vector3(0, 0, -1) }, uBeamReach: { value: 900 },
+    uWet: { value: 0 }, uFlash: G.uFlash,
     uLamp: { value: new THREE.Vector4(0, 0, 0, 0) }, uCraftMat: { value: new THREE.Matrix4() }, uLampRing: { value: new THREE.Vector2(17, 14) }, uLampEye: { value: 0 },
   };
   patchMaterial(mat, {
@@ -564,7 +565,13 @@ export function makeRockMaterial(tint = 1) {
         diffuseColor.rgb *= 1.0 - gRefMix * 0.85;
       }`,
     fEmissive: `
-      totalEmissiveRadiance += gRefColor * gRefMix * 1.15;
+      // Wet rock is darker; the lightning lights all of it, and glints off the wet faces.
+      totalEmissiveRadiance += gRefColor * gRefMix * 1.15 * (1.0 - 0.42 * uWet) * (1.0 + 2.5 * uFlash.w);
+      if (uFlash.w > 0.001 && uWet > 0.001) {
+        vec3 V = normalize(cameraPosition - vWPos);
+        float glint = pow(max(dot(reflect(-V, normalize(vWN)), uFlash.xyz), 0.0), 30.0);
+        totalEmissiveRadiance += vec3(0.8, 0.85, 1.0) * glint * uFlash.w * uWet * 0.8;
+      }
       // The craft's eye beam: the picture fixes how bright the rock is, so a scene light cannot
       // brighten it; the beam is drawn here instead, a red cone from the eye on whatever faces it.
       if (uBeam.w > 0.001) {
@@ -601,6 +608,9 @@ export function makeRockMaterial(tint = 1) {
         }
         totalEmissiveRadiance += vec3(1.0, 0.6, 0.22) * glow * uLamp.w * 0.3;
       }`,
+    fRough: `
+      // Wet rock is glossy.
+      roughnessFactor = mix(roughnessFactor, 0.22, uWet);`,
     fNormal: `
       {
         vec3 P = vWPos;

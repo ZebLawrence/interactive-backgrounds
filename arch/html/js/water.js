@@ -203,7 +203,7 @@ precision highp float;
 uniform sampler2D uReflection, uRefraction, uRefrDepth, uWaves;
 uniform vec2 uResolution, uSimOrigin; uniform float uSimExtent;
 uniform vec4 uRings[${MAX_RINGS}]; uniform int uRingCount;
-uniform float uTime, uNight, uDusk, uNear, uFar, uKeyI;
+uniform float uTime, uNight, uDusk, uNear, uFar, uKeyI, uRain;
 uniform vec3 uWind, uSunDir, uMoonDir, uKeyDir, uKeyColor, uSkyLight;
 varying vec3 vWPos; varying vec4 vMirror; varying float vViewZ;
 ${NOISE_GLSL}${Q}${FOG_HEAD}${SHADOW_GLSL}
@@ -221,6 +221,32 @@ float ringSlope(float r, float age, float amp) {
   float ph = (r - R) * 6.2831853 / lam;
   float dEnv = env * (-2.0 * x / w);
   return dEnv * cos(ph) - env * sin(ph) * 6.2831853 / lam;
+}
+
+// Rain on the lake: in every cell of a 70 cm grid a drop lands at its own moment, and its
+// ring spreads and dies within a second; the slope of the rings round a point.
+vec2 rainSlope(vec2 p, float t) {
+  vec2 s = vec2(0.0);
+  float cs = 0.7;
+  vec2 cell = floor(p / cs);
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 c = cell + vec2(float(i), float(j));
+    float h1 = hash21(c), h2 = hash21(c + 31.0);
+    float period = 1.2 + h1 * 1.6;
+    float age = mod(t + h2 * period, period);
+    if (age > 1.0) continue;
+    vec2 centre = (c + 0.5 + (hash22(c + 7.0) - 0.5) * 0.8) * cs;
+    vec2 dd = p - centre;
+    float r = length(dd);
+    float R = age * 0.9;
+    float x = (r - R) / 0.06;
+    if (abs(x) > 3.0) continue;
+    float env = 0.004 * exp(-x * x) * (1.0 - age);
+    float ph = (r - R) * 6.2831853 / 0.08;
+    float sl = env * (-2.0 * x / 0.06) * cos(ph) - env * sin(ph) * 6.2831853 / 0.08;
+    s += sl * dd / max(r, 1e-3);
+  }
+  return s;
 }
 
 void main() {
@@ -260,6 +286,7 @@ void main() {
                  vnoise(vec2(along * 3.5 - t2 * 1.4, across * 2.4) + 19.0) - vnoise(vec2(along * 3.5 - t2 * 1.4, across * 2.4 + 0.1) + 19.0)) / 0.1;
   vec2 wind = (r1 * 0.6 + r2) * fineAmp;
   slope += vec2(wind.x * wdir.x - wind.y * wdir.y, wind.x * wdir.y + wind.y * wdir.x);
+  if (uRain > 0.001) slope += rainSlope(p, uTime) * uRain / (1.0 + dist * 0.04);
   // A broad, very slow unevenness so the far water is never a perfect plane.
   slope += vec2(vnoise(p * 0.1 + uTime * q(0.03)) - 0.5, vnoise(p.yx * 0.1 - uTime * q(0.025) + 5.0) - 0.5) * 0.008 * (0.3 + uWind.z);
   vec3 N = normalize(vec3(-slope.x, 1.0, -slope.y));
@@ -316,7 +343,7 @@ export class Water {
     this.uniforms = {
       uReflection: { value: null }, uRefraction: { value: null }, uRefrDepth: { value: null }, uWaves: { value: sim.texture },
       uResolution: { value: new THREE.Vector2(1, 1) }, uSimOrigin: { value: new THREE.Vector2(SIM_ORIGIN.x, SIM_ORIGIN.z) }, uSimExtent: { value: SIM_EXTENT },
-      uRings: { value: rings.array }, uRingCount: { value: 0 },
+      uRings: { value: rings.array }, uRingCount: { value: 0 }, uRain: { value: 0 },
       uMirrorMatrix: { value: new THREE.Matrix4() },
       uTime: G.uTime, uNight: G.uNight, uDusk: G.uDusk, uNear: { value: 0.1 }, uFar: { value: 1000 },
       uWind: G.uWind, uSunDir: G.uSunDir, uMoonDir: G.uMoonDir, uKeyDir: G.uKeyDir, uKeyColor: G.uKeyColor, uKeyI: G.uKeyI, uSkyLight: G.uSkyLight,
