@@ -305,26 +305,49 @@ const DEFORM_MAIN = `
 
 const BARK_GLSL = `
 uniform sampler2D uFeature, uDetail, uRough;
+// Value noise whose lattice wraps every period cells in x, for patterns round a trunk.
+float pvnoise(vec2 p, float period) {
+  vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  float x0 = mod(i.x, period), x1 = mod(i.x + 1.0, period);
+  return mix(mix(hash21(vec2(x0, i.y)), hash21(vec2(x1, i.y)), u.x),
+             mix(hash21(vec2(x0, i.y + 1.0)), hash21(vec2(x1, i.y + 1.0)), u.x), u.y);
+}
 // The bark, from the painted maps (see bark.js): p is the position on the trunk in metres
 // (around, up), seed the tree's own offset, circ its circumference (0 for branches), dead 1 for
 // bare fallen wood. Returns the colour; rough and bump come out through the out parameters.
 vec3 aspenBark(vec2 p, float seed, float dead, float circ, out float rough, out float bump) {
   // Round a trunk the feature map is squeezed to a whole number of repeats, so it meets itself
   // at the seam (thin trunks get smaller eyes, as they do).
-  float ax = circ > 0.0 ? p.x / circ * max(1.0, floor(circ + 0.5)) : p.x;
+  float reps = max(1.0, floor(circ + 0.5));
+  float ax = circ > 0.0 ? p.x / circ * reps : p.x;
   vec2 fuv = vec2(ax + seed * 0.37, p.y / 4.0 + seed * 1.7);
   vec4 F = texture2D(uFeature, fuv);
   vec4 D = texture2D(uDetail, p / 0.2);
   vec4 Rg = texture2D(uRough, vec2(ax + seed * 0.61, p.y / 2.0 + seed * 0.9));
-  // The rough bark of the foot: a sharp, ragged edge a metre or two up.
-  // Only the older trunks have much of it; on the rest it is a dark collar at the snow.
+  // The rough bark of the foot. How far up it reaches varies from tree to tree, from a dark
+  // collar a hand high on most trunks to nearly two metres on the oldest.
   float hOld = hash11(seed * 5.0 + 1.0);
-  float top = hOld < 0.4 ? 0.1 + 0.3 * hOld : 0.3 + 1.6 * hOld;
-  // The edge wanders round the trunk in rounded tongues, following the ridges a little.
+  float top = 0.08 + 1.6 * pow(hOld, 2.2);
+  // The edge wanders round the trunk in rounded tongues, following the ridges a little, and is
+  // crisp at any distance.
   float edge = p.y + 0.1 * sin(ax * 12.57 + seed * 9.0) + 0.06 * sin(ax * 31.4 + seed * 3.0) + 0.03 * sin(ax * 69.1 + seed * 2.0) + (Rg.a - 0.5) * 0.03;
-  float furrow = (circ > 0.0 && dead < 0.5) ? 1.0 - smoothstep(top - 0.035, top + 0.035, edge) : 0.0;
+  float live = (circ > 0.0 && dead < 0.5) ? 1.0 : 0.0;
+  float ew = clamp(fwidth(edge), 0.003, 0.035);
+  float furrow = live * (1.0 - smoothstep(top - ew, top + ew, edge));
+  // Above the edge it breaks up into plates and islands before the smooth bark takes over,
+  // rather than stopping at one hard line: taller than wide, with ragged but crisp edges.
+  float zone = 0.25 + 0.6 * hOld;
+  float thr = mix(0.52, 1.05, clamp((p.y - top) / zone, 0.0, 1.0));
+  float patchN = pvnoise(vec2(ax * 14.0 + seed * 17.0, p.y * 6.0), reps * 14.0) * 0.6
+               + pvnoise(vec2(ax * 40.0 + seed * 5.0, p.y * 18.0), reps * 40.0) * 0.25
+               + (Rg.a - 0.5) * 0.3;
+  float pw = max(fwidth(patchN), 0.004);
+  furrow = max(furrow, live * smoothstep(thr - pw, thr + pw, patchN) * step(top - 0.1, p.y));
+  // Each trunk's rough bark has its own tone, some greyer, some darker, and its contrast is soft
+  // (furrows lifted, crests toned down) so it reads as weathered bark, not pale dashes on black.
+  float tone = 0.85 + 0.3 * hash11(seed * 3.7 + 2.0);
   vec3 smoothCol = F.rgb * (0.92 + 0.16 * D.r) * (0.96 + 0.08 * D.b);
-  vec3 roughCol = Rg.rgb * (0.8 + 0.4 * D.g);
+  vec3 roughCol = mix(vec3(0.17, 0.16, 0.15), Rg.rgb, 0.7) * (0.85 + 0.3 * D.g) * tone;
   vec3 col = mix(smoothCol, roughCol, furrow);
   rough = mix(0.62 + 0.1 * D.r, 0.98, furrow);
   bump = mix((F.a - 0.5) * 0.045 + (D.a - 0.5) * 0.003, (Rg.a - 0.5) * 0.012, furrow);
@@ -445,7 +468,7 @@ export function makeTreeMaterials(bark) {
         base = aspenBark(vMUv, vSeed + (kind > 2.5 ? vF.w * 0.37 : 0.0), dead, circ, barkRough, barkBump);
         if (kind < 0.5 && dead < 0.5) {
           // The foot of the trunk, where the snow banks against it, is in the shade of both.
-          base *= 1.0 - 0.4 * (1.0 - smoothstep(-0.1, 0.5, vF.w));
+          base *= 1.0 - 0.3 * (1.0 - smoothstep(-0.1, 0.5, vF.w));
         }
         if (kind > 2.5) {
           // Branches: the same bark, smoother and greyer toward the thin ends.

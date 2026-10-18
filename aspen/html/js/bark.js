@@ -299,7 +299,8 @@ function paintRough(rng) {
     if (!plateShade.has(k)) { const r = seeded(k * 7919 + 13)(); plateShade.set(k, r); }
     return plateShade.get(k);
   };
-  const furrow = [0.25, 0.235, 0.22], crest = [0.42, 0.4, 0.37];
+  // A weathered grey-brown: darker than this, a trunk's foot read as a burnt, near-black band.
+  const furrow = [0.30, 0.285, 0.265], crest = [0.58, 0.555, 0.51];
   for (let j = 0; j < H; j++) {
     const y = j / PX;
     for (let i = 0; i < W; i++) {
