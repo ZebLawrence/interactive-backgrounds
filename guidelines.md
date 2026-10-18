@@ -1,7 +1,7 @@
 # Guidelines for building a new interactive background
 
-Lessons from building Fishbowl, Firefly Meadow, Balloon Dawn and Loon Lake, written for whoever
-(or whatever) builds the next one. They are generic on purpose: the scene will be different, the
+Lessons from building Fishbowl, Firefly Meadow, Balloon Dawn, Loon Lake, Boreal Night and Aspen
+Snow, written for whoever (or whatever) builds the next one. They are generic on purpose: the scene will be different, the
 mistakes won't be.
 
 ## 1. What "good" means here
@@ -12,8 +12,40 @@ mistakes won't be.
 - **Detail must survive 4K.** The owner views on a large 4K monitor. Anything drawn to a canvas
   and magnified reads as a blurry brush stroke. Work out the pixels-per-metre a texture will get
   on screen at its distance and give the canvas at least that; draw in world units (metres) so
-  detail is resolution-independent; prefer procedural geometry and shaders over bitmaps where
-  the camera gets close. When a bitmap is truly better (the moon), use a real one with credit.
+  detail is resolution-independent; prefer procedural *geometry* over bitmaps where the camera
+  gets close. When a bitmap is truly better (the moon), use a real one with credit.
+- **Paint big surfaces once, don't composite them per pixel.** A surface the owner will zoom
+  into (bark, hide, rock, a hull) built from several noise functions evaluated per pixel every
+  frame fails two ways at once: the finest scale shimmers as the thing sways (noise finer than
+  a pixel aliases, and a hand-tuned "fade with distance" is never right everywhere), and the
+  soft masks blending the scales read as two photographs cross-faded. The owner described it
+  exactly: "a mixture of resolutions", "nothing is sharp", "spots flicker". The fix was to paint
+  the surface at load into mipmapped textures in world units (a feature map with the marks
+  drawn as 2D primitives, a fine-grain tile, a tile for a different zone) and composite those
+  with one sharp mask; mipmaps and anisotropy then handle distance properly and the resolution
+  is the same from top to bottom. Decide every random feature before drawing so its copies
+  across the tile edges match; use lattice-periodic noise for tiles; squeeze a repeat to a
+  whole number round a circumference so the seam closes; vary each instance by a UV offset.
+  Painting a few million pixels costs a few seconds at load, so cache it across reseeds.
+- **Relief needs a light that can show it, or bake the light in.** A bump or normal map shows
+  almost nothing under a diffuse sky, so on an overcast scene surfaces look flat however good
+  the height map ("do these have depth maps?" means the relief is invisible). Bake directional
+  relief shading (sky from above: lit upper slopes, shaded undersides) into the colour map as
+  well as keeping the live bump for the key light. The kind of relief matters more than its
+  amount: tiny pits and dents read as noise, long features that follow the structure (the
+  horizontal wrinkles ringing a trunk) read as form.
+- **Match the owner's reference photos literally.** When they supply photos, the review is
+  against those photos, not against the species in general: the palette (bark that was
+  greenish because real aspen bark is greenish got sent back as "should be white"), the scale
+  and kind of surface marks, how dense the falling snow is, how far the haze reaches. Keep
+  surface colours neutral as in the photo and put any warmth or coolness into the key lights
+  (a warm sun, a cool moon) so the tint comes and goes with them.
+- **White things on white need their shape given to them.** A white animal on snow under a
+  grey sky is a cotton ball: shade it by the sky's direction (back lit, belly and undersides in
+  a cool shade), shade every slope of a print in the snow whichever way it faces and tint the
+  floors blue, and give prints steep walls and a rim of pushed-up snow. Multiplicative
+  darkening on a near-white surface is flattened by the tone curve, so a factor that looks
+  strong on paper reads as nothing; measure it with a pixel read-back and push harder.
 - **Real-world grounding.** Base behaviour on how the real thing works (firefly flash patterns,
   balloon buoyancy, dust lanes in the Milky Way) and say so in comments. The owner notices when
   something is "fake" (a pale band that looked like clouds) and asks for the real thing.
@@ -37,6 +69,17 @@ mistakes won't be.
   alone is not a cattail, it needs the head, the spire and the fan of leaves from the base, in the
   real proportions. Look up the anatomy, then build each part. The same goes for animals: the
   owner will zoom in.
+- **Loft bodies from the real profile, not from ellipsoids.** A creature assembled from
+  rounded sausages is a toy however many fur cards it wears. Write down the side-view lines of
+  the real animal as control points (the line of the back, the belly, the half-width; the dome
+  of the skull, the nose line, the cheeks) and loft from those; size joint spheres to the
+  segments they join or the limbs show rings; make the odd detail that defines the face (a dark
+  eye rim, a cleft lip, black ear tips) rather than decorations the owner will ask to remove
+  (whiskers were "too much"). Trunks and stems are not cylinders either: wander the section in
+  and out, add swellings, keep the mean diameter.
+- **A mode toggle changes the whole atmosphere.** "Snowfall on" is not just more particles: the
+  sky goes flat and light, the haze closes in to half the distance, and the particle count
+  triples. Tie the fog distance, the sky and the particle budget to the same eased amount.
 - **Frame the edges.** The near corners and sides of the view are where the owner asks for more:
   foreground vegetation and objects at the frame edges give the scene depth and are the first
   thing a second look lands on.
@@ -67,6 +110,16 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   rotation (including any pan) so hit-tests and reactions stay under the cursor.
 - Creatures react in **screen space** (projected distance to the cursor) so near and far things
   feel the same, and keep themselves inside the view with soft walls, not teleports.
+- **Route round obstacles, and finish approaches on a straight line.** In a dense scene a
+  straight path to a chosen spot is blocked most of the time; before giving up try one waypoint
+  to either side. A flier that steers by turning at a limited rate can never close on a point
+  smaller than its turning radius and circles it forever: exclude its own target from the
+  obstacle test, and fly the last few metres straight at the point with an explicit "alight" or
+  "plunge" state rather than waiting for the capture radius.
+- **Measure the cursor's push in numbers.** "Too much movement" was a top sway speed of 10 m/s
+  on a gust that already seemed tame in a screenshot. Log the top speed, the sway in metres and
+  the particles shed after a scripted sweep, and tune to numbers (a few tenths of a metre, a few
+  hundred puffs); a swing threshold for shedding should scale with the tree's height.
 - **Version the module URLs.** GitHub Pages caches JS for ten minutes and a refresh only
   revalidates the page, so a user can run a mix of old and new modules and report a working
   feature as broken. Each `index.html` maps `./js/x.js` to `./js/x.js?v=N` in its import map and
@@ -132,7 +185,17 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   mode uniforms with the rest of the scene; re-point its `uniforms` at the shared objects.
 - Keep high-frequency procedural detail (ripples, grain, veins) fading with distance, and read
   derived maps (normals, slopes) through a mipmapped texture: far pixels that average many
-  cells stop shimmering, and a noise function evaluated at sub-pixel scale aliases.
+  cells stop shimmering, and a noise function evaluated at sub-pixel scale aliases. For a
+  surface the owner inspects, go further and paint it (section 1).
+- **A baked map is only as sharp as its texels.** A contact-shade map at half a metre per texel
+  blurred a 30 cm shadow round each trunk foot into nothing; the feature it carries must be
+  several texels wide. Keep a separate, finer map for near contact shade and a coarse one for
+  the far shadows.
+- **Backticks inside GLSL comments break the module.** A shader string is a JavaScript template
+  literal, so a stray backtick in a GLSL comment ends it; the page shows "Unexpected identifier"
+  with no file name and `node --check` is happy. Grep the module for backticks when a load
+  fails that way. `node --check` also never sees GLSL errors; read
+  `renderer.info.programs.filter((p) => p.diagnostics)` after every reload.
 - Texture orientation: `CanvasTexture` flips on upload (canvas bottom = v 0). When an image
   appears upside down or missing, check the plane's vertical placement before blaming the flip.
 - Alpha-tested silhouettes on planes work well for horizons (tree lines, ridges), but size
@@ -152,6 +215,12 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   console helper that aims the camera at a world point with a narrow field of view and renders
   once is worth defining in the first hour; the pane's own zoom crops a downscaled screenshot
   and resizes between actions, so it shows nothing new.
+- The in-app browser pane can be squeezed to a sliver by the window layout, and emulating a
+  viewport there only renders into a corner. The Chrome DevTools MCP page, resized to 1400 x 900
+  with its own screenshot tool, was the reliable harness; the pane's screenshot can also lag a
+  frame behind a scripted render, so wait a moment or render twice before capturing.
+- Pause the frame loop (replace the app's `frame` with a no-op) before hand-stepping, or the live
+  loop keeps moving things between your steps and your screenshot.
 - Test each cursor verb explicitly and each menu option, in each mode, and read the console for
   shader errors after every reload (old messages persist in the pane's console; look at uuids
   and line numbers to tell new from old).
@@ -185,8 +254,15 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
 - When they say it "turned out great", the next message is usually an addition rather than a
   fix (more of something they liked, at the edges of the view). Build additions in the same
   style and idiom as the thing they praised.
+- Their marked-up screenshots are the spec: red lines where the relief should run, a circled X
+  over the texture to remove. Reproduce what they drew (long horizontal lines, not dents) before
+  interpreting it. They will also name the remedy ("use real images", "pre-composite the
+  textures"); take the diagnosis seriously even when a different implementation is better.
 - They say "commit and push" explicitly; don't push on your own. Write commit messages that
-  explain the behaviour change, not the diff. When they ask for a branch and a pull request,
+  explain the behaviour change, not the diff. Their working tree may hold uncommitted work from
+  another session (another background's rework): never sweep it into your commit, and when they
+  later ask for a PR of it, write its message from the diff and the README text it carries, and
+  say you cannot vouch for it having been viewed. When they ask for a branch and a pull request,
   other work may have landed on `main` in the meantime (other backgrounds' native ports):
   fetch, merge `main` into the branch, and resolve the root README table by keeping every row,
   then confirm GitHub reports the PR mergeable before saying so.
