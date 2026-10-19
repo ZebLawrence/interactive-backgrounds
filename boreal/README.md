@@ -1,8 +1,8 @@
 # Boreal Night
 
 A snowy spruce clearing in the far north under the aurora, seen from a low rise at the forest
-edge, where a great grey owl hunts voles under the snow. It reacts to your cursor. A web page for
-now; no native app yet.
+edge, where a great grey owl hunts voles under the snow. It reacts to your cursor: a macOS desktop
+background (`swift/`) and a web page (`html/`).
 
 **Live:** https://zeblawrence.github.io/interactive-backgrounds/boreal/html/
 
@@ -44,7 +44,66 @@ now; no native app yet.
   sits fluffed out round, another sleek and upright, one holds its head a little tilted. Bigger
   birds beat their wings more slowly. **New Night** re-seeds the forest and the aurora.
 
-## Running it
+## macOS app
+
+`swift/` is a native port: a menu-bar app that draws the clearing behind your desktop icons and
+windows, on every screen. Requires macOS 14+ and the Xcode command line tools.
+
+```sh
+cd swift
+./build.sh             # builds build/Boreal.app ("Boreal Night")
+open build/Boreal.app
+./build.sh --install   # or: copy to /Applications and launch
+```
+
+Control it from the moon-and-stars icon in the menu bar: Rustle a Vole, Aurora Substorm, Owls (a
+lone owl / a pair / three), New Night, Snowfall, Moonlight, Click Desktop to Rustle, Low Power
+(30 fps, no MSAA), Launch at Login, and Quit. Clicking empty desktop does what a click does on the
+web page: on the snow a vole stirs and the nearest owl hunts it; in the sky a surge starts on the
+aurora. A `CGWindowList` hit test ignores clicks on windows, and the cursor is polled each frame, so
+no Accessibility permission is needed. Run only one of the backgrounds at a time: they all draw at
+the same desktop level.
+
+Developer flags:
+
+```sh
+swift run Boreal --preview                          # a normal window instead of the desktop
+swift run Boreal --render out.png --at 6            # no window, simulated time: rest the cursor, save a frame, exit
+swift run Boreal --render out.png --hunt-at 2 --at 8      # ... after an owl starts hunting a vole
+swift run Boreal --render out.png --click-at 2 0.5 0.8    # ... clicking at (x, y) of the screen (here the sky)
+swift run Boreal --render out.png --substorm       # the aurora breaking up
+swift run Boreal --render out.png --sweep          # a hand dragged fast through the trees
+swift run Boreal --render out.png --log            # print what the owls and the aurora are doing
+swift run Boreal --render out.png --look-owl 6     # follow the first owl with a narrow camera
+swift run Boreal --render out.png --look 0 3 -20 15     # aim at a world point with a 15-degree field of view
+swift run Boreal --render out.png --bench 180      # then time 180 more frames on the GPU
+swift run Boreal --render out.png --seed 7         # the same forest every time
+swift run Boreal --render out.png --hide trees,owls      # leave parts out, to see what they cost
+swift run Boreal --render out.png --low-power      # Low Power without changing the setting
+swift run Boreal --render out.png --show-nan       # paint any NaN pixel magenta
+swift run Boreal --dark --clear                     # force the modes: --moon/--dark, --snow/--clear
+swift run Boreal --preview --stats                  # log the GPU time per frame
+```
+
+`--render` steps the scene sixty times a simulated second and draws offscreen, so it runs faster
+than real time and works with the display asleep; `--snapshot` takes the same options in a real
+window, in real time.
+
+Like the other ports it follows the web version file for file (`Boreal.swift` ← `boreal.js`,
+`Aurora.swift` ← `aurora.js`, `Spruce.swift` ← `spruce.js`, `Owl.swift` and `Plumage.swift` ←
+`owl.js` and `plumage.js`, and so on) and renders with Metal directly, sharing its plumbing with
+Aspen Snow's app: the moon's 4096-pixel shadow map, then the main pass with 4x MSAA and
+alpha-to-coverage for the needles and feathers, three.js's UnrealBloomPass, the vignette and ACES
+tone mapping. To keep it light enough for an all-day wallpaper, a few things are done more cheaply than on
+the web, with the same look: the snow's wind ripples are painted once into a tiling slope map
+instead of being computed per pixel; the snow mesh has 480 rows instead of 760; the far snow skips
+the glitter (its crystals are under a pixel there); the spruce bark is drawn apart from the needles
+so the trunks keep the GPU's hidden-surface removal, and the needles and snow pillows take one
+filtered shadow sample; and the moon's shadow map is redrawn every other frame. At 60 fps it uses
+about 12 ms of GPU time per frame at 2560x1600 on an M3 laptop (about 14 at the laptop's own
+3024x1964): the trees about 6, the snow 3, the aurora 1.5.
+
+## Running the web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with
 Three.js loaded from a CDN), so there's no build step: serve the folder with any static server, e.g.
