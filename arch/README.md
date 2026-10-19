@@ -3,8 +3,8 @@
 A natural bridge of Navajo sandstone over a still lake at night, the aurora standing over it, a
 weathered lens-shaped craft exploring the canyon beneath it with a red eye that lights whatever
 it studies. Built to the owner's reference picture of a Lake Powell bridge: the land is shaped
-to the picture's outlines and wears the picture itself. It reacts to your cursor. A web page for
-now; no native app yet.
+to the picture's outlines and wears the picture itself. It reacts to your cursor: a macOS desktop
+background (`swift/`) and a web page (`html/`).
 
 **Live:** https://zeblawrence.github.io/interactive-backgrounds/arch/html/
 
@@ -70,6 +70,68 @@ now; no native app yet.
   Boreal Night; the lightning bolt from Firefly Meadow.
 - The rock photographs in `html/assets/` (`wall*.png`, `wall3.webp`, `streaks.png`) are the
   owner's Lake Powell pictures; they fill the little rock the projection cannot cover.
+
+## macOS app
+
+`swift/` is a native port: a menu-bar app that draws the canyon behind your desktop icons and
+windows, on every screen. Requires macOS 14+ and the Xcode command line tools.
+
+```sh
+cd swift
+./build.sh             # builds build/Arch.app ("Sandstone Arch")
+open build/Arch.app
+./build.sh --install   # or: copy to /Applications and launch
+```
+
+Control it from the waves icon in the menu bar: Aurora Surge, New Night, Aurora, Moonlight, The
+Craft, Rain, Click Desktop to Splash, Low Power (30 fps, no MSAA), Launch at Login, and Quit.
+Clicking empty desktop does what a click does on the web page: on the water a stone is tossed, on
+the shore it thumps down, on the craft it wakes, in the sky the aurora surges. A `CGWindowList`
+hit test ignores clicks on windows, and the cursor is polled each frame, so no Accessibility
+permission is needed. Run only one of the backgrounds at a time: they all draw at the same
+desktop level.
+
+Developer flags:
+
+```sh
+swift run Arch --preview                          # a normal window instead of the desktop
+swift run Arch --render out.png --at 6            # no window, simulated time: save a frame, exit
+swift run Arch --render out.png --click-at 1 0.45 0.2 --at 3   # ... clicking at (x, y) of the screen (here the water)
+swift run Arch --render out.png --surge           # an aurora surge
+swift run Arch --render out.png --rain --strike-at 9 --at 9.05   # a lightning strike in the storm
+swift run Arch --render out.png --log             # print what the lights, the storm and the craft are doing
+swift run Arch --render out.png --look-craft 8    # follow the craft with a narrow camera
+swift run Arch --render out.png --look 0 20 -150 15     # aim at a world point with a 15-degree field of view
+swift run Arch --render out.png --bench 180       # then time 180 more frames on the GPU
+swift run Arch --render out.png --seed 7          # the same blocks and shrubs every time
+swift run Arch --render out.png --hide terrain,water    # leave parts out, to see what they cost
+swift run Arch --render out.png --low-power       # Low Power without changing the setting
+swift run Arch --render out.png --show-nan        # paint any NaN pixel magenta
+swift run Arch --noaurora --nomoon --nocraft --rain     # force the modes, as the URL flags do
+swift run Arch --preview --stats                  # log the GPU time per frame
+```
+
+`--render` steps the scene sixty times a simulated second and draws offscreen, so it runs faster
+than real time and works with the display asleep; `--snapshot` takes the same options in a real
+window, in real time.
+
+Like the other ports it follows the web version file for file (`Arch.swift` ← `scene.js`,
+`Terrain.swift` ← `terrain.js`, `Water.swift` ← `water.js`, `Craft.swift` ← `craft.js`,
+`Shore.swift` ← `shore.js`, `Rain.swift` ← `rain.js`, `Sky.swift` and `Aurora.swift` ← `sky.js`
+and `aurora.js`) and renders with Metal directly, sharing its plumbing with Loon Lake's and Boreal
+Night's apps: the same traced land and the same projection of the reference picture (it loads
+`html/assets/reference.webp` and the rock photographs from the app bundle), the wave simulation
+as a compute pass, the reflection from a mirrored camera and the refraction with its depth, the
+moon's shadow map, then the main pass with 4x MSAA, three.js's UnrealBloomPass, the vignette and
+ACES tone mapping. To keep it light enough for an all-day wallpaper, a few things are done more
+cheaply than on the web, with the same look: the rock's carved relief (three evaluations of a
+layered height function per pixel) is only worked out where the picture doesn't already paint
+the rock, since there the lit part is a seventh of its colour and the relief can't show, and
+the photo fill likewise only where the picture doesn't cover it; the reflection and refraction
+are drawn at half resolution (the ripples bend them, and the night water is opaque within a metre
+or two); the bridge is drawn before the land so the far wall behind it is mostly rejected by the
+depth test; and the moon's shadow map is redrawn every other frame. At 60 fps it uses about
+14.5 ms of GPU time per frame at 2560x1600 on an M3 laptop (12.3 in Low Power).
 
 ## Testing
 
