@@ -4,42 +4,287 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interactive Backgrounds</title>
-<meta name="description" content="Animated backgrounds that react to the mouse.">
+<meta name="description" content="Seven animated 3D scenes that react to the mouse: an aquarium, a firefly meadow, a balloon dawn, a mountain lake, a boreal night, an aspen grove in snow, and a sandstone arch under the aurora.">
+<meta name="theme-color" content="#07090e">
 <style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; padding: 48px 16px; font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: #f6f8fa; color: #1f2328; }
-  main { max-width: 640px; margin: 0 auto; }
-  h1 { margin: 0 0 4px; font-size: 28px; }
-  p { margin: 0 0 24px; color: #59636e; }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li a { display: block; padding: 14px 16px; margin-bottom: 8px; border: 1px solid #d1d9e0; border-radius: 10px;
-    background: #fff; color: inherit; text-decoration: none; }
-  li a:hover, li a:focus-visible { border-color: #0969da; outline: none; }
-  li strong { display: block; color: #0969da; }
-  li span { color: #59636e; font-size: 14px; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #0d1117; color: #e6edf3; }
-    p, li span { color: #9198a1; }
-    li a { background: #151b23; border-color: #3d444d; }
-    li strong { color: #4493f8; }
-    li a:hover, li a:focus-visible { border-color: #4493f8; }
+  :root {
+    color-scheme: dark;
+    --bg: #07090e; --panel: #0f131b; --panel-2: #141a25; --line: #222a38; --text: #e8ecf3; --muted: #9aa4b5; --dim: #6b7585;
+    --accent: #6cb6ff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  img { display: block; max-width: 100%; }
+  button { font: inherit; color: inherit; }
+
+  /* The hero: the scenes themselves, one after another, under the title. */
+  .hero { position: relative; min-height: min(78vh, 760px); display: grid; align-content: end; overflow: hidden; isolation: isolate; }
+  .hero-slides { position: absolute; inset: 0; z-index: -1; background: #000; }
+  .hero-slides img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.6s ease; transform: scale(1.04); }
+  .hero-slides img.on { opacity: 1; transform: scale(1); transition: opacity 1.6s ease, transform 9s linear; }
+  .hero::after { content: ""; position: absolute; inset: 0; z-index: -1; background:
+    linear-gradient(to top, var(--bg) 0%, rgba(7, 9, 14, 0.85) 18%, rgba(7, 9, 14, 0.1) 55%, rgba(7, 9, 14, 0.35) 100%); }
+  .hero-inner { padding: 56px 24px 40px; max-width: 1180px; margin: 0 auto; width: 100%; }
+  .hero h1 { margin: 0; font-size: clamp(34px, 6vw, 64px); line-height: 1.02; letter-spacing: -0.02em; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6); }
+  .hero p.lead { margin: 14px 0 0; max-width: 58ch; font-size: clamp(16px, 1.6vw, 19px); color: #d4dbe6; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7); }
+  .hero-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 26px; }
+  .hero-now { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px 8px 10px; border-radius: 999px; background: rgba(10, 13, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(10px); text-decoration: none; }
+  .hero-now .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  .hero-now small { color: var(--muted); }
+  .hero-now strong { font-weight: 600; }
+  .hero-now:hover { border-color: rgba(255, 255, 255, 0.35); }
+  .hero-dots { display: flex; gap: 6px; }
+  .hero-dots button { width: 22px; height: 22px; padding: 0; border: 0; background: transparent; cursor: pointer; display: grid; place-items: center; }
+  .hero-dots button i { display: block; width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.35); transition: transform 0.3s, background 0.3s; }
+  .hero-dots button.on i { background: #fff; transform: scale(1.5); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; text-decoration: none; font-weight: 600; border: 1px solid transparent; cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.15s; }
+  .btn-primary { background: var(--accent); color: #0a0d14; }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-ghost { background: rgba(255, 255, 255, 0.06); border-color: var(--line); }
+  .btn-ghost:hover { background: rgba(255, 255, 255, 0.11); border-color: #3a4556; }
+  .btn svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 8px 24px 64px; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; margin: 32px 0 18px; }
+  .section-head h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .section-head p { margin: 0; color: var(--muted); }
+
+  /* The cards. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 22px; }
+  .card { --accent: #6cb6ff; position: relative; display: grid; grid-template-rows: auto 1fr; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s; }
+  .card:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); transform: translateY(-2px); box-shadow: 0 18px 48px -20px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .shot { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden; }
+  .shot button.open { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.5s ease; }
+  .shot img.on { opacity: 1; }
+  .shot .fade { position: absolute; inset: auto 0 0 0; height: 48%; background: linear-gradient(to top, rgba(7, 9, 14, 0.78), transparent); pointer-events: none; }
+  .modes { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .modes button { padding: 5px 11px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.22); background: rgba(10, 13, 20, 0.55); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; backdrop-filter: blur(8px); transition: background 0.2s, border-color 0.2s; }
+  .modes button:hover { background: rgba(255, 255, 255, 0.16); }
+  .modes button.on { background: var(--accent); border-color: var(--accent); color: #0a0d14; }
+  .modes .count { margin-left: auto; font-size: 12px; color: #cfd6e2; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
+  .body { padding: 18px 20px 20px; display: grid; gap: 10px; align-content: start; }
+  .body h3 { margin: 0; font-size: 21px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+  .body h3 .bar { width: 10px; height: 22px; border-radius: 3px; background: var(--accent); flex: none; }
+  .body h3 small { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--dim); letter-spacing: 0.04em; text-transform: uppercase; }
+  .body p { margin: 0; color: var(--muted); }
+  .does { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; font-size: 14px; color: #c3cad6; }
+  .does li { display: flex; gap: 9px; align-items: baseline; }
+  .does li::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); transform: translateY(-2px); opacity: 0.9; }
+  .does b { color: var(--text); font-weight: 600; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .links .btn { padding: 8px 12px; font-size: 14px; }
+  .links .btn-primary { background: var(--accent); }
+
+  /* The lightbox. */
+  .box { position: fixed; inset: 0; z-index: 50; display: none; background: rgba(2, 3, 6, 0.92); backdrop-filter: blur(6px); }
+  .box.on { display: grid; grid-template-rows: auto 1fr auto; }
+  .box-top { display: flex; align-items: center; gap: 14px; padding: 14px 18px; }
+  .box-top h2 { margin: 0; font-size: 18px; }
+  .box-top .modes { position: static; }
+  .box-top .close { margin-left: auto; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); cursor: pointer; font-size: 20px; }
+  .box-img { display: grid; place-items: center; padding: 0 18px; min-height: 0; }
+  .box-img img { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7); }
+  .box-foot { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 18px 20px; flex-wrap: wrap; }
+  .box-foot .nav { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06); cursor: pointer; font-size: 18px; }
+  .box-foot .nav:hover, .box-top .close:hover { background: rgba(255, 255, 255, 0.14); }
+
+  footer { border-top: 1px solid var(--line); padding: 26px 24px 40px; color: var(--muted); font-size: 14px; }
+  footer .inner { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px 28px; justify-content: space-between; }
+  footer a { color: #c3cad6; }
+  noscript ul { list-style: none; padding: 0; }
+
+  @media (max-width: 640px) {
+    .hero-inner { padding: 40px 16px 28px; }
+    main { padding: 4px 16px 48px; }
+    .body { padding: 16px 16px 18px; }
+    footer { padding: 22px 16px 36px; }
+    .modes .count { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .hero-slides img, .hero-slides img.on, .shot img, .card { transition: none; transform: none; }
   }
 </style>
 </head>
 <body>
+<header class="hero" id="hero">
+  <div class="hero-slides" id="slides" aria-hidden="true"></div>
+  <div class="hero-inner">
+    <h1>Interactive Backgrounds</h1>
+    <p class="lead">Seven animated 3D scenes that react to your mouse: a fingertip that stirs the water, creatures that come to a resting cursor, a click that skips a stone or fires a burner. Each is a single web page, served straight from this repository.</p>
+    <div class="hero-bar">
+      <a class="hero-now" id="heroNow" href="#"><span class="dot"></span><small>Now showing</small><strong id="heroTitle">…</strong></a>
+      <div class="hero-dots" id="heroDots" role="tablist" aria-label="Scenes"></div>
+      <a class="btn btn-ghost" href="#scenes">All seven scenes ↓</a>
+    </div>
+  </div>
+</header>
+
 <main>
-  <h1>Interactive Backgrounds</h1>
-  <p>Animated backgrounds that react to the mouse.</p>
-  <ul>
-    <li><a href="fishbowl/html/"><strong>Fishbowl</strong><span>A 3D aquarium: fish school, flee a fast cursor, come to inspect a resting one and race for the food you drop in.</span></a></li>
-    <li><a href="meadow/html/"><strong>Firefly Meadow</strong><span>A 3D meadow at night: grass parts around the cursor, fireflies scatter from a fast one, gather round a resting one and fall into step, and a clap sets them all off.</span></a></li>
-    <li><a href="balloons/html/"><strong>Balloon Dawn</strong><span>A 3D balloon fiesta over a misty valley at sunrise: your cursor is the wind, a click fires a burner, and at night the balloons glow like lanterns.</span></a></li>
-    <li><a href="lake/html/"><strong>Loon Lake</strong><span>A 3D mountain lake at dusk, reflected in simulated water: your fingertip stirs the surface, trout and dragonflies come to it when it rests, a click skips a stone, and at night the moon and the Milky Way lie on the lake.</span></a></li>
-    <li><a href="boreal/html/"><strong>Boreal Night</strong><span>A snowy spruce clearing under the northern lights: a great grey owl watches your cursor and plunges into the snow for the vole you click, and a fast cursor is a gust that shakes snow from the trees.</span></a></li>
-    <li><a href="aspen/html/"><strong>Aspen Snow</strong><span>A quaking-aspen grove in falling snow, at eye level among the trunks: snowshoe hares come to look at a resting cursor and bolt from a fast one, a click on the snow flushes a ruffed grouse from its roost under the snow, and a click on a trunk brings its snow down in a cascade.</span></a></li>
-    <li><a href="arch/html/"><strong>Sandstone Arch</strong><span>A natural bridge over a still lake at night under the aurora, with a weathered craft exploring the canyon beneath it: a fingertip stirs the water, a click tosses a stone or rouses the craft, the craft turns its red eye on a resting cursor, and rain mode brings a storm sky with lightning.</span></a></li>
-  </ul>
+  <div class="section-head" id="scenes">
+    <h2>The scenes</h2>
+    <p>Pick a mode to see each in another light; click a picture to see it large.</p>
+  </div>
+  <div class="grid" id="grid"></div>
+  <noscript>
+    <ul>
+      <li><a href="fishbowl/html/">Fishbowl</a> · <a href="meadow/html/">Firefly Meadow</a> · <a href="balloons/html/">Balloon Dawn</a> · <a href="lake/html/">Loon Lake</a> · <a href="boreal/html/">Boreal Night</a> · <a href="aspen/html/">Aspen Snow</a> · <a href="arch/html/">Sandstone Arch</a></li>
+    </ul>
+  </noscript>
 </main>
+
+<div class="box" id="box" role="dialog" aria-modal="true" aria-label="Screenshot">
+  <div class="box-top">
+    <h2 id="boxTitle"></h2>
+    <div class="modes" id="boxModes"></div>
+    <button class="close" id="boxClose" aria-label="Close">×</button>
+  </div>
+  <div class="box-img"><img id="boxImg" alt=""></div>
+  <div class="box-foot">
+    <button class="nav" id="boxPrev" aria-label="Previous scene">‹</button>
+    <a class="btn btn-primary" id="boxOpen" href="#">Open this scene</a>
+    <button class="nav" id="boxNext" aria-label="Next scene">›</button>
+  </div>
+</div>
+
+<footer>
+  <div class="inner">
+    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; five also have native Swift ports.</span>
+    <span>Screenshots are the pages themselves, captured in each of their modes.</span>
+  </div>
+</footer>
+
+<script>
+const REPO = 'https://github.com/ZebLawrence/interactive-backgrounds';
+const SCENES = [
+  { key: 'fishbowl', title: 'Fishbowl', kind: 'Aquarium', accent: '#3fb6d8', swift: true,
+    desc: 'A 3D aquarium at eye level with the sand: tetras, angelfish and goldfish schooling among the weed and the rocks.',
+    does: [['Fast cursor', 'the fish flee'], ['Resting cursor', 'they come to inspect it'], ['Click', 'drops food, and they race for it'], ['Menu', 'night mode, a shark, more fish']],
+    modes: [['day', 'Day'], ['night', 'Night']] },
+  { key: 'meadow', title: 'Firefly Meadow', kind: 'Meadow at night', accent: '#9ad648', swift: true,
+    desc: 'A 3D meadow at night under the moon, grass to the horizon and fireflies drifting over it.',
+    does: [['Cursor', 'the grass parts around it'], ['Fast cursor', 'the fireflies scatter'], ['Resting cursor', 'they gather and fall into step'], ['Click', 'a clap sets them all off'], ['Menu', 'storm mode with rain and lightning']],
+    modes: [['night', 'Night'], ['storm', 'Storm']] },
+  { key: 'balloons', title: 'Balloon Dawn', kind: 'Balloon fiesta', accent: '#f6a53a', swift: true,
+    desc: 'A 3D hot-air balloon fiesta lifting out of a misty valley at sunrise, birds crossing the sky.',
+    does: [['Cursor', 'is the wind'], ['Click', 'fires a burner'], ['Menu', 'night, when the balloons glow like lanterns']],
+    modes: [['dawn', 'Dawn'], ['night', 'Night glow']] },
+  { key: 'lake', title: 'Loon Lake', kind: 'Mountain lake', accent: '#c99bd6', swift: true,
+    desc: 'A 3D mountain lake at dusk, reflected in simulated water, lily pads and reeds in the shallows.',
+    does: [['Fingertip', 'stirs the surface'], ['Resting fingertip', 'trout and dragonflies come to it'], ['Click', 'skips a stone'], ['Menu', 'night, with the moon and the Milky Way on the lake; rain']],
+    modes: [['dusk', 'Dusk'], ['night', 'Night'], ['rain', 'Rain']] },
+  { key: 'boreal', title: 'Boreal Night', kind: 'Spruce clearing', accent: '#3ddc84', swift: false,
+    desc: 'A snowy spruce clearing under the northern lights, a great grey owl on its perch.',
+    does: [['Cursor', 'the owl watches it'], ['Click on the snow', 'it plunges for the vole'], ['Fast cursor', 'a gust shakes snow from the trees'], ['Menu', 'an aurora substorm, snowfall, moonlight on or off']],
+    modes: [['aurora', 'Aurora'], ['substorm', 'Substorm'], ['dark', 'Moonless']] },
+  { key: 'aspen', title: 'Aspen Snow', kind: 'Aspen grove', accent: '#a9bfd4', swift: true,
+    desc: 'A quaking-aspen grove in falling snow, at eye level among the trunks, with snowshoe hares and a ruffed grouse.',
+    does: [['Resting cursor', 'the hares come to look'], ['Fast cursor', 'they bolt'], ['Click on the snow', 'flushes the grouse from its roost'], ['Click on a trunk', 'brings its snow down'], ['Menu', 'sunlight, night, snowfall']],
+    modes: [['snow', 'Snowfall'], ['sun', 'Sunlit'], ['night', 'Night']] },
+  { key: 'arch', title: 'Sandstone Arch', kind: 'Canyon lake', accent: '#e8863f', swift: false,
+    desc: 'A natural bridge over a still lake at night under the aurora, with a weathered craft exploring the canyon beneath it.',
+    does: [['Fingertip', 'stirs the water'], ['Resting cursor', 'the craft turns its red eye on it'], ['Click', 'tosses a stone, or rouses the craft'], ['Click the sky', 'the aurora surges'], ['Menu', 'rain, with a storm sky and lightning']],
+    modes: [['aurora', 'Aurora'], ['moonlit', 'Moonlit'], ['rain', 'Rain']] },
+];
+const shot = (s, m, large) => `assets/shots/${s.key}-${m}${large ? '' : '-s'}.jpg`;
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const k of kids) e.append(k); return e; };
+const ICON = {
+  open: '<svg viewBox="0 0 16 16"><path d="M6 2h8v8h-2V5.4L5.7 11.7 4.3 10.3 10.6 4H6V2zM2 4h3v2H4v6h6v-1h2v3H2V4z"/></svg>',
+  git: '<svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>',
+};
+
+// --- The cards -------------------------------------------------------------------------------
+const grid = document.getElementById('grid');
+const state = SCENES.map((s) => ({ scene: s, mode: s.modes[0][0] }));
+function showMode(i, mode, inBox = false) {
+  state[i].mode = mode;
+  const s = SCENES[i];
+  const card = grid.children[i];
+  card.querySelectorAll('.shot img').forEach((img) => { const on = img.dataset.mode === mode; img.classList.toggle('on', on); if (on && !img.getAttribute('src')) img.src = img.dataset.src; });
+  card.querySelectorAll('.modes button').forEach((b) => { b.classList.toggle('on', b.dataset.mode === mode); b.setAttribute('aria-pressed', b.dataset.mode === mode); });
+  if (inBox) { boxImg.src = shot(s, mode, true); boxImg.alt = `${s.title}, ${label(s, mode)}`; boxModes.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode)); }
+}
+const label = (s, mode) => s.modes.find((m) => m[0] === mode)[1];
+SCENES.forEach((s, i) => {
+  const imgs = s.modes.map(([m, l], k) => { const img = el('img', { alt: `${s.title}, ${l}`, 'data-mode': m, 'data-src': shot(s, m), loading: k ? 'lazy' : 'eager', decoding: 'async' }); if (!k) { img.src = shot(s, m); img.className = 'on'; } return img; });
+  const pills = s.modes.map(([m, l], k) => el('button', { type: 'button', 'data-mode': m, class: k ? '' : 'on', 'aria-pressed': String(!k), onclick: () => showMode(i, m), onmouseenter: () => showMode(i, m) }, l));
+  const links = [
+    el('a', { class: 'btn btn-primary', href: `${s.key}/html/` }, span(ICON.open), 'Open'),
+    el('a', { class: 'btn btn-ghost', href: `${REPO}/tree/main/${s.key}/html`, title: 'The web page: HTML, JavaScript and shaders' }, span(ICON.git), 'Web source'),
+  ];
+  if (s.swift) links.push(el('a', { class: 'btn btn-ghost', href: `${REPO}/tree/main/${s.key}/swift`, title: 'The native Swift port' }, span(ICON.git), 'Swift port'));
+  links.push(el('a', { class: 'btn btn-ghost', href: `${REPO}/blob/main/${s.key}/README.md`, title: 'What it does and how it is built' }, 'Notes'));
+  const card = el('article', { class: 'card', style: `--accent:${s.accent}` },
+    el('div', { class: 'shot' },
+      el('button', { class: 'open', type: 'button', 'aria-label': `See ${s.title} large`, onclick: () => openBox(i) }, ...imgs, el('div', { class: 'fade' })),
+      el('div', { class: 'modes', role: 'group', 'aria-label': `${s.title} modes` }, ...pills, el('span', { class: 'count' }, `${s.modes.length} modes`))),
+    el('div', { class: 'body' },
+      el('h3', {}, el('span', { class: 'bar' }), s.title, el('small', {}, s.kind)),
+      el('p', {}, s.desc),
+      el('ul', { class: 'does' }, ...s.does.map(([what, then]) => el('li', {}, el('b', {}, what + ':'), ' ' + then))),
+      el('div', { class: 'links' }, ...links)));
+  grid.append(card);
+});
+function span(svg) { const sp = document.createElement('span'); sp.innerHTML = svg; sp.style.display = 'contents'; return sp; }
+
+// --- The hero: the scenes one after another --------------------------------------------------
+const slides = document.getElementById('slides'), heroNow = document.getElementById('heroNow'), heroTitle = document.getElementById('heroTitle'), heroDots = document.getElementById('heroDots');
+const HERO = SCENES.map((s) => ({ s, mode: s.modes[s.key === 'arch' ? 0 : s.key === 'balloons' ? 1 : s.key === 'meadow' ? 0 : 0][0] }));
+HERO.forEach(({ s, mode }, i) => {
+  const img = el('img', { alt: '', 'data-src': shot(s, mode, true), class: i ? '' : 'on' });
+  if (!i) img.src = shot(s, mode, true);
+  slides.append(img);
+  heroDots.append(el('button', { type: 'button', role: 'tab', 'aria-label': s.title, class: i ? '' : 'on', onclick: () => { heroTo(i); heroHold = 14; } }, el('i')));
+});
+let heroAt = 0, heroHold = 0;
+function heroTo(i) {
+  heroAt = (i + HERO.length) % HERO.length;
+  const { s } = HERO[heroAt];
+  [...slides.children].forEach((img, k) => { if (k === heroAt && !img.getAttribute('src')) img.src = img.dataset.src; img.classList.toggle('on', k === heroAt); });
+  [...heroDots.children].forEach((b, k) => b.classList.toggle('on', k === heroAt));
+  heroTitle.textContent = s.title;
+  heroNow.href = `${s.key}/html/`;
+  document.getElementById('hero').style.setProperty('--accent', s.accent);
+  const next = slides.children[(heroAt + 1) % HERO.length]; if (!next.getAttribute('src')) next.src = next.dataset.src;
+}
+heroTo(0);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let heroPaused = false;
+document.getElementById('hero').addEventListener('mouseenter', () => { heroPaused = true; });
+document.getElementById('hero').addEventListener('mouseleave', () => { heroPaused = false; });
+if (!reduced) setInterval(() => { if (heroHold > 0) { heroHold -= 1; return; } if (!heroPaused && !document.hidden) heroTo(heroAt + 1); }, 6000);
+
+// --- The lightbox -----------------------------------------------------------------------------
+const box = document.getElementById('box'), boxImg = document.getElementById('boxImg'), boxTitle = document.getElementById('boxTitle'), boxModes = document.getElementById('boxModes'), boxOpen = document.getElementById('boxOpen');
+let boxAt = 0, lastFocus = null;
+function openBox(i) {
+  boxAt = i;
+  const s = SCENES[i];
+  boxTitle.textContent = s.title;
+  boxOpen.href = `${s.key}/html/`;
+  boxModes.replaceChildren(...s.modes.map(([m, l]) => el('button', { type: 'button', 'data-mode': m, class: m === state[i].mode ? 'on' : '', onclick: () => showMode(i, m, true) }, l)));
+  box.style.setProperty('--accent', s.accent);
+  showMode(i, state[i].mode, true);
+  lastFocus = document.activeElement;
+  box.classList.add('on');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('boxClose').focus();
+}
+function closeBox() { box.classList.remove('on'); document.body.style.overflow = ''; lastFocus?.focus(); }
+document.getElementById('boxClose').addEventListener('click', closeBox);
+document.getElementById('boxPrev').addEventListener('click', () => openBox((boxAt + SCENES.length - 1) % SCENES.length));
+document.getElementById('boxNext').addEventListener('click', () => openBox((boxAt + 1) % SCENES.length));
+box.addEventListener('click', (e) => { if (e.target === box || e.target.classList.contains('box-img')) closeBox(); });
+document.addEventListener('keydown', (e) => {
+  if (!box.classList.contains('on')) return;
+  if (e.key === 'Escape') closeBox();
+  else if (e.key === 'ArrowLeft') openBox((boxAt + SCENES.length - 1) % SCENES.length);
+  else if (e.key === 'ArrowRight') openBox((boxAt + 1) % SCENES.length);
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { const s = SCENES[boxAt], ms = s.modes.map((m) => m[0]); const k = ms.indexOf(state[boxAt].mode); showMode(boxAt, ms[(k + (e.key === 'ArrowDown' ? 1 : ms.length - 1)) % ms.length], true); }
+});
+</script>
 </body>
 </html>
