@@ -33,11 +33,10 @@ const RED_RANGE = 13;
 const PULSE_HZ = 0.4;
 // Glow of the meshes themselves (linear multipliers on an unlit colour; above 1 is "brighter than white").
 const STRIP_GLOW = 6, LAMP_GLOW = 9, RED_GLOW = 1.6, RED_IDLE = 0.05;
-// Fill: a low ambient keeps the darks dark (albedo x ~0.05) and the stand-in room reflection is kept dim so
-// metal reflects something between highlights until the room probes (Task 9) replace it.
+// Fill: a low ambient keeps the darks dark (albedo x ~0.05). Reflections come from the room probes
+// (probes.js), re-baked when Emergency Power settles, so they dim with the lights by themselves.
 const AMBIENT = { normal: new THREE.Color().setRGB(0.55, 0.62, 0.75), emergency: new THREE.Color().setRGB(0.5, 0.08, 0.06) };
 const AMBIENT_I = { normal: 0.16, emergency: 0.45 };
-const ENV_I = { normal: 0.06, emergency: 0.012 };
 
 let uniformsReady = false;
 const smooth = (w) => w * w * (3 - 2 * w);
@@ -268,7 +267,6 @@ export class LightRig {
 
     this.ambient.color.lerpColors(AMBIENT.normal, AMBIENT.emergency, e);
     this.ambient.intensity = AMBIENT_I.normal + (AMBIENT_I.emergency - AMBIENT_I.normal) * e;
-    this.scene.environmentIntensity = ENV_I.normal + (ENV_I.emergency - ENV_I.normal) * e;
   }
 
   dispose() {

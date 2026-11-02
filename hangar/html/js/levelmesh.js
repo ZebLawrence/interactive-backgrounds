@@ -47,13 +47,14 @@ function quadGeometry(quads) {
 }
 
 /**
- * Build the level. `materials` maps a material key to a THREE.Material. `keyOf(sectorId, mat, surface)` picks
+ * Build the level. `opts` { skipWall, extraQuads } (see below). `materials` maps a material key to a THREE.Material. `keyOf(sectorId, mat, surface)` picks
  * the key for a sector's family `mat` ('steel', 'concrete', ..., 'window') on a surface ('floor', 'ceil' or
  * 'wall'); by default the key is the family itself. Each mesh records userData { sector, mat, surface, key }.
  * Window openings are two thin sill sectors, so each opening yields two window walls; only one pane (the first
  * per sill sector) is kept, the rest of the opening is left open.
  */
-export function buildLevelMesh(level, materials, tile = TILE, keyOf = (sector, mat) => mat) {
+export function buildLevelMesh(level, materials, tile = TILE, keyOf = (sector, mat) => mat, opts = {}) {
+  const skipWall = opts.skipWall ?? (() => false);
   const group = new THREE.Group();
   const bySector = new Map();
   const colliders = [];
@@ -78,7 +79,9 @@ export function buildLevelMesh(level, materials, tile = TILE, keyOf = (sector, m
 
   const bySectorMat = new Map();
   const panes = new Set();
-  for (const q of wallQuads(level, tile)) {
+  // opts.skipWall(quad) drops walls (the solid lower walls under the open walkway); opts.extraQuads adds
+  // walls in wallQuads' format (the skirts below the slime's rim), merged into their sector's wall mesh.
+  for (const q of [...wallQuads(level, tile).filter((w) => !skipWall(w)), ...(opts.extraQuads ?? [])]) {
     if (q.kind === 'window') {
       if (panes.has(q.back)) continue; // one pane per opening
       panes.add(q.back);

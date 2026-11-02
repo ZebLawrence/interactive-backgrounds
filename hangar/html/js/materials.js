@@ -16,7 +16,6 @@
 // (textureGrad), so mip selection is the same as without POM and nothing shimmers at relief edges.
 
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // Relief depth in metres for a full black-to-white height range. Panels, grating and concrete are the
 // plan's values; the others are judged from their scans (brushed steel is grain, not relief).
@@ -198,7 +197,7 @@ const POM_MAIN = /* glsl */ `
 `;
 
 /** Replace `from` in `src` (first occurrence), or throw: a silently skipped shader edit is a lost feature. */
-function edit(src, from, to, where) {
+export function edit(src, from, to, where) {
   if (!src.includes(from)) throw new Error(`materials: "${from}" missing from ${where}`);
   return src.replace(from, to);
 }
@@ -330,18 +329,39 @@ export function makeMaterials(assets, manifest, renderer) {
   return out;
 }
 
-const envs = new WeakMap();
 /**
- * A dim neutral room for image-based reflections, so metal has something to reflect before the real fixtures
- * and probes arrive (a metal under only a hemisphere light reflects nothing and reads as black).
+ * `material` with its own `envMap` (a room probe, probes.js): a copy sharing every map, define and shader
+ * patch, so it compiles to the same program. Scenes keep the variants they make and dispose them; the
+ * base material stays page-owned. userData is shared by reference (Material.copy would JSON-clone it,
+ * which cannot hold the patch's textures).
  */
-export function environmentFor(renderer) {
-  if (!envs.has(renderer)) {
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
-    envs.set(renderer, pmrem.fromScene(room, 0.04).texture);
-    room.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
-    pmrem.dispose();
-  }
-  return envs.get(renderer);
+export function envVariant(material, envMap) {
+  const ud = material.userData;
+  material.userData = {};
+  const v = material.clone();
+  material.userData = ud;
+  v.userData = { ...ud, shared: false, base: material };
+  v.defines = { ...(material.defines ?? {}) };
+  v.onBeforeCompile = material.onBeforeCompile;
+  v.customProgramCacheKey = material.customProgramCacheKey;
+  v.envMap = envMap;
+  return v;
+}
+
+/**
+ * A plain physical material wearing a scanned set's colour, normal and ORM maps (no parallax: bars,
+ * tubes and channels are real geometry, so the relief is the mesh). Geometry UVs are metres / 2 like the
+ * level's, so the maps' own repeat applies unchanged. `setMaps` swaps the maps in when they arrive.
+ */
+export function partMaterial(fallbackColor, opts = {}) {
+  const m = new THREE.MeshPhysicalMaterial({ color: fallbackColor, roughness: 0.55, metalness: 0.8, side: opts.side ?? THREE.FrontSide });
+  m.userData.setMaps = (maps) => {
+    if (!maps?.color) return;
+    Object.assign(m, { map: maps.color, normalMap: maps.normal ?? null, aoMap: maps.orm ?? null, roughnessMap: maps.orm ?? null, metalnessMap: maps.orm ?? null });
+    m.color.set(0xffffff);
+    m.roughness = 1;
+    m.metalness = 1;
+    m.needsUpdate = true;
+  };
+  return m;
 }
