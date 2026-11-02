@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { loadLevel } from './level.js';
 import { buildLevelMesh } from './levelmesh.js';
-import { planMaterials } from './materialplan.js';
+import { planMaterials, planUvJitter, jitterUv } from './materialplan.js';
 import { makeMaterial, environmentFor, pomUniforms } from './materials.js';
 import { buildNavGraph } from './navgraph.js';
 import { makeRng } from './rng.js';
@@ -63,6 +63,17 @@ export class Scene {
     mats.set('window', new THREE.MeshStandardMaterial({ color: 0x88aacc, transparent: true, opacity: 0.18, roughness: 0.1, side: THREE.DoubleSide, depthWrite: false }));
     const keyOf = (sector, mat, surface) => this.plan.get(sector)?.[surface] ?? mat;
     this.mesh = buildLevelMesh(level, mats, undefined, keyOf);
+    // Anti-tiling, part 1: each room's floor, walls and ceiling start the scan at their own offset (and floors
+    // and ceilings at their own quarter turn), so the repeat never lines up from surface to surface. Part 2,
+    // a world-space grime field over albedo and roughness, is in materials.js.
+    const jitter = planUvJitter(level, rng.fork('uvs'));
+    for (const m of this.mesh.group.children) {
+      const j = jitter.get(m.userData.sector)?.[m.userData.surface];
+      if (!j || m.userData.mat === 'window') continue;
+      const uv = m.geometry.attributes.uv;
+      for (let i = 0; i < uv.count; i++) { const [a, b] = jitterUv(uv.getX(i), uv.getY(i), j); uv.setXY(i, a, b); }
+      uv.needsUpdate = true;
+    }
     this.scene.add(this.mesh.group);
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);

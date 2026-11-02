@@ -62,3 +62,25 @@ test('over many seeds the concrete and steel variants all appear', () => {
   for (let seed = 0; seed < 40; seed++) for (const p of planMaterials(level, makeRng(seed).fork('materials')).values()) [p.floor, p.wall, p.ceil].forEach((v) => seen.add(v));
   for (const v of ['concrete', 'concrete-cracked', 'concrete-stained', 'concrete-painted', 'steel', 'steel-brushed']) assert.ok(seen.has(v), v);
 });
+
+test('uv jitter: one per room and surface, walls never rotated, deterministic, and jitterUv turns by quarters', async () => {
+  const { planUvJitter, jitterUv } = await import('../html/js/materialplan.js');
+  const rooms = sectorRooms(level);
+  const a = planUvJitter(level, makeRng(5).fork('uvs'));
+  assert.deepEqual([...a], [...planUvJitter(level, makeRng(5).fork('uvs'))]);
+  const rots = new Set();
+  for (const s of level.sectors) {
+    const j = a.get(s.id);
+    assert.equal(j.wall.rot, 0);
+    for (const k of ['floor', 'wall', 'ceil']) {
+      assert.ok(j[k].du >= 0 && j[k].du < 1 && j[k].dv >= 0 && j[k].dv < 1);
+      assert.ok([0, 1, 2, 3].includes(j[k].rot));
+    }
+    rots.add(j.floor.rot);
+    for (const t of level.sectors) if (rooms.get(t.id) === rooms.get(s.id)) assert.equal(a.get(t.id), j);
+  }
+  assert.ok(rots.size > 1, 'floors all at the same quarter turn');
+  assert.deepEqual(jitterUv(1, 0, { rot: 1, du: 0, dv: 0 }), [0, 1]);
+  assert.deepEqual(jitterUv(1, 2, { rot: 2, du: 0.5, dv: 0.25 }), [-0.5, -1.75]);
+  assert.deepEqual(jitterUv(1, 2, { rot: 0, du: 0.5, dv: 0.25 }), [1.5, 2.25]);
+});

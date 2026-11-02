@@ -22,7 +22,9 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // plan's values; the others are judged from their scans (brushed steel is grain, not relief).
 export const HEIGHT_SCALE = {
   'mat:panel-brown': 0.012, 'mat:steel': 0.012, 'mat:computer': 0.012, 'mat:diamond-plate': 0.012, 'mat:hazard': 0.012,
-  'mat:grate': 0.02,
+  // Grating: the plan's 0.02 m made POM stretch edge texels down the bar sides (smears at fov 20 and 10).
+  // Until the walkway gets real bar geometry (Ruling R15) it is held to 8 mm, with the sides flattened below.
+  'mat:grate': 0.008,
   'mat:concrete': 0.006, 'mat:concrete-cracked': 0.006, 'mat:concrete-painted': 0.006, 'mat:concrete-stained': 0.006,
   'mat:regolith': 0.01, 'mat:rust': 0.008, 'mat:rubber': 0.006, 'mat:steel-brushed': 0.003,
 };
@@ -33,9 +35,60 @@ export const pomUniforms = {
   pomFadeNear: { value: 6 },
   pomFadeFar: { value: 10 },
   pomEnabled: { value: 1 },
+  // Anti-tiling: a low-frequency grime field in world metres varies albedo and roughness across a surface,
+  // so the 1-2 m repeat of a scan stops reading as wallpaper. Painted once at load (mipmapped, see
+  // macroTexture), never evaluated as noise per pixel.
+  pomMacroMap: { value: null },
+  pomMacroAmount: { value: 1 },
 };
 
 const cache = new Map(); // tag -> { maps, material }: one material per tag for the life of the page
+
+/**
+ * The anti-tiling grime field: 256x256, tileable, two independent channels of smooth value-noise fBm
+ * (R albedo, G roughness) with 3 octaves of 4, 8 and 16 cells across the tile. Painted once, mipmapped.
+ * A fixed seed: the field is part of the surfaces, not of the tour.
+ */
+export function macroTexture() {
+  if (pomUniforms.pomMacroMap.value) return pomUniforms.pomMacroMap.value;
+  const N = 256;
+  let seed = 0x9e3779b9;
+  const rand = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = Math.imul(seed ^ (seed >>> 15), seed | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const channel = () => {
+    const out = new Float32Array(N * N);
+    let amp = 1, total = 0;
+    for (const cells of [4, 8, 16]) {
+      const g = Array.from({ length: cells * cells }, rand);
+      const at = (i, j) => g[((j + cells) % cells) * cells + ((i + cells) % cells)];
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const fx = (x / N) * cells, fy = (y / N) * cells;
+        const i = Math.floor(fx), j = Math.floor(fy);
+        const sx = fx - i, sy = fy - j;
+        const ux = sx * sx * (3 - 2 * sx), uy = sy * sy * (3 - 2 * sy);
+        const v = (at(i, j) * (1 - ux) + at(i + 1, j) * ux) * (1 - uy) + (at(i, j + 1) * (1 - ux) + at(i + 1, j + 1) * ux) * uy;
+        out[y * N + x] += v * amp;
+      }
+      total += amp; amp *= 0.5;
+    }
+    // Stretch to the full 0..1 range so the strength in the shader means what it says.
+    let lo = Infinity, hi = -Infinity;
+    for (const v of out) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    return out.map((v) => (v - lo) / (hi - lo || 1));
+  };
+  const r = channel(), gch = channel();
+  const data = new Uint8Array(N * N * 4);
+  for (let k = 0; k < N * N; k++) { data[k * 4] = r[k] * 255; data[k * 4 + 1] = gch[k] * 255; data[k * 4 + 2] = 0; data[k * 4 + 3] = 255; }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.colorSpace = THREE.NoColorSpace;
+  t.name = 'hangar-macro';
+  t.needsUpdate = true;
+  pomUniforms.pomMacroMap.value = t;
+  return t;
+}
 
 /** Every map: tiling, maximum anisotropy, trilinear mips (the loader already sets these; they are restated). */
 function prepare(tex, repeat, anisotropy) {
@@ -63,6 +116,18 @@ vec2 pomDy;
 vec3 pomQ0;
 vec3 pomQ1;
 float pomHit; // depth (0 surface, 1 floor of the height field) where the view ray met the relief
+float pomSteep; // height change across the hit along the ray: large where the ray met a side wall
+uniform sampler2D pomMacroMap;
+uniform float pomMacroAmount;
+varying vec3 vHangarWorld;
+// Grime field at world position p with geometric world normal n: floors and ceilings use x/z, walls use
+// (distance along the wall, height), so it runs on continuously across sectors in the same plane.
+vec2 pomMacro( vec3 p, vec3 n ) {
+  vec2 q = abs( n.y ) > 0.5 ? p.xz : vec2( dot( p.xz, normalize( vec2( - n.z, n.x ) + 1e-6 ) ), p.y );
+  vec4 a = texture2D( pomMacroMap, q / 9.7 );
+  vec4 b = texture2D( pomMacroMap, mat2( 0.8, 0.6, - 0.6, 0.8 ) * q / 3.3 + 0.37 );
+  return vec2( 0.62 * a.r + 0.38 * b.r, 0.5 * ( a.g + b.g ) );
+}
 float pomDepthAt( vec2 uv ) { return 1.0 - textureGrad( pomHeightMap, uv, pomDx, pomDy ).r; }
 // Displace uv along the view ray. V is the unit vector from the surface to the eye, N the geometric normal,
 // both in view space. Returns uv unchanged when the effect is faded out or the frame is degenerate. The screen
@@ -71,6 +136,7 @@ vec2 pomDisplace( vec2 uv, vec3 V, vec3 N ) {
   float dist = length( vViewPosition );
   float fade = pomEnabled * ( 1.0 - smoothstep( pomFadeNear, pomFadeFar, dist ) );
   pomHit = 0.0;
+  pomSteep = 0.0;
   if ( fade <= 0.0 || pomScale <= 0.0 ) return uv;
   // Surface tangents in metres per uv unit, from the 2x2 inverse of the uv derivatives.
   vec3 q0 = pomQ0, q1 = pomQ1;
@@ -106,7 +172,14 @@ vec2 pomDisplace( vec2 uv, vec3 V, vec3 N ) {
     if ( lmid >= pomDepthAt( mid ) ) { hi = mid; lhi = lmid; } else { lo = mid; llo = lmid; }
   }
   pomHit = 0.5 * ( llo + lhi ) * fade;
-  return 0.5 * ( lo + hi );
+  vec2 hitUv = 0.5 * ( lo + hi );
+  // Side-wall test: the height either side of the hit, 1.5 texels along the ray direction.
+  float sl = length( shift );
+  if ( sl > 1e-9 ) {
+    vec2 e = shift / sl * ( 1.5 / float( textureSize( pomHeightMap, 0 ).x ) );
+    pomSteep = abs( pomDepthAt( hitUv + e ) - pomDepthAt( hitUv - e ) ) * fade;
+  }
+  return hitUv;
 }
 `;
 
@@ -117,6 +190,12 @@ const POM_MAIN = /* glsl */ `
   pomQ1 = dFdy( - vViewPosition );
   pomUv = pomDisplace( vMapUv, normalize( vViewPosition ), normalize( vNormal ) );
 `;
+
+/** Replace `from` in `src` (first occurrence), or throw: a silently skipped shader edit is a lost feature. */
+function edit(src, from, to, where) {
+  if (!src.includes(from)) throw new Error(`materials: "${from}" missing from ${where}`);
+  return src.replace(from, to);
+}
 
 // A chunk with its texture reads moved to the displaced coordinate, sampled with the un-displaced gradients.
 const displaced = (name, sampler, varying) => {
@@ -131,12 +210,41 @@ const displaced = (name, sampler, varying) => {
 const GRATE_HOLES = /* glsl */ `
   #ifdef POM_HOLES
     float pomSolid = smoothstep( 0.35, 0.65, diffuseColor.a );
+    // Bar sides: where the ray met a steep height step, POM would stretch one or two edge texels down
+    // the side. Paint the side instead with the bar's local mean colour (a coarse mip, so it is flat and
+    // has no streaks), in shade, and treat it as solid steel.
+    float pomSide = smoothstep( 0.02, 0.08, pomSteep );
+    vec4 pomMean = textureLod( map, pomUv, 6.0 );
+    vec3 pomSideCol = pomMean.rgb / max( pomMean.a, 0.25 ) * 0.4;
+    diffuseColor.rgb = mix( diffuseColor.rgb, pomSideCol, pomSide );
+    pomSolid = max( pomSolid, pomSide );
     diffuseColor.rgb *= mix( 0.025, 1.0, pomSolid );
-    // The sides of the bars, seen down into the grating, face away from the room: shade them by depth so
-    // the few edge texels POM stretches over them read as shadowed steel rather than bright smears.
-    diffuseColor.rgb *= 1.0 - 0.7 * smoothstep( 0.2, 0.75, pomHit );
     diffuseColor.a = 1.0;
   #endif
+`;
+// Anti-tiling, part 2 (part 1 is per-room uv offsets in scene.js). A scan's visible repeat is its
+// low-frequency content: the blotches and streaks every tile. Divide that out (the colour at a coarse mip) and
+// put back the same scan's low frequencies taken at 2.7x the scale, plus a world-space grime field. Only
+// luminance changes, and only low frequencies: seams, bolts and cracks stay exactly where the normal and
+// height maps put them, at full sharpness. Both coarse reads are at or above the pixel's own mip, so
+// nothing is sampled finer than its footprint (no shimmer at distance).
+const MACRO_ALBEDO = /* glsl */ `
+  vec3 pomWorldN = normalize( ( vec4( vNormal, 0.0 ) * viewMatrix ).xyz );
+  vec2 pomGrime = pomMacro( vHangarWorld, pomWorldN );
+  #ifndef POM_HOLES
+  {
+    float texels = float( textureSize( map, 0 ).x );
+    float autoLod = log2( max( max( length( pomDx ), length( pomDy ) ) * texels, 1e-6 ) );
+    float lodA = max( 6.5, autoLod );
+    float lodB = max( 7.0, autoLod - 1.43 );
+    vec3 lw = vec3( 0.2126, 0.7152, 0.0722 );
+    float lowHere = dot( textureLod( map, pomUv, lodA ).rgb, lw );
+    float lowElse = dot( textureLod( map, pomUv * 0.37 + vec2( 0.21, 0.63 ), lodB ).rgb, lw );
+    float detrend = clamp( lowElse / max( lowHere, 0.004 ), 0.45, 2.2 );
+    diffuseColor.rgb *= mix( 1.0, detrend, 0.85 * pomMacroAmount );
+  }
+  #endif
+  diffuseColor.rgb *= mix( 1.0, mix( 0.8, 1.12, pomGrime.x ), pomMacroAmount );
 `;
 
 function patch(material, heightMap, scale, holes) {
@@ -147,28 +255,32 @@ function patch(material, heightMap, scale, holes) {
     // Shared uniform objects by reference, per-material ones from userData; nothing is copied.
     Object.assign(shader.uniforms, pomUniforms, own);
     let fs = shader.fragmentShader;
-    const swap = (inc, text) => {
-      if (!fs.includes(inc)) throw new Error(`materials: ${inc} missing from the physical fragment shader`);
-      fs = fs.replace(inc, text);
-    };
+    const swap = (inc, text) => { fs = edit(fs, inc, text, 'the physical fragment shader'); };
+    shader.vertexShader = edit(edit(shader.vertexShader, 'void main() {', 'varying vec3 vHangarWorld;\nvoid main() {', 'the vertex shader'),
+      '#include <project_vertex>', '#include <project_vertex>\n\tvHangarWorld = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;', 'the vertex shader');
     swap('void main() {', `${POM_PARS}\nvoid main() {`);
-    swap('#include <map_fragment>', `${POM_MAIN}\n${displaced('map_fragment', 'map', 'vMapUv')}\n${GRATE_HOLES}`);
+    swap('#include <map_fragment>', `${POM_MAIN}\n${displaced('map_fragment', 'map', 'vMapUv')}\n${GRATE_HOLES}\n${MACRO_ALBEDO}`);
     swap('#include <roughnessmap_fragment>', `${displaced('roughnessmap_fragment', 'roughnessMap', 'vRoughnessMapUv')}
   #ifdef POM_HOLES
     roughnessFactor = mix( 1.0, roughnessFactor, pomSolid );
-    roughnessFactor = mix( roughnessFactor, 1.0, 0.6 * smoothstep( 0.2, 0.75, pomHit ) );
-  #endif`);
+    roughnessFactor = mix( roughnessFactor, 0.85, pomSide );
+  #endif
+  roughnessFactor = clamp( roughnessFactor + ( pomGrime.y - 0.5 ) * 0.3 * pomMacroAmount, 0.04, 1.0 );`);
     swap('#include <metalnessmap_fragment>', `${displaced('metalnessmap_fragment', 'metalnessMap', 'vMetalnessMapUv')}
   #ifdef POM_HOLES
-    metalnessFactor *= pomSolid;
+    metalnessFactor = mix( metalnessFactor * pomSolid, 0.6, pomSide );
   #endif`);
-    swap('#include <normal_fragment_maps>', displaced('normal_fragment_maps', 'normalMap', 'vNormalMapUv'));
-    swap('#include <aomap_fragment>', displaced('aomap_fragment', 'aoMap', 'vAoMapUv').replace(
+    // Bar sides take the flat geometric normal: the stretched edge texels of the normal map would streak.
+    swap('#include <normal_fragment_maps>', `${displaced('normal_fragment_maps', 'normalMap', 'vNormalMapUv')}
+  #ifdef POM_HOLES
+    normal = normalize( mix( normal, nonPerturbedNormal, pomSide ) );
+  #endif`);
+    swap('#include <aomap_fragment>', edit(displaced('aomap_fragment', 'aoMap', 'vAoMapUv'),
       'reflectedLight.indirectDiffuse *= ambientOcclusion;',
-      '#ifdef POM_HOLES\n\tambientOcclusion *= mix( 0.05, 1.0, pomSolid );\n#endif\n\treflectedLight.indirectDiffuse *= ambientOcclusion;'));
+      '#ifdef POM_HOLES\n\tambientOcclusion = mix( ambientOcclusion, 0.6, pomSide ) * mix( 0.05, 1.0, pomSolid );\n#endif\n\treflectedLight.indirectDiffuse *= ambientOcclusion;', 'aomap_fragment'));
     shader.fragmentShader = fs; // write the edited source back (guidelines section 4)
   };
-  material.customProgramCacheKey = () => `hangar-pom-1${holes ? '-holes' : ''}`;
+  material.customProgramCacheKey = () => `hangar-pom-3${holes ? '-holes' : ''}`;
 }
 
 /**
@@ -179,6 +291,7 @@ export function makeMaterial(tag, maps, entry, renderer) {
   const hit = cache.get(tag);
   if (hit && hit.maps.color === maps.color) return hit.material;
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
+  macroTexture().anisotropy = anisotropy;
   const tile = entry?.tile > 0 ? entry.tile : 2;
   const repeat = 2 / tile; // geometry UVs are metres / 2
   for (const k of ['color', 'normal', 'orm', 'height']) prepare(maps[k], repeat, anisotropy);

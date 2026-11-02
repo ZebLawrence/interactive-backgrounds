@@ -7,10 +7,11 @@
 // while the next room along may differ. Variant names are manifest tags without the `mat:` prefix.
 
 // [variant, weight] lists per family and surface. Families not listed wear their own tag everywhere.
-// Grate risers and ceilings are steel (a grating texture standing on edge reads as a mistake).
+// Concrete Wall 006 (concrete-stained) is a cast wall with form-tie holes in rows, so it never goes on a
+// floor. Grate risers and ceilings are steel (a grating texture standing on edge reads as a mistake).
 export const VARIANTS = {
   concrete: {
-    floor: [['concrete', 0.35], ['concrete-cracked', 0.35], ['concrete-stained', 0.3]],
+    floor: [['concrete', 0.5], ['concrete-cracked', 0.5]],
     wall: [['concrete-painted', 0.4], ['concrete-stained', 0.35], ['concrete', 0.25]],
     ceil: [['concrete-stained', 0.5], ['concrete-painted', 0.5]],
   },
@@ -20,7 +21,7 @@ export const VARIANTS = {
     ceil: [['steel', 1]],
   },
   'panel-brown': {
-    floor: [['panel-brown', 0.5], ['concrete-stained', 0.25], ['concrete', 0.25]],
+    floor: [['panel-brown', 0.5], ['concrete', 0.25], ['concrete-cracked', 0.25]],
     wall: [['panel-brown', 1]],
     ceil: [['panel-brown', 0.5], ['concrete-painted', 0.5]],
   },
@@ -80,4 +81,30 @@ export function planMaterials(level, rng) {
     plan.set(s.id, { floor: r.floor, wall: s.tags.has('door') ? r.doorWall : r.wall, ceil: r.ceil });
   }
   return plan;
+}
+
+/**
+ * Map<sectorId, { floor, wall, ceil }> of uv jitters { rot, du, dv }, one per room and surface, so a room's
+ * floor and the next room's floor (and every wall) start the scan at a different place and, on floors and
+ * ceilings, at a different quarter turn: the same 1-2 m tile never lines up from surface to surface. Walls are
+ * never rotated (panels, streaks and grime run with gravity). Offsets are in geometry uv units (2 m each).
+ */
+export function planUvJitter(level, rng) {
+  const rooms = sectorRooms(level);
+  const byRoom = new Map();
+  const jitter = (rotate) => ({ rot: rotate ? Math.floor(rng.next() * 4) : 0, du: rng.next(), dv: rng.next() });
+  const out = new Map();
+  for (const s of level.sectors) {
+    const room = rooms.get(s.id);
+    if (!byRoom.has(room)) byRoom.set(room, { floor: jitter(true), wall: jitter(false), ceil: jitter(true) });
+    out.set(s.id, byRoom.get(room));
+  }
+  return out;
+}
+
+/** Apply a jitter to a uv pair (quarter turns about the origin, then the offset). */
+export function jitterUv(u, v, j) {
+  let a = u, b = v;
+  for (let k = 0; k < j.rot; k++) [a, b] = [-b, a];
+  return [a + j.du, b + j.dv];
 }
