@@ -30,6 +30,12 @@ export const HEIGHT_SCALE = {
 };
 const DEFAULT_HEIGHT = 0.006;
 
+// Metalness multipliers for scans whose metal map does not match their albedo. Metal Plate 02 (panel-brown)
+// marks 91% of its area metallic (B channel mean 0.91, min 0.40) while its colour averages 0.07 linear: as
+// metal F0 that is a near-black mirror, so the brown panels rendered black under any light. Its paint and
+// rust are dielectric; the scaled map keeps a hint of metal where the scan is most metallic.
+export const METALNESS = { 'mat:panel-brown': 0.15 };
+
 // Shared by reference with every patched material (never merged or cloned, which would copy them).
 export const pomUniforms = {
   pomFadeNear: { value: 6 },
@@ -303,7 +309,7 @@ export function makeMaterial(tag, maps, entry, renderer) {
     roughnessMap: maps.orm,
     metalnessMap: maps.orm,
     roughness: 1,
-    metalness: 1,
+    metalness: METALNESS[tag] ?? 1,
     side: THREE.FrontSide,
   });
   material.userData.shared = true; // owned by this module, not by a scene: Scene.dispose leaves it
