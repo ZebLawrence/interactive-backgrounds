@@ -19,7 +19,7 @@ import { Walkway, BAR_LAYER } from './grate.js';
 import { buildWetPatches } from './wet.js';
 import { planWetPatches, slimeSkirts } from './wetplan.js';
 import { PhobosSky } from './sky.js';
-import { openEdges, planShell, sectorClass } from './phobos.js';
+import { openEdges, planShell, sectorClass, sunlitSectors } from './phobos.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
@@ -30,6 +30,38 @@ const GREYS = {
   steel: 0x8d96a0, 'steel-brushed': 0x9aa2aa, concrete: 0x777777, 'concrete-cracked': 0x737373, 'concrete-stained': 0x6e6c68,
   'concrete-painted': 0x8a8a86, computer: 0x5d7a8a, 'panel-brown': 0x8a6a4e, grate: 0x4a4a4a, regolith: 0xa0907a,
 };
+
+// Window glass: clean and nearly invisible, the view outside is the point. A faint cool tint head-on and a
+// Fresnel sheen at grazing angles, unlit. The old standard material took the room probe's blurred image
+// of the ceiling strips (rough 0.1 on a 128 px probe), which smeared soft bands across Mars and the sky.
+const GLASS_VERT = /* glsl */ `
+varying vec3 vGlassW;
+varying vec3 vGlassN;
+void main() {
+  vec4 w = modelMatrix * vec4( position, 1.0 );
+  vGlassW = w.xyz;
+  vGlassN = mat3( modelMatrix ) * normal;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}
+`;
+const GLASS_FRAG = /* glsl */ `
+varying vec3 vGlassW;
+varying vec3 vGlassN;
+void main() {
+  vec3 V = cameraPosition - vGlassW;
+  float vl = length( V ), nl = length( vGlassN );
+  float c = ( vl > 1e-6 && nl > 1e-6 ) ? abs( dot( vGlassN / nl, V / vl ) ) : 1.0;
+  float f = pow( clamp( 1.0 - c, 0.0, 1.0 ), 5.0 );
+  gl_FragColor = vec4( mix( vec3( 0.02, 0.026, 0.03 ), vec3( 0.32, 0.36, 0.4 ), f ), 0.05 + 0.3 * f );
+  #include <colorspace_fragment>
+}
+`;
+function glassMaterial() {
+  return new THREE.ShaderMaterial({
+    name: 'glass', vertexShader: GLASS_VERT, fragmentShader: GLASS_FRAG,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  });
+}
 
 export class Scene {
   constructor(app, renderer, w, h, settings, seed) {
@@ -84,7 +116,7 @@ export class Scene {
     this.plan = planMaterials(level, rng.fork('materials'));
     const mats = new Map();
     for (const [name, color] of Object.entries(GREYS)) mats.set(name, new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.FrontSide }));
-    mats.set('window', new THREE.MeshStandardMaterial({ color: 0x88aacc, transparent: true, opacity: 0.18, roughness: 0.1, side: THREE.DoubleSide, depthWrite: false }));
+    mats.set('window', glassMaterial());
     const keyOf = (sector, mat, surface) => this.plan.get(sector)?.[surface] ?? mat;
     // The walkway is a bridge of open grating: the solid lower walls under it go, and every slime pool gets a
     // skirt below its rim (its floor is hidden: the slime surface sits SLIME_DROP lower).
@@ -144,6 +176,7 @@ export class Scene {
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     // Phobos outside: Mars, the sun, stars, terrain, boulders, the base's outer walls (takes the items so far).
     this.sky = new PhobosSky(this.scene, this.app?.assetItems, rng.fork('sky'), { level, renderer: this.renderer, edges: this.edges, shell: this.shell });
+    this.planSunReach();
     this.graph = buildNavGraph(level);
     const tour = makeTour(level.pois, rng.fork('tour'));
     this.walker = new Walker(level, this.graph, tour, rng.fork('walker'));
@@ -193,11 +226,64 @@ export class Scene {
         return;
       }
       const base = mat.userData.base ?? mat;
-      const k = `${base.uuid}|${base.version}|${tex.uuid}`;
+      const noSun = this.sunDark ? (this.levelMeshes.has(o) ? this.sunDark.has(o) : !this.sunSectors.has(sector)) : false;
+      const k = `${base.uuid}|${base.version}|${tex.uuid}|${noSun ? 'dark' : 'sun'}`;
       let v = this.envVariants.get(k);
-      if (!v) { v = envVariant(base, tex); this.envVariants.set(k, v); }
+      if (!v) { v = envVariant(base, tex, { noSun }); this.envVariants.set(k, v); }
       o.material = v;
     });
+  }
+
+  /**
+   * Ruling R22: which surfaces the sun can reach. Level meshes outside sunlitSectors (corridors, tunnels, the
+   * dark room) never can. In the rooms with windows a mesh counts as sunlit if any point of a sun-facing
+   * triangle, on a grid of about 2 m, has a clear line to the sun through the level and the base's outer
+   * shell. Ceilings never face the sun. Other meshes (fixtures, props) go by their sector. assignProbes
+   * gives the rest a variant that compiles the sun's light and shadow lookup out.
+   */
+  planSunReach() {
+    const level = this.level, L = this.sky.sunDir;
+    this.sunSectors = sunlitSectors(level);
+    this.levelMeshes = new Set(this.mesh.group.children);
+    const occMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const occluders = [...this.mesh.group.children.filter((m) => m.userData.mat !== 'window'), ...this.sky.shellMeshes].map((m) => {
+      const o = new THREE.Mesh(m.geometry, occMat);
+      m.updateMatrixWorld();
+      o.matrixWorld.copy(m.matrixWorld);
+      o.matrixAutoUpdate = false;
+      return o;
+    });
+    const rc = new THREE.Raycaster();
+    rc.far = 40; // 20 m up at the sun's 30°: above every roof
+    const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3(), P = new THREE.Vector3();
+    const reaches = (m) => {
+      const pos = m.geometry.attributes.position, nrm = m.geometry.attributes.normal, idx = m.geometry.index;
+      const count = idx ? idx.count : pos.count;
+      for (let t = 0; t < count; t += 3) {
+        const ia = idx ? idx.getX(t) : t, ib = idx ? idx.getX(t + 1) : t + 1, ic = idx ? idx.getX(t + 2) : t + 2;
+        N.fromBufferAttribute(nrm, ia);
+        if (N.dot(L) <= 0.02) continue;
+        A.fromBufferAttribute(pos, ia); B.fromBufferAttribute(pos, ib); C.fromBufferAttribute(pos, ic);
+        const k = Math.min(8, Math.max(1, Math.ceil(Math.max(A.distanceTo(B), B.distanceTo(C), C.distanceTo(A)) / 2)));
+        for (let i = 0; i <= k; i++) for (let j = 0; j <= k - i; j++) {
+          const u = (i + 0.3) / (k + 1), v = (j + 0.3) / (k + 1);
+          P.copy(A).multiplyScalar(1 - u - v).addScaledVector(B, u).addScaledVector(C, v).addScaledVector(N, 0.05);
+          rc.set(P, L);
+          if (rc.intersectObjects(occluders, false).length === 0) return true;
+        }
+      }
+      return false;
+    };
+    const dark = new Set();
+    for (const m of this.mesh.group.children) {
+      const s = level.byId.get(m.userData.sector);
+      if (!s || m.userData.mat === 'window') continue;
+      if (!this.sunSectors.has(s.id)) { dark.add(m); continue; }
+      if (s.tags.has('sky') || s.tags.has('window')) continue;
+      if (!reaches(m)) dark.add(m);
+    }
+    occMat.dispose();
+    this.sunDark = dark;
   }
 
   /** Debug only (window.hangar.light): a raking point lamp for close inspection; never created otherwise. */
@@ -309,6 +395,9 @@ export class Scene {
         const opts = { before: () => this.slime.setProbeMode(true), after: () => this.slime.setProbeMode(false) };
         this.probes = bakeProbes(this.level, this.scene, this.renderer, opts);
         this.assignProbes();
+        // The first bake rendered the sun's shadow map: hand it to the terrain and rocks before the second
+        // bake, so the probes (a reseed's too) see the outside shadowed.
+        this.sky?.syncShadow();
         this.probes.bakeAll();
         this.probeEmergency = this.emergency;
       } else {
@@ -344,7 +433,7 @@ export class Scene {
       if (base && !base.userData.shared) base.dispose(); // greybox and fixture materials (no longer on a mesh)
     }
     this.scene.traverse((o) => {
-      o.geometry?.dispose();
+      if (!o.geometry?.userData?.shared) o.geometry?.dispose(); // loaded models' geometry is the page's
       // Scanned materials and their textures belong to the page (materials.js / app.assets), not the scene.
       if (!o.material?.userData?.shared) o.material?.dispose?.();
     });

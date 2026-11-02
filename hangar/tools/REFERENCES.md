@@ -99,3 +99,12 @@ about 3 m for a walking camera. The whole level is about 113 m × 74 m, plus the
 14. **Low ceilings raised at portals (Ruling R8).** Headroom through a doorway is the physical
     opening, min(ceil) − max(floor), and must be at least 2.0 m. `hall-b` ceiling 80 → 96 (it
     met `hall-a` at 1.92 m) and `hall-c` ceiling 64 → 80 (it met `hall-b` at 1.92 m).
+15. **Courtyard views turned to Mars (Task 10, Ruling R21).** Mars hangs about 25° up over the
+    courtyard's open south side (`phobos.marsDirection`), so the three courtyard pois now look
+    south and up instead of north at the buildings. `yard-sky` looks from the middle over the
+    south parapet (target pixel 708, 400 at height 250). `yard-pool` moved from the south-west
+    corner to the east bank by the computer-room window (pixel 600, 180) and looks down the
+    slime channel, so Mars and its reflection share the frame (target 585, 330 at 200).
+    `yard-platform` looks from the raised platform out over the parapet (target 698, 440 at 185).
+    The Doom map has no such views. This is a dressing choice for the payoff view, not part
+    of the trace.

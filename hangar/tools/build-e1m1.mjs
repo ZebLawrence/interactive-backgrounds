@@ -133,9 +133,12 @@ const POIS = [
   ['slime-leg', 'slime', [835, 272], [870, 315], -48],
   ['slime-window', 'window', [806, 245], [690, 270], 40],
   ['slime-look-up', 'view', [823, 338], [830, 210], 300],
-  ['yard-sky', 'view', [700, 300], [690, 230], 700],
-  ['yard-pool', 'view', [485, 320], [575, 270], -32],
-  ['yard-platform', 'view', [690, 360], [585, 165], 100],
+  // The courtyard views look south and up at Mars (phobos.js hangs it over the courtyard's open side, about
+  // 25° up): from the middle over the south parapet, down the slime channel past its reflection, and from the
+  // raised platform out over the parapet to the horizon.
+  ['yard-sky', 'view', [700, 300], [708, 400], 250],
+  ['yard-pool', 'view', [600, 180], [585, 330], 200],
+  ['yard-platform', 'view', [690, 360], [698, 440], 185],
   ['tunnel', 'room', [668, 433], [626, 380], -20],
   ['dark-room', 'room', [822, 530], [822, 480], 20],
   ['exit-view', 'window', [822, 605], [822, 760], -100],

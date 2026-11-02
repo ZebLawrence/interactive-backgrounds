@@ -140,7 +140,7 @@ void main() {
   // Washed out round Mars (its glare and its disc) and the sun.
   float m = dot( d, starMars );
   float s = dot( d, starSun );
-  float wash = smoothstep( starMarsCos, starMarsCos - 0.25, m ) * smoothstep( 0.96, 0.55, s );
+  float wash = ( 1.0 - smoothstep( starMarsCos - 0.25, starMarsCos, m ) ) * ( 1.0 - smoothstep( 0.55, 0.96, s ) );
   vStar = mag * wash;
   gl_PointSize = starScale * ( 1.0 + 1.6 * mag );
   gl_Position = skyPosition( position );
@@ -708,6 +708,7 @@ export class PhobosSky {
       if (!mesh) continue;
       const node = mesh.matrixWorld.clone();
       const geo = mesh.geometry;
+      geo.userData.shared = true; // the page's (the loaded model's): Scene.dispose must leave it
       if (!geo.boundingBox) geo.computeBoundingBox();
       const bb = geo.boundingBox.clone().applyMatrix4(node);
       const size = bb.getSize(new THREE.Vector3());

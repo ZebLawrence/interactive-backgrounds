@@ -16,6 +16,7 @@
 
 import { insidePoly } from './level.js';
 import { edgeDistance } from './wetplan.js';
+import { lightRooms } from './lightplan.js';
 
 export const PHOBOS_RADIUS = 11000; // m
 export const MARS_RADIUS = 3390e3; // m
@@ -125,6 +126,31 @@ export function sunDirection(marsFlat, side = 1) {
   const a = Math.atan2(marsFlat[1], marsFlat[0]) + side * SUN_FROM_MARS * DEG;
   const e = SUN_ELEVATION * DEG;
   return [Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e)];
+}
+
+/**
+ * Sectors the sun can reach: the open sectors, the window sills, and every sector of a room (lightplan's
+ * rooms) that shares an edge with one of those, since sun through a window or an open side lands on that
+ * room's floor and walls. Everywhere else is behind a ceiling and walls, and its surfaces skip the sun's
+ * light and shadow lookup entirely (scene.assignProbes, Ruling R22).
+ */
+export function sunlitSectors(level) {
+  const open = (s) => s.tags.has('sky') || s.tags.has('window');
+  const lit = new Set(level.sectors.filter(open).map((s) => s.id));
+  const rooms = lightRooms(level);
+  const key = (p) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+  const owner = new Map();
+  for (const s of level.sectors) s.poly.forEach((a, i) => owner.set(`${key(a)}>${key(s.poly[(i + 1) % s.poly.length])}`, s));
+  const litRooms = new Set();
+  for (const s of level.sectors) {
+    if (!open(s)) continue;
+    s.poly.forEach((a, i) => {
+      const t = owner.get(`${key(s.poly[(i + 1) % s.poly.length])}>${key(a)}`);
+      if (t && !open(t)) { lit.add(t.id); litRooms.add(rooms.get(t.id)); }
+    });
+  }
+  for (const s of level.sectors) if (litRooms.has(rooms.get(s.id))) lit.add(s.id);
+  return lit;
 }
 
 // ---- the base seen from outside ---------------------------------------------------------------------------

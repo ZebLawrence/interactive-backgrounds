@@ -5,7 +5,7 @@ import { loadLevel, insidePoly } from '../html/js/level.js';
 import { makeRng } from '../html/js/rng.js';
 import {
   marsAngularDiameter, horizonDistance, curvatureDrop, openEdges, marsDirection, sunDirection, planShell,
-  makeTerrain, scatterBoulders, sectorClass, MARS_ELEVATION, SUN_ELEVATION, PARAPET, TERRAIN_REACH,
+  makeTerrain, scatterBoulders, sectorClass, sunlitSectors, MARS_ELEVATION, SUN_ELEVATION, PARAPET, TERRAIN_REACH,
 } from '../html/js/phobos.js';
 
 const level = loadLevel(JSON.parse(readFileSync(new URL('../html/data/e1m1.json', import.meta.url), 'utf8')));
@@ -117,4 +117,24 @@ test('the plan is deterministic per seed', () => {
   for (const [x, z] of [[0, 300], [500, -200], [-800, 900]]) assert.equal(t2.height(x, z), terrain.height(x, z));
   const t3 = makeTerrain(level, makeRng(2).fork('terrain'), mars.flat);
   assert.notEqual(t3.height(500, -200), terrain.height(500, -200));
+});
+
+test('the courtyard views look up at Mars (Ruling R21)', () => {
+  const az = Math.atan2(mars.flat[1], mars.flat[0]);
+  for (const id of ['yard-sky', 'yard-pool', 'yard-platform']) {
+    const p = level.pois.find((q) => q.id === id);
+    const a = Math.atan2(p.look[2] - p.z, p.look[0] - p.x);
+    const d = Math.abs(((a - az) / DEG + 540) % 360 - 180);
+    assert.ok(d < 20, `${id} looks ${d.toFixed(1)}° off Mars's azimuth`);
+    const eye = level.byId.get([...level.sectors].find((s) => insidePoly(s.poly, p.x, p.z)).id).floor + 1.7;
+    const pitch = Math.atan2(p.look[1] - eye, Math.hypot(p.look[0] - p.x, p.look[2] - p.z)) / DEG;
+    assert.ok(pitch > 10 && pitch < 35, `${id} pitch ${pitch.toFixed(1)}°`);
+  }
+});
+
+test('sunlit sectors: open sectors, sills and rooms with windows, never corridors or the tunnel (Ruling R22)', () => {
+  const lit = sunlitSectors(level);
+  for (const s of level.sectors) if (s.tags.has('sky') || s.tags.has('window')) assert.ok(lit.has(s.id), s.id);
+  for (const id of ['comp-main', 'start-main', 'armor-alcove', 'exit-room']) assert.ok(lit.has(id), id);
+  for (const id of ['cor-w', 'hall-b', 'tunnel-sq', 'dark-room', 'exit-lift']) assert.ok(!lit.has(id), id);
 });

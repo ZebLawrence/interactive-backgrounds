@@ -329,13 +329,19 @@ export function makeMaterials(assets, manifest, renderer) {
   return out;
 }
 
+// Ruling R22: surfaces the sun can never reach skip its light and its 4096 PCF-soft shadow lookup. The
+// directional-light block of lights_fragment_begin is compiled out under HANGAR_NO_SUN (the only directional
+// light in the scene is the sun); the define is part of the program key, so lit and unlit variants never mix.
+const DIR_LIGHTS = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
+const LIGHTS_NO_SUN = edit(THREE.ShaderChunk.lights_fragment_begin, DIR_LIGHTS, `${DIR_LIGHTS} && ! defined( HANGAR_NO_SUN )`, 'lights_fragment_begin');
+
 /**
  * `material` with its own `envMap` (a room probe, probes.js): a copy sharing every map, define and shader
- * patch, so it compiles to the same program. Scenes keep the variants they make and dispose them; the
- * base material stays page-owned. userData is shared by reference (Material.copy would JSON-clone it,
- * which cannot hold the patch's textures).
+ * patch, so it compiles to the same program. Scenes keep the variants they make and dispose them; the base
+ * material stays page-owned. userData is shared by reference (Material.copy would JSON-clone it, which
+ * cannot hold the patch's textures). `opts.noSun`: the copy skips the sun (LIGHTS_NO_SUN above).
  */
-export function envVariant(material, envMap) {
+export function envVariant(material, envMap, opts = {}) {
   const ud = material.userData;
   material.userData = {};
   const v = material.clone();
@@ -343,6 +349,14 @@ export function envVariant(material, envMap) {
   v.userData = { ...ud, shared: false, base: material };
   v.defines = { ...(material.defines ?? {}) };
   v.onBeforeCompile = material.onBeforeCompile;
+  if (opts.noSun) {
+    v.defines.HANGAR_NO_SUN = '';
+    const base = material.onBeforeCompile;
+    v.onBeforeCompile = function (shader, renderer) {
+      base.call(this, shader, renderer);
+      shader.fragmentShader = edit(shader.fragmentShader, '#include <lights_fragment_begin>', LIGHTS_NO_SUN, 'a no-sun variant');
+    };
+  }
   v.customProgramCacheKey = material.customProgramCacheKey;
   v.envMap = envMap;
   return v;
