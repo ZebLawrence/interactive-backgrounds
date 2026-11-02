@@ -278,6 +278,8 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
     },
     dispose() {
       for (const p of composer.passes) p.dispose?.();
+      gtao?.gtaoMaterial.dispose(); // GTAOPass.dispose leaves its main material behind
+      gtao?.blendMaterial.dispose();
       composer.dispose();
       beauty.dispose();
       depthTexture.dispose();
@@ -316,7 +318,9 @@ export function textureMemory(scene, targets = []) {
     const colour = px * (CHANNELS[tex.format] ?? 4) * (BYTES[tex.type] ?? 1);
     bytes += colour * (tex.generateMipmaps ? 4 / 3 : 1);
     if (rt.samples > 0) bytes += colour * rt.samples; // the multisampled colour renderbuffer
-    if (rt.depthBuffer) bytes += px * 4 * Math.max(1, rt.samples) + (rt.depthTexture ? px * 4 : 0);
+    // Depth: a depth texture is the depth buffer itself, unless MSAA renders into a multisampled renderbuffer
+    // and resolves into the texture (then both exist).
+    if (rt.depthBuffer) bytes += rt.samples > 0 ? px * 4 * rt.samples + (rt.depthTexture ? px * 4 : 0) : px * 4;
   };
   scene.traverse((o) => {
     if (o.isLight && o.shadow?.map) rtBytes(o.shadow.map);

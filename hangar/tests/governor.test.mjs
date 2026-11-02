@@ -41,7 +41,6 @@ test('governor: hysteresis: climbs back only with clear headroom and after the c
   const g = new FrameGovernor();
   let t = probes(g, 5, 20, 0);
   assert.equal(g.fps, 30);
-  const dropAt = t;
   // 13 ms: fits 60 on paper, but not clear headroom (needs < 11): stays at 30.
   t = probes(g, 30, 13, t);
   assert.equal(g.fps, 30);
@@ -51,7 +50,6 @@ test('governor: hysteresis: climbs back only with clear headroom and after the c
   const d2 = t2;
   while (g2.fps === 30) t2 = probes(g2, 1, 8, t2);
   assert.ok(t2 - d2 >= GOVERNOR.cooldown, `climbed after ${t2 - d2} s`);
-  void dropAt;
 });
 
 test('governor: a climb that fails soon after doubles the cooldown, so it does not flap', () => {

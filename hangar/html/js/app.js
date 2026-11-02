@@ -33,6 +33,15 @@ const Settings = {
 // sky, so the walk starts looking right; props and the trim/variety sets follow.
 const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:grate', 'mat:regolith', 'mars'];
 
+// Governor probes: every 4 s while holding 60, every second at 30 (ms, by the current rate).
+const PROBE_EVERY = { 60: 4000, 30: 1000 };
+
+/** Low Power's pixel ratio: native, but no more than about 1920x1080 pixels in all. */
+export function lowPowerRatio(w, h, dpr) {
+  if (!(w > 0 && h > 0 && dpr > 0)) return 1;
+  return Math.min(1, Math.sqrt((1920 * 1080) / (w * h * dpr * dpr))) * dpr;
+}
+
 function initialSeed() {
   const s = Number(params.get('seed'));
   return params.has('seed') && Number.isFinite(s) ? s >>> 0 : (Math.random() * 4294967296) >>> 0;
@@ -49,7 +58,7 @@ class App {
     this.seed = initialSeed();
     // Ruling R17: 60, or a steady 30 when 60 can't hold (Low Power is always 30). Resolution never moves.
     this.governor = new FrameGovernor();
-    this.probeAt = 0; // next time (ms) a frame is timed end to end for the governor
+    this.probeAt = 0; // next time (ms) a frame is timed end to end for the governor (see PROBE_EVERY)
     this.settleUntil = 0; // no timing until builds, resizes and mode changes have settled
     this.assetsDone = false;
 
@@ -111,9 +120,14 @@ class App {
 
   windowSize() { return { w: window.innerWidth, h: window.innerHeight }; }
 
-  /** Native resolution: window size x devicePixelRatio, capped at 2; Low Power drops to 1. */
+  /**
+   * Native resolution: window size x devicePixelRatio, capped at 2. Low Power (Ruling R26) caps the drawing
+   * buffer at about 1920x1080's pixel count instead (the canvas still fills the window, scaled up): a plain
+   * pixelRatio 1 would change nothing on a DPR-1 4K display. Default mode never goes below native.
+   */
   applyPixelRatio() {
-    const ratio = this.settings.lowPower ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const ratio = this.settings.lowPower ? lowPowerRatio(this.size.w, this.size.h, dpr) : dpr;
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(this.size.w, this.size.h, false);
     this.pixelRatio = ratio;
@@ -163,8 +177,10 @@ class App {
     if (govern && since !== null && !this.perfEl) this.governor.interval(since, now / 1000);
     this.scene.step(dt, this.pointer, this.settings);
     this.renderer.info.reset();
-    // About once a second while governing (every frame with ?perf) a frame is timed end to end, the GPU
-    // drained either side; Low Power never pays for the stall.
+    // Now and then while governing (every frame with ?perf) a frame is timed end to end, the GPU drained either
+    // side; Low Power never pays for the stall. At 60 the stall itself could make that frame miss vsync, so it
+    // is rare there (late frames are already caught by the intervals); at 30 there is room, and it is the only
+    // way to see headroom for a climb.
     const probe = govern && now >= this.probeAt;
     let ms = null;
     if (probe || this.perfEl) {
@@ -177,7 +193,7 @@ class App {
       this.scene.render();
     }
     if (probe) {
-      this.probeAt = now + 1000;
+      this.probeAt = now + (this.perfEl ? 1000 : PROBE_EVERY[this.governor.fps]); // ?perf syncs every frame anyway
       this.governor.probe(ms, now / 1000);
     }
     if (this.perfEl) this.updatePerf(dt, ms, now);
@@ -187,11 +203,13 @@ class App {
     this.perfEl = document.createElement('div');
     this.perfEl.style.cssText = 'position:fixed;left:8px;top:8px;font:12px/1.4 monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 6px;pointer-events:none;white-space:pre;z-index:10';
     document.body.appendChild(this.perfEl);
-    this.perfAcc = 0; this.perfN = 0; this.perfMs = []; this.texAt = 0; this.texMB = 0;
+    this.perfAcc = 0; this.perfN = 0; this.perfMs = []; this.texAt = 0; this.texMB = 0; this.perfLast = null;
   }
 
   updatePerf(dt, ms, now) {
-    this.perfAcc += dt; this.perfN++;
+    // Wall-clock time between rendered frames (the sim's dt is capped at 1/15 s, which would floor fps at 15).
+    if (this.perfLast !== null && now - this.perfLast < 1000) { this.perfAcc += (now - this.perfLast) / 1000; this.perfN++; }
+    this.perfLast = now;
     if (ms !== null) this.perfMs.push(ms);
     if (this.perfAcc < 0.5) return;
     const info = this.renderer.info;
@@ -204,7 +222,7 @@ class App {
     this.perfEl.textContent = [
       `${(this.perfN / this.perfAcc).toFixed(0)} fps · frame ${med.toFixed(1)} ms (max ${max.toFixed(1)}, GPU-synced)`,
       `${info.render.calls} draws · ${(info.render.triangles / 1e6).toFixed(2)} M tris · tex ≈${this.texMB.toFixed(0)} MB (${info.memory.textures} textures, ${info.programs?.length ?? 0} programs)`,
-      `${c.width}x${c.height} @ ${this.pixelRatio}x${this.settings.lowPower ? '' : ' · 4x MSAA · GTAO'} · ${mode}`,
+      `${c.width}x${c.height} @ ${+this.pixelRatio.toFixed(3)}x${this.settings.lowPower ? '' : ' · 4x MSAA · GTAO'} · ${mode}`,
     ].join('\n');
     this.perfAcc = 0; this.perfN = 0; this.perfMs.length = 0;
   }
