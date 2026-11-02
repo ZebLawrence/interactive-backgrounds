@@ -27,7 +27,9 @@ const SAMPLE = 0.1;
 const BOB = 0.025, SWAY = 0.012, STRIDE = 0.65;
 const BODY_TAU = 0.6, HEAD_TAU = 0.32, PITCH_TAU = 0.5, BIAS_TAU = 1.2, Y_TAU = 0.12;
 const LOOK_AHEAD = 1.2; // seconds
-const HEAD_RATE = (88 * Math.PI) / 180; // just under the 90°/s limit
+const HEAD_RATE = (88 * Math.PI) / 180; // hard ceiling, just under the 90°/s limit
+const HEAD_PEAK = (55 * Math.PI) / 180; // a big turn's bell-shaped speed peaks about here
+const HEAD_ACCEL = (150 * Math.PI) / 180; // rad/s²: turns ease in and out instead of snapping to a rate
 const PITCH_RATE = (60 * Math.PI) / 180;
 const GAZE_YAW = (15 * Math.PI) / 180, GAZE_PITCH = (10 * Math.PI) / 180;
 const LIFT_SPEED = 0.45;
@@ -192,14 +194,25 @@ class PathBuilder {
       for (let k = pts.length - 1; k > i + 1; k--) if (this.los(pts[i], pts[k])) { j = k; break; }
       const a = pts[i], b = pts[j];
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (len > 5) {
-        const m = Math.floor(len / 3.5);
+      if (len > 4) {
+        // Low-frequency sideways drift: two sines with random phase and wavelength, faded to
+        // zero at both ends, up to ~1 m in open space and scaled down by the room available.
+        const m = Math.max(2, Math.round(len / 3));
         const nx = -(b[1] - a[1]) / len, nz = (b[0] - a[0]) / len;
+        const amp = this.rng.range(0.6, 1.0);
+        const w1 = len / this.rng.range(9, 16), w2 = len / this.rng.range(4, 7);
+        const p1 = this.rng.range(0, 2 * Math.PI), p2 = this.rng.range(0, 2 * Math.PI);
         let last = a;
         for (let q = 1; q < m; q++) {
-          const f = q / m, off = this.rng.range(-0.35, 0.35);
-          const c = [a[0] + (b[0] - a[0]) * f + nx * off, a[1] + (b[1] - a[1]) * f + nz * off];
-          if (clearanceAt(this.level, c[0], c[1]) >= 0.7 && this.los(last, c) && this.los(c, b)) { out.push(c); last = c; }
+          const f = q / m;
+          const bx = a[0] + (b[0] - a[0]) * f, bz = a[1] + (b[1] - a[1]) * f;
+          const room = Math.max(0, clearanceAt(this.level, bx, bz) - 0.9);
+          let off = amp * Math.sin(Math.PI * f) * (0.65 * Math.sin(2 * Math.PI * w1 * f + p1) + 0.35 * Math.sin(2 * Math.PI * w2 * f + p2));
+          off = clamp(off, -room, room);
+          for (let tryN = 0; tryN < 3; tryN++, off *= 0.5) {
+            const c = [bx + nx * off, bz + nz * off];
+            if (clearanceAt(this.level, c[0], c[1]) >= 0.7 && this.los(last, c) && this.los(c, b)) { out.push(c); last = c; break; }
+          }
         }
       }
       out.push(b);
@@ -446,7 +459,10 @@ export class Walker {
         pieces.push({ kind: 'call', lift: liftSec, h: from, face: { x: low.x, z: low.z } });
         pts = onto;
         if (pts.length > 1) flush();
-        pieces.push({ kind: 'ride', lift: liftSec, from, to, x: low.x, z: low.z, face: { x: off.x, z: off.z } });
+        // While the platform moves, look out over the lower room (behind on the way up, ahead on
+        // the way down) rather than at the riser of the upper landing; turn to the exit near the top.
+        const open = up ? nodes[ids[board]] : off;
+        pieces.push({ kind: 'ride', lift: liftSec, from, to, x: low.x, z: low.z, face: { x: off.x, z: off.z }, open: { x: open.x, z: open.z } });
         liftCtx = { sector: liftSec, floor: to };
         pts = [[low.x, low.z]];
         segStart = up ? k + 1 : k + 2;
@@ -557,7 +573,10 @@ export class Walker {
         break;
       }
       const misalign = Math.abs(wrap(tangent - this.body.x)) / DEG;
-      v *= clamp(1 - (misalign - 25) / 70, 0.15, 1);
+      // Turn first, then walk: no speed while the body faces more than 90° off the path, easing
+      // in as it comes round (fully on below 30°).
+      const ease = clamp((90 - misalign) / 60, 0, 1);
+      v *= ease * ease * (3 - 2 * ease);
       if (this.attn || this.pendingGoal) v = 0;
       targetSpeed = v;
       // Head: a point LOOK_AHEAD seconds ahead along the path.
@@ -611,10 +630,11 @@ export class Walker {
       const hh = this.lift?.height ? finite(this.lift.height(p.lift), h) : h;
       this.liftY.set(p.lift, hh);
       if (p.kind === 'ride') this.floor = hh;
-      const fx = p.face.x - this.x, fz = p.face.z - this.z;
+      const look = p.open && k < 0.7 ? p.open : p.face;
+      const fx = look.x - this.x, fz = look.z - this.z;
       const face = Math.hypot(fx, fz) > 0.2 ? headingOf(fx, fz) : this.body.x;
       headTarget = this.head.x + wrap(face - this.head.x) + 6 * DEG * Math.sin(this.time * 0.4 + this.wob[1]);
-      pitchTarget = p.kind === 'ride' ? Math.sign(p.to - p.from) * 8 * DEG : 0;
+      pitchTarget = p.kind === 'ride' && p.open && k < 0.7 ? -Math.sign(p.to - p.from) * 10 * DEG : 0;
       if (k >= 1 && (rd.done || !this.lift)) {
         rd.wait -= dt;
         if (rd.wait <= 0) { this.liftY.set(p.lift, rd.target); this.nextPiece(); }
@@ -666,7 +686,7 @@ export class Walker {
     // Keep the head within 100° of the body, then spring it with the 90°/s limit.
     const rel = wrap(headTarget - this.body.x);
     headTarget = this.body.x + clamp(rel, -100 * DEG, 100 * DEG) + (headTarget - this.body.x - rel);
-    spring(this.head, headTarget, HEAD_TAU, dt, HEAD_RATE);
+    this.turnHead(headTarget, dt);
     spring(this.pitchS, clamp(pitchTarget, -45 * DEG, 50 * DEG), PITCH_TAU, dt, PITCH_RATE);
 
     // Step bob and sway, fading with speed.
@@ -691,6 +711,23 @@ export class Walker {
     if (!Number.isFinite(this.body.x)) this.body = { x: P.yaw, v: 0 };
     if (!Number.isFinite(this.pitchS.x)) this.pitchS = { x: 0, v: 0 };
     return P;
+  }
+
+  /**
+   * Head yaw: a critically damped spring whose time constant stretches for big turns, so a
+   * turn's speed is bell-shaped and peaks near HEAD_PEAK, with angular acceleration capped at
+   * HEAD_ACCEL and the rate hard-capped at HEAD_RATE. The stretched time constant relaxes over
+   * ~1.6 s, so the tail of a big turn does not speed up again.
+   */
+  turnHead(target, dt) {
+    const h = this.head;
+    const err = target - h.x;
+    const need = Math.abs(err) / (Math.E * HEAD_PEAK);
+    this.headTau = Math.max(HEAD_TAU, need, (this.headTau ?? HEAD_TAU) * Math.exp(-dt / 1.6));
+    const w = 1 / this.headTau;
+    const acc = clamp(w * w * err - 2 * w * h.v, -HEAD_ACCEL, HEAD_ACCEL);
+    h.v = clamp(h.v + acc * dt, -HEAD_RATE, HEAD_RATE);
+    h.x += h.v * dt;
   }
 
   tangentAt(i) { return this.piece.hd[i]; }

@@ -24,7 +24,7 @@ const copy = (p) => ({ x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, roll:
 test('30 simulated minutes: pace, clearance, no NaN, yaw rate, and at least 6 pois', () => {
   const w = makeWalker(1);
   let prev = copy(w.step(DT, NONE));
-  let maxSpeed = 0, minClear = Infinity, maxYawRate = 0, maxDy = 0;
+  let maxSpeed = 0, minClear = Infinity, maxYawRate = 0, maxDy = 0, prevRate = 0, maxAccel = 0, atCap = 0, steps = 0;
   const reached = new Set();
   const states = new Set();
   for (let i = 0; i < 30 * 60 * 60; i++) {
@@ -37,6 +37,17 @@ test('30 simulated minutes: pace, clearance, no NaN, yaw rate, and at least 6 po
     maxYawRate = Math.max(maxYawRate, yawRate);
     minClear = Math.min(minClear, clear);
     maxDy = Math.max(maxDy, Math.abs(p.y - prev.y));
+    // Head turns ease in and out: bounded angular acceleration, and almost never at the rate cap.
+    const rate = wrap(p.yaw - prev.yaw) / DT;
+    if (i > 0) maxAccel = Math.max(maxAccel, Math.abs(rate - prevRate) / DT);
+    prevRate = rate;
+    if (yawRate > 80 * DEG) atCap++;
+    steps++;
+    // Never drifts sideways or backwards: while moving, it goes the way the body faces.
+    if (speed > 0.1) {
+      const off = Math.abs(wrap(Math.atan2(-(p.x - prev.x), -(p.z - prev.z)) - w.body.x));
+      assert.ok(off < 90 * DEG, `moving ${(off / DEG).toFixed(0)} deg off the body's facing at step ${i}`);
+    }
     assert.ok(speed <= 1.0, `speed ${speed.toFixed(3)} m/s at step ${i}`);
     assert.ok(clear >= 0.35, `clearance ${clear.toFixed(3)} m at step ${i} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
     assert.ok(yawRate <= 90 * DEG + 1e-9, `yaw rate ${(yawRate / DEG).toFixed(1)} deg/s at step ${i}`);
@@ -44,7 +55,8 @@ test('30 simulated minutes: pace, clearance, no NaN, yaw rate, and at least 6 po
     if (w.state === 'pausing' && w.target) reached.add(w.target.id);
     prev = copy(p);
   }
-  console.log(`30 min: max speed ${maxSpeed.toFixed(3)} m/s, min clearance ${minClear.toFixed(3)} m, max yaw rate ${(maxYawRate / DEG).toFixed(1)} deg/s, max dy/step ${maxDy.toFixed(4)} m, pois ${reached.size}: ${[...reached].join(' ')}`);
+  assert.ok(maxAccel <= 150 * DEG + 1e-6, `yaw acceleration ${(maxAccel / DEG).toFixed(0)} deg/s²`);
+  assert.ok(atCap / steps < 0.001, `${((100 * atCap) / steps).toFixed(2)}% of steps turning faster than 80 deg/s`);
   assert.ok(reached.size >= 6, `reached only ${reached.size} pois`);
   assert.ok(states.has('walking') && states.has('pausing'));
   assert.ok(maxDy < 0.03, `vertical jump of ${maxDy} m in one step (stairs must be smoothed)`);
@@ -65,7 +77,6 @@ test('2 simulated hours with one restedAt at the start: the tour never stalls', 
   }
   if (still > 12) stalled += still;
   longest = Math.max(longest, still);
-  console.log(`2 h: ${(100 * stalled / (steps * DT)).toFixed(2)}% of time in stops > 12 s; longest stop ${longest.toFixed(1)} s`);
   assert.ok(stalled / (steps * DT) < 0.1, `${(100 * stalled / (steps * DT)).toFixed(1)}% of time in long stops`);
 });
 
@@ -151,14 +162,20 @@ test('it rides the lift up to the exit room at a gentle pace', () => {
   const w = makeWalker(5);
   const exit = level.pois.find((p) => p.id === 'exit-view');
   w.goTo(exit.x, exit.z);
-  let rode = false, maxVy = 0, prev = copy(w.step(DT, NONE));
+  let rode = false, maxVy = 0, prev = copy(w.step(DT, NONE)), checked = false;
   for (let i = 0; i < 60 * 600 && !(w.state === 'pausing' && rode); i++) {
     const p = w.step(DT, NONE);
     if (w.state === 'riding') rode = true;
+    // Halfway up, it looks out over the room below, not at the riser of the landing ahead.
+    if (w.state === 'riding' && w.piece.kind === 'ride' && !checked && w.ride.t > w.ride.dur * 0.45) {
+      checked = true;
+      const o = w.piece.open, want = Math.atan2(-(o.x - p.x), -(o.z - p.z));
+      assert.ok(Math.abs(wrap(p.yaw - want)) < 45 * DEG, `mid-ride yaw ${(wrap(p.yaw - want) / DEG).toFixed(0)} deg off the open side`);
+    }
     maxVy = Math.max(maxVy, Math.abs(p.y - prev.y) / DT);
     prev = copy(p);
   }
-  assert.ok(rode, 'rode the lift');
+  assert.ok(rode && checked, 'rode the lift');
   const room = level.sectors.find((s) => s.id === 'exit-room');
   assert.ok(Math.abs(prev.y - (room.floor + 1.7)) < 0.1, `eye at ${prev.y} in the exit room`);
   assert.ok(maxVy < 1.0, `vertical speed ${maxVy} m/s`);
