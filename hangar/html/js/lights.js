@@ -228,6 +228,7 @@ export class LightRig {
    * optional view direction (lamps in front are preferred as shadow casters).
    */
   update(dt, camPos, emergency, lowPower, camDir = null) {
+    if (!(Number.isFinite(dt) && dt >= 0)) dt = 0; // a NaN dt would poison the clock, and every flicker after it
     this.time += dt;
     this.setLowPower(!!lowPower);
     const e = Math.min(1, Math.max(0, emergency || 0));

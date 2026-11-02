@@ -136,6 +136,16 @@ const BAR_V_MAIN = /* glsl */ `
 `;
 const BAR_F = /* glsl */ `
   diffuseColor.a = vBarAlpha * ( 1.0 - smoothstep( 0.5 * ( grateNear + grateFar ), grateFar, length( vGrateW - cameraPosition ) ) );
+  #ifdef BAR_DITHER
+    // Low Power has no MSAA, so alpha to coverage has no samples to share out: an ordered 4x4 dither stands in
+    // (a fixed screen pattern, no shimmer from noise), and the bar is opaque where it is drawn.
+    ivec2 bp = ivec2( gl_FragCoord.xy ) & 3;
+    int bi = bp.x + 4 * bp.y;
+    float bt = ( float( ( bi == 0 ? 0 : bi == 1 ? 8 : bi == 2 ? 2 : bi == 3 ? 10 : bi == 4 ? 12 : bi == 5 ? 4 : bi == 6 ? 14 : bi == 7 ? 6
+      : bi == 8 ? 3 : bi == 9 ? 11 : bi == 10 ? 1 : bi == 11 ? 9 : bi == 12 ? 15 : bi == 13 ? 7 : bi == 14 ? 13 : 5 ) ) + 0.5 ) / 16.0;
+    if ( diffuseColor.a < bt ) discard;
+    diffuseColor.a = 1.0;
+  #endif
 `;
 
 // Far grating: coverage of a pixel by bars, filtered over its footprint.
@@ -359,6 +369,19 @@ export class Walkway {
     // Where a bearing bar starts to need widening (the narrowest bar), less a piece, and never past the band.
     const widen = Math.min(GRATE.barT, GRATE.crossW) / (BAR_MIN_PX * fadeUniforms.gratePx.value);
     fadeUniforms.grateSplit.value = Math.min(widen - BAR_PIECE, GRATE_NEAR);
+  }
+
+  /**
+   * Low Power (no MSAA): the far bars dither instead of using alpha to coverage, which needs samples to work and
+   * would otherwise draw them solid out to the end of the band, where they'd stop at a hard line.
+   */
+  setDither(on) {
+    const m = this.barMatFar;
+    if ('BAR_DITHER' in (m.defines ?? {}) === !!on) return;
+    m.defines = { ...(m.defines ?? {}) };
+    if (on) m.defines.BAR_DITHER = ''; else delete m.defines.BAR_DITHER;
+    m.alphaToCoverage = !on;
+    m.needsUpdate = true;
   }
 
   /** During the slime's mirror pass the far grating is drawn at every distance (the bars are not there). */

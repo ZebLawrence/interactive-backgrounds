@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { Scene } from './scene.js';
 import { loadManifest, loadAssets } from './assets.js';
+import { FrameGovernor } from './governor.js';
 
 const params = new URLSearchParams(location.search);
 const flag = (on, off) => (params.has(on) ? true : (params.has(off) ? false : null));
@@ -26,7 +27,6 @@ const Settings = {
   set emergency(v) { this.emergencyOverride = null; this.write('emergency', v); },
   get lowPower() { return this.lowPowerOverride ?? this.read('lowPower', false); },
   set lowPower(v) { this.lowPowerOverride = null; this.write('lowPower', v); },
-  get fps() { return this.lowPower ? 30 : 60; },
 };
 
 // Fetched first: the level's own surfaces (the start room is brown panels, steel and concrete), then the
@@ -47,10 +47,18 @@ class App {
     this.lastStep = null;
     this.paused = false;
     this.seed = initialSeed();
+    // Ruling R17: 60, or a steady 30 when 60 can't hold (Low Power is always 30). Resolution never moves.
+    this.governor = new FrameGovernor();
+    this.probeAt = 0; // next time (ms) a frame is timed end to end for the governor
+    this.settleUntil = 0; // no timing until builds, resizes and mode changes have settled
+    this.assetsDone = false;
 
-    const renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
+    // No canvas MSAA: the scene renders into post.js's 4x MSAA target, and only a full-screen pass reaches the
+    // canvas. ACES is applied there too (OutputPass reads it from the renderer).
+    const renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance' });
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    renderer.info.autoReset = false; // a frame is many render calls (probes, mirror, post): counted whole, reset in frame()
     this.renderer = renderer;
 
     this.size = this.windowSize();
@@ -58,6 +66,7 @@ class App {
     this.assetItems = new Map(); // items loaded so far, for scenes built after they arrived (reseed)
     this.manifest = null;
     this.assets = this.loadAssets();
+    this.assets.then(() => { this.assetsDone = true; this.settle(); });
     this.rebuild();
     this.bindInput();
     this.bindMenu();
@@ -119,35 +128,85 @@ class App {
     // The scene may load its level asynchronously; show a failure instead of leaving an empty canvas.
     Promise.resolve(scene.ready).catch((err) => { if (this.scene === scene) showError('Hangar could not load the level. ', err); });
     if (old) old.dispose();
+    this.settle();
     this.updateMenu();
+  }
+
+  /** The frame rate to hold: Low Power's 30, else the governor's 60 or 30. */
+  get fps() { return this.settings.lowPower ? 30 : this.governor.fps; }
+
+  /** Builds, resizes, mode changes and a returning tab compile shaders and re-bake: don't time frames for a while. */
+  settle(ms = 3000) {
+    this.settleUntil = performance.now() + ms;
+    this.governor.reset();
+  }
+
+  /** Waits for the GPU: gl.finish(), then a 1-pixel read (finish alone does not block in Chrome on macOS). */
+  syncGpu() {
+    const gl = this.renderer.getContext();
+    gl.finish();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.syncPx ??= new Uint8Array(4));
   }
 
   frame(now) {
     requestAnimationFrame((t) => this.frame(t));
     if (this.paused) return;
-    const interval = 1000 / this.settings.fps;
+    // Even pacing: at 30 every second vsync renders (every fourth at 120 Hz), with the 2 ms slack for jitter.
+    const interval = 1000 / this.fps;
     if (this.lastFrame !== null && now - this.lastFrame < interval - 2) return;
+    const since = this.lastFrame === null ? null : now - this.lastFrame;
     this.lastFrame = now;
     const dt = this.lastStep === null ? 0 : Math.min((now - this.lastStep) / 1000, 1 / 15);
     this.lastStep = now;
+    const settled = this.assetsDone && !!this.scene.walker && now >= this.settleUntil;
+    const govern = settled && !this.settings.lowPower;
+    if (govern && since !== null && !this.perfEl) this.governor.interval(since, now / 1000);
     this.scene.step(dt, this.pointer, this.settings);
-    this.scene.render();
-    if (this.perfEl) this.updatePerf(dt);
+    this.renderer.info.reset();
+    // About once a second while governing (every frame with ?perf) a frame is timed end to end, the GPU
+    // drained either side; Low Power never pays for the stall.
+    const probe = govern && now >= this.probeAt;
+    let ms = null;
+    if (probe || this.perfEl) {
+      this.syncGpu();
+      const t0 = performance.now();
+      this.scene.render();
+      this.syncGpu();
+      ms = performance.now() - t0;
+    } else {
+      this.scene.render();
+    }
+    if (probe) {
+      this.probeAt = now + 1000;
+      this.governor.probe(ms, now / 1000);
+    }
+    if (this.perfEl) this.updatePerf(dt, ms, now);
   }
 
   initPerf() {
     this.perfEl = document.createElement('div');
-    this.perfEl.style.cssText = 'position:fixed;left:8px;top:8px;font:12px monospace;color:#9f9;background:rgba(0,0,0,.5);padding:4px 6px;pointer-events:none';
+    this.perfEl.style.cssText = 'position:fixed;left:8px;top:8px;font:12px/1.4 monospace;color:#9f9;background:rgba(0,0,0,.6);padding:4px 6px;pointer-events:none;white-space:pre;z-index:10';
     document.body.appendChild(this.perfEl);
-    this.perfAcc = 0; this.perfN = 0;
+    this.perfAcc = 0; this.perfN = 0; this.perfMs = []; this.texAt = 0; this.texMB = 0;
   }
 
-  updatePerf(dt) {
+  updatePerf(dt, ms, now) {
     this.perfAcc += dt; this.perfN++;
-    if (this.perfAcc >= 0.5) {
-      this.perfEl.textContent = `${(this.perfN / this.perfAcc).toFixed(0)} fps · ${(1000 * this.perfAcc / this.perfN).toFixed(1)} ms · ${this.pixelRatio}x`;
-      this.perfAcc = 0; this.perfN = 0;
-    }
+    if (ms !== null) this.perfMs.push(ms);
+    if (this.perfAcc < 0.5) return;
+    const info = this.renderer.info;
+    if (now >= this.texAt) { this.texMB = (this.scene.textureBytes?.() ?? 0) / 1048576; this.texAt = now + 2000; }
+    const sorted = this.perfMs.slice().sort((a, b) => a - b);
+    const med = sorted.length ? sorted[sorted.length >> 1] : NaN;
+    const max = sorted.length ? sorted[sorted.length - 1] : NaN;
+    const c = this.renderer.domElement;
+    const mode = this.settings.lowPower ? 'Low Power: 30' : `governor: ${this.governor.describe(now / 1000)}`;
+    this.perfEl.textContent = [
+      `${(this.perfN / this.perfAcc).toFixed(0)} fps · frame ${med.toFixed(1)} ms (max ${max.toFixed(1)}, GPU-synced)`,
+      `${info.render.calls} draws · ${(info.render.triangles / 1e6).toFixed(2)} M tris · tex ≈${this.texMB.toFixed(0)} MB (${info.memory.textures} textures, ${info.programs?.length ?? 0} programs)`,
+      `${c.width}x${c.height} @ ${this.pixelRatio}x${this.settings.lowPower ? '' : ' · 4x MSAA · GTAO'} · ${mode}`,
+    ].join('\n');
+    this.perfAcc = 0; this.perfN = 0; this.perfMs.length = 0;
   }
 
   // MARK: - Input
@@ -175,21 +234,29 @@ class App {
       else if (k === 'escape') this.closeMenu();
     });
 
-    let resizeTimer = null;
-    window.addEventListener('resize', () => {
-      this.size = this.windowSize();
-      if (!(this.size.w > 0 && this.size.h > 0)) return;
-      this.renderer.setSize(this.size.w, this.size.h, false);
-      this.scene.resize(this.size.w, this.size.h);
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        const s = this.scene;
-        if (Math.abs(s.screenW - this.size.w) > 4 || Math.abs(s.screenH - this.size.h) > 4) this.rebuild();
-      }, 400);
+    // A resize keeps the walk, the seed and every bit of state: only the canvas, the camera and the post
+    // targets change size (the scene is never rebuilt for it). A 0x0 report (minimising, some hosts mid-layout)
+    // is ignored, and the last real size kept.
+    window.addEventListener('resize', () => this.resize());
+    // A hidden tab gets no frames; on return the walk resumes where it was (no catch-up step) and timing waits.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      this.lastFrame = null;
+      this.lastStep = null;
+      this.settle();
     });
 
     this.hint = document.getElementById('hint');
     setTimeout(() => this.hint.classList.add('gone'), 9000);
+  }
+
+  resize() {
+    const size = this.windowSize();
+    if (!(size.w > 0 && size.h > 0)) return;
+    this.size = size;
+    this.applyPixelRatio(); // also picks up a devicePixelRatio change (the window moved to another display)
+    this.scene.resize(size.w, size.h, this.pixelRatio);
+    this.settle(1500);
   }
 
   wake() {
@@ -237,7 +304,11 @@ class App {
 
   toggle(key) {
     this.settings[key] = !this.settings[key];
-    if (key === 'lowPower') this.applyPixelRatio();
+    if (key === 'lowPower') {
+      this.applyPixelRatio();
+      this.scene.setLowPower(this.settings.lowPower, this.pixelRatio);
+      this.settle();
+    }
     this.updateMenu();
   }
 
@@ -257,6 +328,7 @@ function installDebug(app) {
   window.hangar = {
     app,
     get scene() { return app.scene; },
+    get governor() { return app.governor; },
     assets: app.assets,
     look(x, y, z, yawDeg = 0, pitchDeg = 0, fovDeg = 70) {
       const c = app.scene.camera;
@@ -280,7 +352,7 @@ function installDebug(app) {
     // does not block in Chrome on macOS, and read 0.5 ms for a 13 ms frame).
     bench(frames = 60) {
       const gl = app.renderer.getContext(), px = new Uint8Array(4);
-      const one = () => { app.scene.render(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
+      const one = () => { app.renderer.info.reset(); app.scene.render(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
       for (let i = 0; i < 5; i++) one();
       const t0 = performance.now();
       for (let i = 0; i < frames; i++) one();
@@ -318,7 +390,10 @@ function start() {
     const app = new App();
     installDebug(app);
   } catch (err) {
-    showError('Hangar needs WebGL 2 to run. ', err);
+    // Only say WebGL 2 is missing when it is: anything else is a bug, shown as itself.
+    let gl2 = false;
+    try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch { /* none */ }
+    showError(gl2 ? 'Hangar could not start: ' : 'Hangar needs WebGL 2 to run, and this browser could not create a WebGL 2 context. ', err);
   }
 }
 start();

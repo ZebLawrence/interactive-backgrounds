@@ -24,6 +24,8 @@ import { Doors, Lift, Switches, PropMaterials } from './doors.js';
 import { Consoles } from './screens.js';
 import { scatterProps, CATALOGUE, planPipes, planDecals, propObstacles, blockNav } from './scatter.js';
 import { Dressing } from './props.js';
+import { buildPost, textureMemory } from './post.js';
+import { planHaze } from './hazeplan.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
@@ -107,6 +109,9 @@ export class Scene {
     this.trail = []; // recent pointer samples [t, x, y] over the last second
     this.rest = { x: 0, y: 0, t: 0, armed: false };
     this.input = { gaze: null, restedAt: null, click: null };
+    // The post stack (post.js): native-size targets, rebuilt on resize and on a Low Power change, nothing else.
+    this.lowPower = !!settings?.lowPower;
+    this.post = buildPost(renderer, this.scene, this.camera, w, h, app?.pixelRatio ?? renderer.getPixelRatio(), this.lowPower);
     this.ready = fetch('./data/e1m1.json').then((r) => {
       if (!r.ok) throw new Error(`level data ${r.url} returned HTTP ${r.status}`);
       return r.json();
@@ -158,7 +163,10 @@ export class Scene {
     // Slime, the walkway's real grating and railings, wet floors.
     this.slime = new Slime(level, this.renderer, this.scene);
     this.walkway = new Walkway(level);
+    this.walkway.setDither(this.lowPower);
     this.scene.add(this.walkway.group);
+    this.hazePlan = planHaze(level);
+    this.post.setHazeMap(this.hazePlan);
     for (const m of this.mesh.group.children) {
       if (m.userData.surface !== 'floor') continue;
       if (slime(m.userData.sector)) m.visible = false; // still a click collider
@@ -397,6 +405,7 @@ export class Scene {
     const e = this.emergency * this.emergency * (3 - 2 * this.emergency);
     this.camera.getWorldDirection(this.camDir);
     this.rig.update(dt, this.camera.position, e, !!settings?.lowPower, this.camDir);
+    this.post?.setEmergency(e);
     this.slime?.update(dt, this.camera); // the glow lights and the pool to mirror (glow unchanged by Emergency)
   }
 
@@ -469,17 +478,39 @@ export class Scene {
     }
     sm.needsUpdate = true;
     this.sky?.syncShadow();
-    this.renderer.render(this.scene, this.camera);
+    this.post.render(); // the main pass (post.BeautyPass), then AO, haze, bloom and tone mapping
   }
 
-  resize(w, h) {
+  /** A new window size (CSS px) or pixel ratio: the camera and the post targets follow; everything else stays. */
+  resize(w, h, pixelRatio = this.post.pixelRatio) {
+    if (!(w > 0 && h > 0)) return;
     this.screenW = w;
     this.screenH = h;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.post.resize(w, h, pixelRatio);
+  }
+
+  /** Low Power on or off: the post stack is rebuilt (no MSAA, no AO) and the far grating dithers; the walk stays. */
+  setLowPower(on, pixelRatio) {
+    on = !!on;
+    if (on === this.lowPower && pixelRatio === this.post.pixelRatio) return;
+    this.lowPower = on;
+    this.post.dispose();
+    this.post = buildPost(this.renderer, this.scene, this.camera, this.screenW, this.screenH, pixelRatio, on);
+    if (this.hazePlan) this.post.setHazeMap(this.hazePlan);
+    this.post.setEmergency(this.emergency * this.emergency * (3 - 2 * this.emergency));
+    this.walkway?.setDither(on);
+  }
+
+  /** ?perf: estimated texture memory in bytes (scene textures, post targets, probes, the slime mirror). */
+  textureBytes() {
+    const probeTargets = this.probes ? [this.probes.cube, ...this.probes.probes.map((p) => p.target)] : [];
+    return textureMemory(this.scene, [...this.post.targets(), ...probeTargets, this.slime?.target].filter(Boolean));
   }
 
   dispose() {
+    this.post?.dispose();
     this.rig?.dispose();
     this.consoles?.dispose(); // canvas textures (materials and geometry go with the traversal below)
     this.props?.dispose();
