@@ -510,7 +510,7 @@
     [2524, -2708]
    ],
    "floor": 0,
-   "ceil": 80,
+   "ceil": 96,
    "tags": [
     "corridor",
     "mat:panel-brown"
@@ -528,7 +528,7 @@
     [2712, -2804]
    ],
    "floor": -16,
-   "ceil": 64,
+   "ceil": 80,
    "tags": [
     "corridor",
     "mat:panel-brown"
@@ -784,11 +784,28 @@
    "light": 255
   },
   {
+   "id": "yard-step",
+   "poly": [
+    [2084, -3692],
+    [2392, -3692],
+    [2524, -3656],
+    [2084, -3656]
+   ],
+   "floor": 4,
+   "ceil": 400,
+   "tags": [
+    "sky",
+    "courtyard",
+    "mat:concrete"
+   ],
+   "light": 255
+  },
+  {
    "id": "yard-platform",
    "poly": [
     [2084, -3776],
-    [2524, -3656],
-    [2084, -3656]
+    [2392, -3692],
+    [2084, -3692]
    ],
    "floor": 24,
    "ceil": 400,

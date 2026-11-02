@@ -24,20 +24,18 @@ test('graph has nodes and symmetric edges', () => {
   }
 });
 
-// `yard-platform` is a 1.2 m raised slab in the courtyard with no steps or lift (level data, T2);
-// a walker cannot step onto it, so its poi cannot be reached on foot. Pinned here so that a
-// level change that fixes it (or breaks another poi) is noticed.
-const UNREACHABLE_POIS = new Set(['yard-platform']);
-
 test('a path exists from the start to the exit sector and to every poi', () => {
   assert.equal(sectorAt(level, graph.nodes[exitId].x, graph.nodes[exitId].z).id, exitSector.id);
   assert.ok(findPath(graph, startId, exitId), 'start -> exit');
   for (const p of level.pois) {
-    const id = nearestNode(graph, p.x, p.z);
+    // Strict: the node must belong to the poi's own sector, so a poi on a platform cannot
+    // borrow a node from the floor below.
+    const own = sectorAt(level, p.x, p.z);
+    const mine = graph.nodes.filter((n) => n.sector === own.id || sectorAt(level, n.x, n.z).id === own.id);
+    assert.ok(mine.length, `${p.id}: sector ${own.id} has no nodes`);
+    const id = mine.reduce((m, n) => (Math.hypot(n.x - p.x, n.z - p.z) < Math.hypot(m.x - p.x, m.z - p.z) ? n : m)).id;
     assert.ok(Math.hypot(graph.nodes[id].x - p.x, graph.nodes[id].z - p.z) < 3, `${p.id}: no node nearby`);
-    const path = findPath(graph, startId, id);
-    if (UNREACHABLE_POIS.has(p.id)) assert.equal(path, null, `${p.id} became reachable: update UNREACHABLE_POIS`);
-    else assert.ok(path, `start -> poi ${p.id}`);
+    assert.ok(findPath(graph, startId, id), `start -> poi ${p.id}`);
   }
 });
 

@@ -92,3 +92,10 @@ about 3 m for a walking camera. The whole level is about 113 m × 74 m, plus the
 12. **Approximations.** The curved hallway, the zig-zag band and the dark-room outline follow
     the map's lines to within a few pixels (about ±0.5 m). Where two sources disagreed on
     small notches, the simpler outline was used.
+13. **Courtyard platform gets a step (Ruling R9).** The +24 platform stood 1.2 m above the
+    courtyard floor with no way up. A one-tread sector `yard-step` (floor +4, 1.1 m deep) now
+    runs along its yard-side edge, so both risers are 0.6 m (under the 0.72 m step limit) and
+    the platform itself is a little shorter. Vertices are shared exactly with `yard-east`.
+14. **Low ceilings raised at portals (Ruling R8).** Headroom through a doorway is the physical
+    opening, min(ceil) − max(floor), and must be at least 2.0 m. `hall-b` ceiling 80 → 96 (it
+    met `hall-a` at 1.92 m) and `hall-c` ceiling 64 → 80 (it met `hall-b` at 1.92 m).

@@ -162,10 +162,8 @@ export function buildNavGraph(level, { radius = 0.4, maxStep = 0.72, minHeadroom
       if (j === undefined || j < i) return;
       const t = level.sectors[j];
       if (!walkable(t)) return;
-      // A walker on either side stands under that side's own ceiling, so headroom is the smaller
-      // of the two sector heights (the cross term min(ceil) - max(floor) would also count the
-      // overhang above a step that nobody stands under: hall-a/hall-b is 1.92 m that way).
-      const headroom = Math.min(s.ceil - s.floor, t.ceil - t.floor);
+      // Physical opening (Ruling R8): a lintel under 2 m would graze the 1.7 m eye.
+      const headroom = Math.min(s.ceil, t.ceil) - Math.max(s.floor, t.floor);
       const step = Math.abs(s.floor - t.floor);
       const passable = step <= maxStep + EPS && headroom >= minHeadroom - EPS;
       // A lift sector meets its high landing with a step too tall to walk: the lift covers it.
