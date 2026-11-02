@@ -43,19 +43,19 @@ node $T/fetch-mars.mjs && bash $T/prepare-images.sh
 node $T/fetch-polyhaven.mjs --model moon_rock_01       boulder-a 1
 node $T/fetch-polyhaven.mjs --model moon_rock_03       boulder-b 1
 bash $T/prepare-models.sh boulder-a boulder-b
-# props (Task 12): 1K textures (the red drum 2K), meshes simplified to 0.4% of their extent, so a room full of
-# them stays cheap (small triangles from far away are the cost)
-node $T/fetch-polyhaven.mjs --model old_military_crate          crate        1 1k
+# props (Task 12): 2K textures (Ruling R25: every prop can come within 2 m of the walker), meshes simplified to
+# 0.4% of their extent, so a room full of them stays cheap (small triangles from far away are the cost)
+node $T/fetch-polyhaven.mjs --model old_military_crate          crate        1 2k
 node $T/fetch-polyhaven.mjs --model Barrel_01                   drum-red     1 2k
-node $T/fetch-polyhaven.mjs --model Barrel_02                   drum-blue    1 1k
-node $T/fetch-polyhaven.mjs --model metal_toolbox               toolbox      1 1k
-node $T/fetch-polyhaven.mjs --model metal_tool_chest            tool-chest   1 1k
-node $T/fetch-polyhaven.mjs --model utility_box_01              utility-box  1 1k
-node $T/fetch-polyhaven.mjs --model power_box_01                power-box    1 1k
-node $T/fetch-polyhaven.mjs --model propane_tank                gas-tank     1 1k
-node $T/fetch-polyhaven.mjs --model portable_generator          generator    1 1k
-node $T/fetch-polyhaven.mjs --model metal_jerrycan              jerrycan     1 1k
-node $T/fetch-polyhaven.mjs --model korean_fire_extinguisher_01 extinguisher 1 1k
+node $T/fetch-polyhaven.mjs --model Barrel_02                   drum-blue    1 2k
+node $T/fetch-polyhaven.mjs --model metal_toolbox               toolbox      1 2k
+node $T/fetch-polyhaven.mjs --model metal_tool_chest            tool-chest   1 2k
+node $T/fetch-polyhaven.mjs --model utility_box_01              utility-box  1 2k
+node $T/fetch-polyhaven.mjs --model power_box_01                power-box    1 2k
+node $T/fetch-polyhaven.mjs --model propane_tank                gas-tank     1 2k
+node $T/fetch-polyhaven.mjs --model portable_generator          generator    1 2k
+node $T/fetch-polyhaven.mjs --model metal_jerrycan              jerrycan     1 2k
+node $T/fetch-polyhaven.mjs --model korean_fire_extinguisher_01 extinguisher 1 2k
 SIMPLIFY=0.004 bash $T/prepare-models.sh crate drum-red drum-blue toolbox tool-chest utility-box power-box gas-tank generator jerrycan extinguisher
 
 node --test 'hangar/tests/*.test.mjs'

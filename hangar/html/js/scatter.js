@@ -12,9 +12,11 @@
 // the walker uses (every edge on a shortest route between two pois or the start), nothing overlaps anything
 // else, and nothing crowds the door frames, wall switches, consoles or the pois (propplan.js); `opts.avoid`
 // adds circles to keep off ({ x, z, r }: the wet patches). Output: [{ name, rule, sector, floor, x, y, z, yaw,
-// scale, w, d, spin, mount?, side?, group? }]: (x, z) is the footprint's centre, yaw turns the model's +z
-// (its front) to face the room, w × d is the scaled footprint (w along the model's x), `spin` turns a round
-// model about its own axis without changing the footprint.
+// scale, w, d, spin, mount?, side?, gap?, group? }]: (x, z) is the footprint's centre, yaw turns the model's
+// +z (its front) to face the room, w × d is the scaled footprint (w along the model's x), `spin` turns a round
+// model about its own axis without changing the footprint, `gap` (wall and corner items) is how far the back
+// stands off its wall: FLUSH_GAP for mounted boxes and `flush` entries (the scrap's plate leans on the wall),
+// 1 to 3.5 cm for the rest.
 //
 // The walker treats the props as walls: propObstacles(placements).distance(x, z) is the distance to the
 // nearest footprint (negative inside one) and blockNav(graph, obstacles) drops the nav nodes and edges they
@@ -32,6 +34,7 @@ import { openEdges } from './phobos.js';
 
 export const NAV_CLEAR = 0.6; // m from any used nav edge
 export const WALL_GAP = 0.05; // m at most between a wall item's back and its wall
+export const FLUSH_GAP = 0.001; // m: wall-mounted items and those that lean on the wall (`flush`) sit this close
 const ITEM_GAP = 0.2; // m between props that are not in one cluster
 const TOUCH = [0.003, 0.015]; // m between neighbours in a cluster
 const DOOR_KEEP = 0.5; // m beyond a door's half width
@@ -47,7 +50,7 @@ const ORDER = { corner: 0, wall: 1, cluster: 2, free: 3 };
 // the models' measured bounding boxes (w along the model's x, d along its z, its front).
 export const CATALOGUE = [
   { name: 'gas-tank', footprint: [0.34, 0.34], rule: 'corner', perRoom: [0, 1], round: true },
-  { name: 'scrap', footprint: [0.62, 0.5], rule: 'corner', perRoom: [0, 1] },
+  { name: 'scrap', footprint: [0.62, 0.5], rule: 'corner', perRoom: [0, 1], flush: true }, // a plate leans on the wall
   { name: 'extinguisher', footprint: [0.28, 0.37], rule: 'wall', perRoom: [0, 1] },
   { name: 'utility-box', footprint: [0.52, 0.44], rule: 'wall', perRoom: [0, 1] },
   { name: 'tool-chest', footprint: [0.69, 0.41], rule: 'wall', perRoom: [0, 1] },
@@ -303,6 +306,8 @@ export function scatterProps(level, graph, rng, catalogue = CATALOGUE, opts = {}
   });
   const add = (p, f) => { out.push(p); fps.push(f); };
 
+  // Mounted and leaning items touch their wall; the rest stand a hand's breadth off it at random.
+  const flushGap = (e) => (e.mount !== undefined || e.flush ? FLUSH_GAP : null);
   // Candidate spots by rule; each returns a placement or null.
   const onWall = (e, s, scale, extra) => {
     const ws = ctx.walls.get(s.id);
@@ -311,9 +316,9 @@ export function scatterProps(level, graph, rng, catalogue = CATALOGUE, opts = {}
     let r = rng.next() * ws.reduce((a, q) => a + q.len, 0), wall = ws[0];
     for (const q of ws) { wall = q; if ((r -= q.len) < 0) break; }
     if (wall.len < w + 0.1) return null;
-    const t = rng.range(w / 2 + 0.05, wall.len - w / 2 - 0.05), gap = rng.range(0.01, 0.035);
+    const t = rng.range(w / 2 + 0.05, wall.len - w / 2 - 0.05), gap = flushGap(e) ?? rng.range(0.01, 0.035);
     const x = wall.a[0] + wall.u[0] * t + wall.n[0] * (gap + d / 2), z = wall.a[1] + wall.u[1] * t + wall.n[1] * (gap + d / 2);
-    return make(e, s, x, z, Math.atan2(wall.n[0], wall.n[1]), scale, extra);
+    return make(e, s, x, z, Math.atan2(wall.n[0], wall.n[1]), scale, { gap, ...extra });
   };
   const inCorner = (e, s, scale, extra) => {
     const cs = ctx.corners.get(s.id);
@@ -321,14 +326,14 @@ export function scatterProps(level, graph, rng, catalogue = CATALOGUE, opts = {}
     const c = rng.pick(cs);
     const k = rng.int(0, 1), back = c.walls[k], side = c.walls[1 - k];
     const w = e.footprint[0] * scale, d = e.footprint[1] * scale;
-    const gb = rng.range(0.01, 0.035), gs = rng.range(0.01, 0.035);
+    const gb = flushGap(e) ?? rng.range(0.01, 0.035), gs = rng.range(0.01, 0.035);
     // Back onto `back` (the item's x runs along it), a side onto `side`.
     const x = c.v[0] + back.u[0] * (gs + w / 2) + side.u[0] * (gb + d / 2);
     const z = c.v[1] + back.u[1] * (gs + w / 2) + side.u[1] * (gb + d / 2);
     const yaw = Math.atan2(side.u[0], side.u[1]);
     const ax = Math.cos(yaw), az = -Math.sin(yaw);
     const sd = -(back.u[0] * ax + back.u[1] * az) > 0 ? 1 : -1; // which local x side faces the side wall
-    return make(e, s, x, z, yaw, scale, { side: sd, ...extra });
+    return make(e, s, x, z, yaw, scale, { side: sd, gap: gb, ...extra });
   };
   const loose = (e, s, scale, extra) => {
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -366,6 +371,7 @@ export function scatterProps(level, graph, rng, catalogue = CATALOGUE, opts = {}
         }
         if (!seed) continue;
         delete seed[0].side; // a cluster's anchor is only a cluster member (the corner test is for corner items)
+        delete seed[0].gap;
         const members = [seed];
         const want = rng.int(2, 5);
         for (let t = 0; t < TRIES && members.length < want; t++) {

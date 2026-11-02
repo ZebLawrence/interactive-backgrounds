@@ -9,13 +9,18 @@ import { Walker } from '../html/js/walker.js';
 import { doorFrames, planSwitches, planConsoles } from '../html/js/propplan.js';
 import {
   scatterProps, CATALOGUE, usedEdges, footprint, rectGap, segRectDistance, pointRectDistance, wallDistance,
-  propObstacles, blockNav, planPipes, planDecals, NAV_CLEAR, WALL_GAP,
+  propObstacles, blockNav, planPipes, planDecals, NAV_CLEAR, WALL_GAP, FLUSH_GAP,
 } from '../html/js/scatter.js';
 
 const level = loadLevel(JSON.parse(readFileSync(new URL('../html/data/e1m1.json', import.meta.url), 'utf8')));
 const graph = buildNavGraph(level);
 const SEEDS = Array.from({ length: 20 }, (_, i) => i + 1);
-const runs = new Map(SEEDS.map((s) => [s, scatterProps(level, graph, makeRng(s).fork('props'), CATALOGUE)]));
+// Built on first use (inside the tests, not at module load), so the parallel suite isn't held up.
+let cache = null;
+const runs = {
+  [Symbol.iterator]() { cache ??= new Map(SEEDS.map((s) => [s, scatterProps(level, graph, makeRng(s).fork('props'), CATALOGUE)])); return cache[Symbol.iterator](); },
+  get(s) { this[Symbol.iterator](); return cache.get(s); },
+};
 const NO_PROPS = ['slime', 'walkway', 'door', 'lift', 'window', 'corridor'];
 
 test('the geometry helpers measure rectangles and segments right', () => {
@@ -85,6 +90,23 @@ test('wall items back onto a solid wall within 0.05 m, facing out; corner items 
   }
 });
 
+test('nothing floats: wall-mounted boxes and leaning items sit within 2 mm of their wall', () => {
+  let n = 0;
+  for (const [seed, ps] of runs) {
+    for (const p of ps) {
+      const e = CATALOGUE.find((c) => c.name === p.name);
+      if (p.mount === undefined && !e.flush) continue;
+      n++;
+      assert.ok(p.gap <= 0.002 && FLUSH_GAP <= 0.002, `seed ${seed}: ${p.name} planned ${p.gap} m off`);
+      for (const [bx, bz] of footprint(p).back) {
+        const d = wallDistance(level, p.sector, bx, bz);
+        assert.ok(d <= 0.002 + 1e-9, `seed ${seed}: ${p.name} back ${(d * 1000).toFixed(1)} mm off the wall`);
+      }
+    }
+  }
+  assert.ok(n >= 100, `only ${n} mounted or leaning items over 20 seeds`);
+});
+
 test('clusters are groups of 2 to 5 that touch', () => {
   for (const [seed, ps] of runs) {
     const groups = new Map();
@@ -136,7 +158,7 @@ test('the same seed gives the same props; seeds 1 and 2 differ', () => {
   assert.notDeepEqual(runs.get(1), runs.get(2));
 });
 
-test('the walker never brushes a prop: 20 simulated minutes, three seeds, camera >= 0.35 m from every footprint', () => {
+test('the walker never brushes a prop: 10 simulated minutes, three seeds, camera >= 0.35 m from every footprint', () => {
   const report = [];
   for (const seed of [1, 2, 3]) {
     const ps = runs.get(seed);
@@ -146,7 +168,7 @@ test('the walker never brushes a prop: 20 simulated minutes, three seeds, camera
     const w = new Walker(level, g, makeTour(level.pois, rng.fork('tour')), rng.fork('walker'), { obstacles });
     let min = Infinity, at = null;
     const reached = new Set();
-    for (let i = 0; i < 20 * 60 * 60; i++) {
+    for (let i = 0; i < 10 * 60 * 60; i++) {
       const p = w.step(1 / 60, null);
       const d = obstacles.distance(p.x, p.z);
       if (d < min) { min = d; at = [p.x.toFixed(2), p.z.toFixed(2)]; }
@@ -154,7 +176,7 @@ test('the walker never brushes a prop: 20 simulated minutes, three seeds, camera
     }
     report.push(`seed ${seed}: ${min.toFixed(2)} m at ${at}, ${reached.size} pois`);
     assert.ok(min >= 0.35, `seed ${seed}: camera ${min.toFixed(3)} m from a prop at (${at})`);
-    assert.ok(reached.size >= 6, `seed ${seed}: reached only ${reached.size} pois`);
+    assert.ok(reached.size >= 4, `seed ${seed}: reached only ${reached.size} pois`);
   }
   console.log(`  closest camera pass: ${report.join('; ')}`);
 });

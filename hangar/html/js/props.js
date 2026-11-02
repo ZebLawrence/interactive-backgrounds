@@ -189,9 +189,12 @@ function cableReel() {
 
 function scrap() {
   // Within 0.62 x 0.5, back at z = -0.25.
+  // A plate leaning back against the wall: its bottom edge on the floor, its top edge on the footprint's back
+  // line (the item stands FLUSH_GAP off the wall, so the plate touches it).
   const plate = boxGeo(0.5, 0.38, 0.006);
-  plate.rotateX(-0.32); // leaning back against the wall
-  plate.translate(-0.02, 0.18, -0.19);
+  plate.rotateX(-0.32);
+  plate.computeBoundingBox();
+  plate.translate(-0.02, -plate.boundingBox.min.y, -0.25 - plate.boundingBox.min.z);
   const flat = boxGeo(0.34, 0.006, 0.22);
   flat.rotateY(0.35);
   flat.translate(0.1, 0.003, 0.08);
@@ -344,24 +347,29 @@ export class Dressing {
 
   own(x) { this.owned.push(x); return x; }
 
-  /** Instance matrices for placements: base at y, turned by yaw (+ spin for round ones), scaled. */
-  matrices(list) {
+  /**
+   * Instance matrices for placements: base at y, turned by yaw (+ spin for round ones), scaled. `depth` is the
+   * model's own depth (front to back): an item backed onto a wall (it has a `gap`) slides back by however much
+   * shallower than its footprint the model is, so its back, not its centre, keeps the planned gap.
+   */
+  matrices(list, depth = null) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     return list.map((pl) => {
       e.set(0, pl.yaw + (pl.spin ?? 0), 0);
       q.setFromEuler(e);
       s.setScalar(pl.scale);
-      p.set(pl.x, pl.y, pl.z);
+      const back = depth !== null && pl.gap !== undefined ? (pl.d - depth * pl.scale) / 2 : 0;
+      p.set(pl.x - Math.sin(pl.yaw) * back, pl.y, pl.z - Math.cos(pl.yaw) * back);
       return m.compose(p, q, s).clone();
     });
   }
 
   /** One InstancedMesh per sector for `parts` ([{ geometry, material | tag }]) over `list` placements. */
-  instance(name, parts, list, group) {
+  instance(name, parts, list, group, depth = null) {
     const bySector = new Map();
     for (const p of list) (bySector.get(p.sector) ?? bySector.set(p.sector, []).get(p.sector)).push(p);
     for (const [sector, ps] of bySector) {
-      const ms = this.matrices(ps);
+      const ms = this.matrices(ps, depth);
       for (const part of parts) {
         const im = new THREE.InstancedMesh(part.geometry, null, ps.length);
         im.material = part.tag ? this.mats.get(part.tag, im) : part.material;
@@ -388,22 +396,42 @@ export class Dressing {
       this.instance(name, parts, list, g);
       this.group.add(g);
     }
-    // Conduit from each junction box up to the ceiling, clipped to the wall every 0.8 m.
+    // Conduit from each junction box up to the ceiling, clipped to the wall every 0.8 m. Where a pipe run passes
+    // above the box on the same wall, the conduit stops under the lowest pipe and turns into the wall.
     const boxes = this.plan.placements.filter((p) => p.name === 'junction-box');
     const bySector = new Map();
+    const CR = 0.016, COFF = 0.035; // conduit radius; its centre this far out from the wall
     for (const p of boxes) {
       const s = this.level.byId.get(p.sector);
       const bx = Math.sin(p.yaw), bz = Math.cos(p.yaw), ax = Math.cos(p.yaw), az = -Math.sin(p.yaw);
-      const back = -p.d / 2; // the wall plane, in the box's depth axis
-      const off = back + 0.035; // conduit centre out from the wall
+      const wall = -p.d / 2 - (p.gap ?? 0); // the wall plane, in the box's depth axis
       const at = (u, v, y) => new THREE.Vector3(p.x + ax * u + bx * v, y, p.z + az * u + bz * v);
-      const y0 = p.y + 0.26, y1 = s.ceil;
+      const y0 = p.y + 0.26;
+      const c0 = at(0.09, wall, 0);
+      let y1 = s.ceil, elbow = false;
+      for (const r of this.plan.pipes) {
+        if (r.sector !== p.sector) continue;
+        // Same wall: the run's wall line passes through the conduit's foot, and the conduit lies within its span.
+        const wx = r.a[0] - r.n[0] * r.off, wz = r.a[1] - r.n[1] * r.off;
+        const L = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]), ux = (r.b[0] - r.a[0]) / L, uz = (r.b[1] - r.a[1]) / L;
+        const dx = c0.x - wx, dz = c0.z - wz, t = dx * ux + dz * uz;
+        if (Math.abs(dx * r.n[0] + dz * r.n[1]) > 0.02 || t < -0.25 || t > L + 0.25) continue;
+        const under = r.y - (r.count - 1) * r.pitch - r.r - 0.06;
+        if (under > y0 + 0.1 && under < y1) { y1 = under; elbow = true; }
+      }
       const list = bySector.get(p.sector) ?? bySector.set(p.sector, { conduit: [], clips: [] }).get(p.sector);
-      list.conduit.push(tube(0.016, at(0.09, off, y0), at(0.09, off, y1), false, 10));
+      const off = wall + COFF;
+      list.conduit.push(tube(CR, at(0.09, off, y0), at(0.09, off, y1), false, 10));
+      if (elbow) {
+        list.conduit.push(uvScale(new THREE.SphereGeometry(CR * 1.05, 10, 6), 0.05, 0.05).translate(...at(0.09, off, y1).toArray()));
+        list.conduit.push(tube(CR, at(0.09, off, y1), at(0.09, wall - 0.01, y1), false, 10));
+      }
+      // Clips: a saddle from the wall face out over the conduit.
       for (let y = y0 + 0.3; y < y1 - 0.1; y += 0.8) {
-        const c = boxGeo(0.05, 0.03, 0.05);
+        const depth = COFF + CR + 0.006;
+        const c = boxGeo(0.05, 0.03, depth);
         c.rotateY(p.yaw);
-        const q = at(0.09, back + 0.025, y);
+        const q = at(0.09, wall + depth / 2, y);
         c.translate(q.x, q.y, q.z);
         list.clips.push(c);
       }
@@ -513,7 +541,7 @@ export class Dressing {
         const h = MOUNT_H[p.name] ?? 0.3;
         e.set(0, p.yaw, 0); q.setFromEuler(e);
         s.set(p.w * SHADE_SCALE + 0.05, h * SHADE_SCALE + 0.05, 1);
-        const back = p.d / 2 - 0.003;
+        const back = p.d / 2 + (p.gap ?? 0); // on the wall plane itself (the shade's polygon offset lifts it)
         v.set(p.x - Math.sin(p.yaw) * back, p.y + h / 2 - 0.02, p.z - Math.cos(p.yaw) * back);
         im.setMatrixAt(i, m.compose(v, q, s));
       });
@@ -589,7 +617,7 @@ export class Dressing {
     if (Math.abs(w - p0.w) > 0.06 || Math.abs(d - p0.d) > 0.06) console.warn(`Hangar: ${name} measures ${w.toFixed(2)} x ${d.toFixed(2)} m, its footprint is ${p0.w.toFixed(2)} x ${p0.d.toFixed(2)}`);
     const g = new THREE.Group();
     g.name = name;
-    this.instance(name, model.parts, list, g);
+    this.instance(name, model.parts, list, g, model.size.z);
     this.group.add(g);
     this.models.set(name, g);
     return true;
