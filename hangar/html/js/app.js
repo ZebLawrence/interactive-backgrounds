@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { Scene } from './scene.js';
+import { loadManifest, loadAssets } from './assets.js';
 
 const params = new URLSearchParams(location.search);
 const flag = (on, off) => (params.has(on) ? true : (params.has(off) ? false : null));
@@ -50,12 +51,39 @@ class App {
 
     this.size = this.windowSize();
     this.applyPixelRatio();
+    this.assets = this.loadAssets();
     this.rebuild();
     this.bindInput();
     this.bindMenu();
     this.perfEl = null;
     if (this.settings.perf) this.initPerf();
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  /**
+   * Loads the scanned materials, images and models once for the life of the page (reseeds reuse them).
+   * Never rejects: files that fail become neutral stand-ins and are named in the error note.
+   */
+  async loadAssets() {
+    const bar = document.getElementById('loadbar');
+    const progress = (f) => {
+      bar.style.transform = `scaleX(${f})`;
+      bar.setAttribute('aria-valuenow', String(Math.round(f * 100)));
+    };
+    let assets;
+    try {
+      const { manifest, failures: missing } = await loadManifest();
+      assets = await loadAssets(this.renderer, manifest, progress);
+      assets.manifest = manifest;
+      assets.failures.unshift(...missing);
+    } catch (err) {
+      console.error(err);
+      assets = { textures: new Map(), models: new Map(), failures: [`all assets (${err?.message ?? err})`], manifest: null };
+    }
+    progress(1);
+    bar.classList.add('done');
+    if (assets.failures.length) showNote(`Hangar could not load ${assets.failures.length} asset file${assets.failures.length > 1 ? 's' : ''} (using plain stand-ins): ${assets.failures.join(', ')}`);
+    return assets;
   }
 
   windowSize() { return { w: window.innerWidth, h: window.innerHeight }; }
@@ -215,6 +243,7 @@ function installDebug(app) {
   window.hangar = {
     app,
     get scene() { return app.scene; },
+    assets: app.assets,
     look(x, y, z, yawDeg = 0, pitchDeg = 0, fovDeg = 70) {
       const c = app.scene.camera;
       app.paused = true;
@@ -235,9 +264,20 @@ function installDebug(app) {
   };
 }
 
+/** A non-blocking note along the top of the page (asset failures): the scene keeps running underneath. */
+function showNote(text) {
+  console.warn(text);
+  const el = document.getElementById('error');
+  if (!el.hidden && !el.classList.contains('soft')) return; // a fatal error is already showing
+  el.classList.add('soft');
+  el.hidden = false;
+  el.textContent = text;
+}
+
 function showError(prefix, err) {
   console.error(err);
   const el = document.getElementById('error');
+  el.classList.remove('soft');
   el.hidden = false;
   el.textContent = prefix + (err?.message ?? '');
 }

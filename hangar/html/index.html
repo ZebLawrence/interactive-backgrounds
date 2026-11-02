@@ -13,14 +13,15 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "./js/app.js": "./js/app.js?v=6",
-  "./js/scene.js": "./js/scene.js?v=6",
-  "./js/rng.js": "./js/rng.js?v=6",
-  "./js/level.js": "./js/level.js?v=6",
-  "./js/levelmesh.js": "./js/levelmesh.js?v=6",
-  "./js/navgraph.js": "./js/navgraph.js?v=6",
-  "./js/tour.js": "./js/tour.js?v=6",
-  "./js/walker.js": "./js/walker.js?v=6"
+  "./js/app.js": "./js/app.js?v=7",
+  "./js/scene.js": "./js/scene.js?v=7",
+  "./js/rng.js": "./js/rng.js?v=7",
+  "./js/level.js": "./js/level.js?v=7",
+  "./js/levelmesh.js": "./js/levelmesh.js?v=7",
+  "./js/navgraph.js": "./js/navgraph.js?v=7",
+  "./js/tour.js": "./js/tour.js?v=7",
+  "./js/walker.js": "./js/walker.js?v=7",
+  "./js/assets.js": "./js/assets.js?v=7"
 } }
 </script>
 </head>
@@ -42,7 +43,8 @@
   </div>
 </div>
 <div id="hint">Click the floor to send the camera there · click a door, switch or console to use it</div>
+<div id="loadbar" role="progressbar" aria-label="Loading materials" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
 <div id="error" hidden></div>
-<script type="module" src="js/app.js?v=6"></script>
+<script type="module" src="js/app.js?v=7"></script>
 </body>
 </html>

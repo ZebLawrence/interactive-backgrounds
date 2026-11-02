@@ -33,3 +33,11 @@ canvas#hangar { position: fixed; inset: 0; width: 100vw; height: 100vh; display:
 #hint.gone { opacity: 0; }
 #error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: #f3ece4; }
 #error[hidden] { display: none; }
+/* Asset failures are a note along the top, not a curtain: the scene keeps running behind it. */
+#error.soft { inset: 0 0 auto 0; display: block; padding: 6px 12px; font-size: 12px; background: rgba(60,20,16,.6);
+  pointer-events: none; }
+/* Asset load progress: a thin bar across the top that fades once everything has arrived. */
+#loadbar { position: fixed; left: 0; top: 0; height: 2px; width: 100%; transform-origin: 0 50%; transform: scaleX(0);
+  background: #e9b26c; pointer-events: none; transition: transform .2s linear, opacity .8s; }
+#loadbar.done { opacity: 0; }
+#error.soft[hidden] { display: none; }
