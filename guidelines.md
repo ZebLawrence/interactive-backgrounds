@@ -273,3 +273,38 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   syntax error without applying anything. For a multi-file patch, write a small Python script
   to the scratchpad with the file tool (anchor-replace pairs that report any anchor not found)
   and run that; use the file tools directly for whole new source files.
+
+## 7. Walkable scenes and asset pipelines (from Hangar)
+
+- **Trace, then validate.** A layout traced from a published plan is only data until it is tested:
+  headroom (the physical opening, `min(ceiling) - max(floor)`, at least 2 m under a 1.7 m eye),
+  step heights a person can climb, a route to every point of interest, no overlapping sectors. Fix
+  the data when a test fails, never the rule. Doors stored as closed sectors fail a headroom test
+  until they carry their open height.
+- **The walker is a person, not a path.** String-pull the route, meander it a little, smooth it
+  with a spline, and drive speed, body yaw and head yaw separately, each eased: a constant turn
+  rate after a pause, or a flat 88 deg/s head swing, reads as a robot at once. Treat props as walls
+  in the route (a 0.6 m nav-edge rule alone walked through props in two of five seeds), and wait
+  for a door to open rather than clip into it.
+- **Geometry where the camera passes close.** Parallax occlusion on a grate smears at the grazing
+  angles of a walk and shimmers in the distance; build the bars (and railings, pipes, door frames)
+  as geometry and let textures carry only the fine grain.
+- **Check scanned maps before trusting them.** A scan's metalness map can be nearly all 1, which
+  turns albedo black under an environment-lit shader; inspect each channel of each set, and give
+  a material a sensible tile size (a rivet grid repeating every 2 m reads cheap).
+- **Texel density is a budget.** 1024 px per metre on everything within 2 m means 2K maps on
+  props the walker can reach (1K models fail the constraint), KTX2 so the GPU holds them
+  compressed, and a size check in the manifest test that reads the files, not the manifest.
+- **Load progressively.** Block only on the first area, load the rest by priority and swap each
+  asset in as it arrives; an all-or-nothing load makes a 600 MB scene look broken for a minute.
+- **Window glass smears reflections.** A glass pane that reflects the strip lights draws blurred
+  bands across the view out; give glass a clean, nearly non-reflective pane and let the outside
+  be seen sharp. If the view out is the point, lower the parapet or drop the wall.
+- **Frame rate gives way before resolution.** When the owner has said sharpness wins, a governor
+  that locks to a steady 30 when 60 will not hold is the only knob; Low Power may cap the buffer at
+  about 1080p, but `pixelRatio = 1` is a no-op on a 1x 4K display, so cap pixels, not the ratio.
+  Judge cost at the owner's resolution: a full-screen effect that is 2 ms at 1400 x 900 is 16 ms at 4K.
+- **Skip lighting that cannot reach.** Interior meshes that cannot see the sky do not need the sun's
+  shadow lookup; per-fragment cost you can remove is cheaper than a lower frame rate.
+- **Dynamic things need to tell the static shadow.** Doors and a lift that move must refresh a
+  baked or static shadow map while they move.

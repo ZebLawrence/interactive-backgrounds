@@ -4,6 +4,64 @@ A walkable remaster of Doom E1M1 as an interactive browser background (`hangar/h
 traced from published top-down maps (see `tools/REFERENCES.md`); no id Software files, art or WAD data
 are used. Spec: `docs/superpowers/specs/2026-11-01-hangar-design.md`.
 
+## What it is
+
+You do not control it. A camera walks Doom's first level on its own at 1.7 m eye height and under
+1 m/s: down the start room's steps, across the zigzag walkway over the glowing slime, through the
+computer room (its big window looks out at Mars) and out into the courtyard, up the lift to the exit
+room. The layout is a trace of E1M1 stretched for a walking camera; every surface is a scanned PBR
+material, and the base is lit by fluorescent strips, amber lamps, the slime glow and the Phobos sun
+and Mars-light through the openings. Web only: there is no Swift port.
+
+Live: `https://zeblawrence.github.io/interactive-backgrounds/hangar/html/` (serve the repo root with
+`python3 -m http.server 8000` and open `/hangar/html/` to run it locally). The first area loads
+first and the walk starts as soon as it is ready; the rest of the textures and props stream in.
+
+## The camera and the cursor
+
+- **A person on foot.** The route is a graph of the level's walkable sectors (no walking through
+  walls, ledges or props: the walker treats props as walls), string-pulled, meandered a little and
+  smoothed. Speed eases in and out and slows on stairs and sharp turns; the body turns on a spring, the
+  head looks ahead along the path, glances aside now and then, and bobs and sways a little.
+- **Doors and the lift.** Sliding door panels open as the camera approaches and close behind it; it
+  waits for a closed door and rides the lift.
+- **Resting cursor:** the head leans toward it.
+- **Click the floor:** the camera walks there. **Click a door, switch or console:** it operates.
+- Every launch and every New Tour scatters the props, grime and lamp quirks differently and takes a
+  different route.
+
+## Menu and URL flags
+
+Top-right button (it fades when idle):
+
+| Item | Key | What it does |
+|---|---|---|
+| New Tour | | reseeds the dressing and the route |
+| Emergency Power | `E` | the main lights drop out; red emergency lamps and the slime carry the scene |
+| Low Power | | 30 fps, the drawing buffer capped near 1920 x 1080 pixels, and fewer shadow casters |
+| Full Screen | | |
+
+Flags: `?seed=N` (fixed tour), `?emergency` / `?noemergency`, `?lowpower`, `?perf` (frame timing,
+draw calls, texture memory). The settings are remembered in `localStorage`.
+
+Default mode renders at the window size x `devicePixelRatio` (capped at 2) with 4x MSAA, ambient
+occlusion and bloom: sharpness is the owner's priority. A frame-rate governor holds 60 fps, or a steady
+30 when 60 cannot be held; it never lowers the resolution. On a 4K display with a modest GPU the
+default mode can run well under 30 fps; Low Power exists for that.
+
+## Asset pipeline
+
+`tools/` holds offline scripts (nothing runs in the browser); `tools/README.md` has the full rebuild
+recipe. In short: Poly Haven and ambientCG (CC0) downloads are packed into
+colour / normal / ORM / height maps and encoded as KTX2 (UASTC, mipmapped) with `basisu`; props are
+optimised to meshopt GLBs; the Viking mosaic of Mars is resampled to 8192 x 4096. Outputs and
+`html/assets/manifest.json` (source, author and licence of every file) are committed; raw downloads
+are git-ignored. The page loads the manifest, then the files by priority, and the scene swaps each
+one in as it arrives. Only sources that need no account are used. `tools/SKETCHFAB-WISHLIST.md` lists
+richer CC-BY props (consoles, doors, lift, railings) the owner can download by hand and drop in;
+the current ones are modelled in code or Blender with the scanned materials. The floor plan is
+traced from published top-down maps (`tools/REFERENCES.md`). Tests: `node --test 'hangar/tests/*.test.mjs'`.
+
 ## Credits
 
 Every asset the page loads is listed in `html/assets/manifest.json` with its source, author and
@@ -43,3 +101,5 @@ USGS for the Viking mosaic. How the files were fetched and encoded: `tools/READM
 
 Viking mosaic: USGS Astrogeology, *Mars Viking MDIM2.1 Colorized Global Mosaic*, downloaded from
 https://astrogeology.usgs.gov/ckan/dataset/7131d503-cdc9-45a5-8f83-5126c0fd397e/resource/5ea881c6-01b3-41fa-a7af-42d2131b54f1/download/mars_viking_mdim21_clrmosaic_1km.jpg, resampled to 8192 x 4096.
+
+Inspired by Doom (id Software, 1993); no id assets are used.
