@@ -145,3 +145,26 @@ export function loadLevel(json) {
     fixtures,
   };
 }
+
+const TILE = 2; // metres per texture tile (Ruling R3); materials rescale via texture.repeat
+
+/**
+ * One quad per wall. corners run a-bottom, b-bottom, b-top, a-top; the normal is horizontal and
+ * points into the `front` sector. u = distance along the wall / tile, v = world height / tile, so
+ * panel rows line up from wall to wall. `mat` is the front sector's material name, or 'window'.
+ */
+export function wallQuads(level, tile = TILE) {
+  return level.walls.map((w) => {
+    const front = level.byId.get(w.front);
+    const [ax, az] = w.a, [bx, bz] = w.b;
+    const len = Math.hypot(bx - ax, bz - az) || 1;
+    const normal = [(bz - az) / len, 0, -(bx - ax) / len];
+    const mat = w.kind === 'window' ? 'window' : [...front.tags].find((t) => t.startsWith('mat:')).slice(4);
+    const v0 = w.bottom / tile, v1 = w.top / tile, u1 = len / tile;
+    return {
+      corners: [[ax, w.bottom, az], [bx, w.bottom, bz], [bx, w.top, bz], [ax, w.top, az]],
+      uv: [[0, v0], [u1, v0], [u1, v1], [0, v1]],
+      normal, mat, sector: w.front, kind: w.kind, back: w.back,
+    };
+  });
+}

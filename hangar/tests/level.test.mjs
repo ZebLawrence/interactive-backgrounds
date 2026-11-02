@@ -206,3 +206,27 @@ test('loadLevel converts Doom units to metres with y up and north as -z', () => 
   const win = tiny.walls.find((w) => w.kind === 'window');
   assert.ok(Math.abs(win.bottom - 0.6) < EPS && Math.abs(win.top - 2.4) < EPS);
 });
+
+test('wallQuads: normals face into front sector, UV span is edge length / 2, v rises from the floor', async () => {
+  const { wallQuads } = await import('../html/js/level.js');
+  const quads = wallQuads(level);
+  assert.ok(quads.length > 100);
+  let checked = 0;
+  for (const q of quads) {
+    const [A, B, , D] = q.corners;
+    const len = Math.hypot(B[0] - A[0], B[2] - A[2]);
+    const mx = (A[0] + B[0]) / 2, mz = (A[2] + B[2]) / 2;
+    assert.ok(Math.abs(Math.hypot(...q.normal) - 1) < 1e-9 && q.normal[1] === 0);
+    const hit = sectorAt(level, mx + q.normal[0] * 0.1, mz + q.normal[2] * 0.1);
+    if (len > 0.3) { // very short edges can have the probe land past the neighbouring sector
+      assert.equal(hit?.id, q.sector, `${q.sector}: normal does not face front`);
+      checked++;
+    }
+    const [u0, u1] = [q.uv[0][0], q.uv[1][0]];
+    assert.ok(Math.abs(Math.abs(u1 - u0) - len / 2) < 1e-6, 'u span');
+    assert.ok(Math.abs(q.uv[3][1] - q.uv[0][1] - (D[1] - A[1]) / 2) < 1e-6, 'v span');
+    assert.ok(Math.abs(q.uv[0][1] - A[1] / 2) < 1e-6, 'v is world height / tile');
+    assert.equal(typeof q.mat, 'string');
+  }
+  assert.ok(checked > 100);
+});
