@@ -36,6 +36,8 @@ const GREYS = {
   'mat:hazard': { color: 0xd9a81e, metalness: 0.3, roughness: 0.6 },
   'mat:diamond-plate': { color: 0x9aa0a6, metalness: 0.9, roughness: 0.4 },
   'mat:computer': { color: 0x4d6a7c, metalness: 0.7, roughness: 0.5 },
+  'mat:rust': { color: 0x6b4630, metalness: 0.4, roughness: 0.8 },
+  'mat:rubber': { color: 0x1b1b1b, metalness: 0, roughness: 0.75 },
 };
 
 /**

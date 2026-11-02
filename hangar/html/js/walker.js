@@ -15,7 +15,8 @@
 // (opts.doors.isOpen(sectorId) false) makes the walker stop short of it and wait, and it never
 // steps into a closed door sector, whatever its speed. By default every door is open and the lift
 // is simulated here; a real lift (opts.lift) gives ride/call promises, the platform height and
-// optionally the ride's duration.
+// optionally the ride's duration. Props (opts.obstacles, scatter.propObstacles) count as walls: string-pulling,
+// meander and the push off the walls keep the same clearance from them (plan on scatter.blockNav's graph too).
 
 import { sectorAt } from './level.js';
 import { nearestNode, findPath, clearanceAt } from './navgraph.js';
@@ -158,11 +159,18 @@ function centripetal(p0, p1, p2, p3, out) {
 }
 
 class PathBuilder {
-  constructor(level, rng, liftSector, liftFloor) {
+  constructor(level, rng, liftSector, liftFloor, obstacles = null) {
     this.level = level;
     this.rng = rng;
     this.liftSector = liftSector;
     this.liftFloor = liftFloor;
+    this.obstacles = obstacles;
+  }
+
+  /** Clearance from walls and ledges, and from the props when there are any (they count as walls). */
+  clear(x, z) {
+    const c = clearanceAt(this.level, x, z);
+    return this.obstacles ? Math.min(c, this.obstacles.distance(x, z)) : c;
   }
 
   sector(x, z) { return sectorAt(this.level, x, z); }
@@ -180,7 +188,7 @@ class PathBuilder {
     let prev = null;
     for (let i = 0; i <= n; i++) {
       const x = a[0] + ((b[0] - a[0]) * i) / n, z = a[1] + ((b[1] - a[1]) * i) / n;
-      if (i > 0 && i < n && clearanceAt(this.level, x, z) < need) return false;
+      if (i > 0 && i < n && this.clear(x, z) < need) return false;
       const s = this.sector(x, z);
       if (!s) continue; // exactly on a boundary
       if (!this.walkable(s)) return false;
@@ -212,12 +220,12 @@ class PathBuilder {
         for (let q = 1; q < m; q++) {
           const f = q / m;
           const bx = a[0] + (b[0] - a[0]) * f, bz = a[1] + (b[1] - a[1]) * f;
-          const room = Math.max(0, clearanceAt(this.level, bx, bz) - 0.9);
+          const room = Math.max(0, this.clear(bx, bz) - 0.9);
           let off = amp * Math.sin(Math.PI * f) * (0.65 * Math.sin(2 * Math.PI * w1 * f + p1) + 0.35 * Math.sin(2 * Math.PI * w2 * f + p2));
           off = clamp(off, -room, room);
           for (let tryN = 0; tryN < 3; tryN++, off *= 0.5) {
             const c = [bx + nx * off, bz + nz * off];
-            if (clearanceAt(this.level, c[0], c[1]) >= 0.7 && this.los(last, c) && this.los(c, b)) { out.push(c); last = c; break; }
+            if (this.clear(c[0], c[1]) >= 0.7 && this.los(last, c) && this.los(c, b)) { out.push(c); last = c; break; }
           }
         }
       }
@@ -230,11 +238,11 @@ class PathBuilder {
   push(p, ref) {
     let [x, z] = p;
     for (let it = 0; it < 6; it++) {
-      const c = clearanceAt(this.level, x, z);
+      const c = this.clear(x, z);
       if (c >= CLEAR_PUSH) break;
       const h = 0.02;
-      const gx = (clearanceAt(this.level, x + h, z) - clearanceAt(this.level, x - h, z)) / (2 * h);
-      const gz = (clearanceAt(this.level, x, z + h) - clearanceAt(this.level, x, z - h)) / (2 * h);
+      const gx = (this.clear(x + h, z) - this.clear(x - h, z)) / (2 * h);
+      const gz = (this.clear(x, z + h) - this.clear(x, z - h)) / (2 * h);
       const g = Math.hypot(gx, gz);
       if (!(g > 1e-6)) break;
       const nx = x + (gx / g) * (CLEAR_PUSH - c + 0.01), nz = z + (gz / g) * (CLEAR_PUSH - c + 0.01);
@@ -354,6 +362,8 @@ export class Walker {
     this.rng = rng;
     this.doors = opts.doors ?? { isOpen: () => true };
     this.lift = opts.lift ?? null;
+    // Props (scatter.propObstacles): paths keep clear of them as of walls. Plan on scatter.blockNav's graph too.
+    this.obstacles = opts.obstacles ?? null;
     this.info = infoFor(level, graph);
     this.liftY = new Map(level.lifts.map((l) => [l.sector, l.low]));
 
@@ -419,7 +429,7 @@ export class Walker {
       }
     }
     cand.sort((a, b) => a[0] - b[0]);
-    const pb = new PathBuilder(this.level, this.rng, null, 0);
+    const pb = new PathBuilder(this.level, this.rng, null, 0, this.obstacles);
     for (const [d, n] of cand.slice(0, 8)) if (d < 0.05 || pb.los([this.x, this.z], [n.x, n.z], CLEAR_MIN)) return n.id;
     return cand.length ? cand[0][1].id : nearestNode(g, this.x, this.z, this.floor);
   }
@@ -437,7 +447,7 @@ export class Walker {
     let pts = [[this.x, this.z]];
     let liftCtx = { sector: null, floor: 0 }; // lift height the current walk piece sees
     const flush = () => {
-      const pb = new PathBuilder(this.level, this.rng, liftCtx.sector, liftCtx.floor);
+      const pb = new PathBuilder(this.level, this.rng, liftCtx.sector, liftCtx.floor, this.obstacles);
       pieces.push(pb.build(pts, this.cruise));
     };
     let segStart = 0;

@@ -26,10 +26,19 @@ USGS for the Viking mosaic. How the files were fetched and encoded: `tools/READM
 | Material | `mat:rust` | Rust Coarse 01 | Dimitrios Savva, Rico Cilliers | CC0 | https://polyhaven.com/a/rust_coarse_01 |
 | Material | `mat:steel` | MetalPlates001 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/MetalPlates001 |
 | Material | `mat:steel-brushed` | Metal009 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/Metal009 |
-| Model | `barrel` | Barrel 03 | Serhii Khromov | CC0 | https://polyhaven.com/a/barrel_03 |
 | Model | `boulder-a` | Moon Rock 01 | Greg Zaal, Rico Cilliers, Jenelle van Heerden, Dario Barresi | CC0 | https://polyhaven.com/a/moon_rock_01 |
 | Model | `boulder-b` | Moon Rock 03 | Greg Zaal, Rico Cilliers, Jenelle van Heerden | CC0 | https://polyhaven.com/a/moon_rock_03 |
 | Model | `crate` | Old Military Crate | Jack Mava | CC0 | https://polyhaven.com/a/old_military_crate |
+| Model | `drum-blue` | Barrel 02 | Jorge Camacho | CC0 | https://polyhaven.com/a/Barrel_02 |
+| Model | `drum-red` | Barrel_01 | Jorge Camacho | CC0 | https://polyhaven.com/a/Barrel_01 |
+| Model | `extinguisher` | Korean Fire Extinguisher 01 | UM JOORIN | CC0 | https://polyhaven.com/a/korean_fire_extinguisher_01 |
+| Model | `gas-tank` | Propane Tank | Slinc | CC0 | https://polyhaven.com/a/propane_tank |
+| Model | `generator` | Portable Generator | James Ray Cock | CC0 | https://polyhaven.com/a/portable_generator |
+| Model | `jerrycan` | Metal Jerrycan | Sean Buckley | CC0 | https://polyhaven.com/a/metal_jerrycan |
+| Model | `power-box` | Power Box 01 | Rico Cilliers, Yann Kervran | CC0 | https://polyhaven.com/a/power_box_01 |
+| Model | `tool-chest` | Metal Tool Chest | Yann Kervran, John Hutcheson | CC0 | https://polyhaven.com/a/metal_tool_chest |
+| Model | `toolbox` | Metal Toolbox | Mateusz Sadek | CC0 | https://polyhaven.com/a/metal_toolbox |
+| Model | `utility-box` | Utility Box 01 | James Ray Cock | CC0 | https://polyhaven.com/a/utility_box_01 |
 | Image | `mars` | Mars Viking MDIM2.1 Colorized Global Mosaic (1 km/px release), resampled to 8192 x 4096 | NASA / JPL / USGS Astrogeology Science Center | PD | https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m |
 
 Viking mosaic: USGS Astrogeology, *Mars Viking MDIM2.1 Colorized Global Mosaic*, downloaded from

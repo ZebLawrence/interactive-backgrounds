@@ -233,9 +233,10 @@ export function buildNavGraph(level, { radius = 0.4, maxStep = 0.72, minHeadroom
   return finish({ nodes, edges });
 }
 
-// Spatial hash for nearestNode (not enumerable, so the graph stays plain data).
+// Spatial hash for nearestNode (not enumerable, so the graph stays plain data). Exported for graphs derived
+// from this one (scatter.blockNav).
 const HASH = 4;
-function finish(graph) {
+export function finish(graph) {
   const cells = new Map();
   for (const n of graph.nodes) {
     const k = Math.floor(n.x / HASH) * 100003 + Math.floor(n.z / HASH);

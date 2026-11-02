@@ -40,11 +40,23 @@ bash $T/prepare-textures.sh
 node $T/fetch-mars.mjs && bash $T/prepare-images.sh
 
 # models: --model <asset> <name> <scale to metres>
-node $T/fetch-polyhaven.mjs --model barrel_03          barrel    1
-node $T/fetch-polyhaven.mjs --model old_military_crate crate     1
 node $T/fetch-polyhaven.mjs --model moon_rock_01       boulder-a 1
 node $T/fetch-polyhaven.mjs --model moon_rock_03       boulder-b 1
-bash $T/prepare-models.sh
+bash $T/prepare-models.sh boulder-a boulder-b
+# props (Task 12): 1K textures (the red drum 2K), meshes simplified to 0.4% of their extent, so a room full of
+# them stays cheap (small triangles from far away are the cost)
+node $T/fetch-polyhaven.mjs --model old_military_crate          crate        1 1k
+node $T/fetch-polyhaven.mjs --model Barrel_01                   drum-red     1 2k
+node $T/fetch-polyhaven.mjs --model Barrel_02                   drum-blue    1 1k
+node $T/fetch-polyhaven.mjs --model metal_toolbox               toolbox      1 1k
+node $T/fetch-polyhaven.mjs --model metal_tool_chest            tool-chest   1 1k
+node $T/fetch-polyhaven.mjs --model utility_box_01              utility-box  1 1k
+node $T/fetch-polyhaven.mjs --model power_box_01                power-box    1 1k
+node $T/fetch-polyhaven.mjs --model propane_tank                gas-tank     1 1k
+node $T/fetch-polyhaven.mjs --model portable_generator          generator    1 1k
+node $T/fetch-polyhaven.mjs --model metal_jerrycan              jerrycan     1 1k
+node $T/fetch-polyhaven.mjs --model korean_fire_extinguisher_01 extinguisher 1 1k
+SIMPLIFY=0.004 bash $T/prepare-models.sh crate drum-red drum-blue toolbox tool-chest utility-box power-box gas-tank generator jerrycan extinguisher
 
 node --test 'hangar/tests/*.test.mjs'
 ```
@@ -55,7 +67,7 @@ Downloads are skipped when the raw file already exists, so reruns are cheap.
 
 | Tool | Does |
 |---|---|
-| `fetch-polyhaven.mjs` | Poly Haven API: 2K PNG `Diffuse`, `nor_gl`, `arm` (AO/rough/metal), `Displacement`; or a 2K glTF with `--model`. Writes the manifest entry with name, author, `CC0`. |
+| `fetch-polyhaven.mjs` | Poly Haven API: 2K PNG `Diffuse`, `nor_gl`, `arm` (AO/rough/metal), `Displacement`; or a glTF with `--model` (2K, or the resolution given after the scale). Writes the manifest entry with name, author, `CC0`. |
 | `fetch-ambientcg.mjs` | ambientCG 2K PNG zip, maps renamed to the same layout. For what Poly Haven lacks (brushed steel, plates, grating, diamond plate, hazard paint). |
 | `fetch-mars.mjs` | USGS Viking MDIM2.1 colour mosaic, 1 km/px JPEG (the 232 m GeoTIFF is 12.7 GB). |
 | `pack-maps.py` | Normalises a raw material: 2048², 8-bit, packs `orm` (AO R, roughness G, metalness B), puts grating opacity in the colour alpha. |

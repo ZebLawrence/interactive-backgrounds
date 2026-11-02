@@ -1,7 +1,8 @@
 // Downloads a Poly Haven asset into hangar/tools/raw/ (git-ignored) and records it in the manifest with its credits.
 //
 //   node hangar/tools/fetch-polyhaven.mjs <assetId> <tag> <tileMetres>        a texture set (2K PNG maps)
-//   node hangar/tools/fetch-polyhaven.mjs --model <assetId> <name> <scale>    a model (glTF, 2K textures)
+//   node hangar/tools/fetch-polyhaven.mjs --model <assetId> <name> <scale> [res]  a model (glTF, 2K textures, or
+//                                                                             res 1k for small props)
 //
 // Textures land in raw/materials/<slug>/ as color.png, normal.png (OpenGL convention), orm.png (Poly Haven's
 // `arm` map: AO in R, roughness in G, metalness in B) and height.png. Run prepare-textures.sh afterwards.
@@ -36,10 +37,10 @@ async function fetchTexture(id, tag, tile) {
   console.log(`${tag} <- ${c.name} by ${c.author} (${c.source}), tile ${tile} m`);
 }
 
-async function fetchModel(id, name, scale) {
+async function fetchModel(id, name, scale, res = RES) {
   const files = await getJson(`${API}/files/${id}`);
-  const g = files.gltf?.[RES]?.gltf;
-  if (!g) throw new Error(`${id} has no ${RES} glTF`);
+  const g = files.gltf?.[res]?.gltf;
+  if (!g) throw new Error(`${id} has no ${res} glTF`);
   const dir = path.join(RAW, 'models', name);
   await download(g.url, path.join(dir, path.basename(new URL(g.url).pathname)));
   for (const [rel, f] of Object.entries(g.include ?? {})) {
@@ -56,10 +57,11 @@ async function fetchModel(id, name, scale) {
 const args = process.argv.slice(2);
 const model = args[0] === '--model';
 if (model) args.shift();
-const [id, key, num] = args;
+const [id, key, num, res] = args;
 const n = Number(num);
 if (!id || !key || !(n > 0)) {
-  console.error('usage: fetch-polyhaven.mjs <assetId> <tag> <tileMetres>\n       fetch-polyhaven.mjs --model <assetId> <name> <scale>');
+  console.error('usage: fetch-polyhaven.mjs <assetId> <tag> <tileMetres>\n       fetch-polyhaven.mjs --model <assetId> <name> <scale> [res]');
   process.exit(2);
 }
-await (model ? fetchModel(id, key, n) : fetchTexture(id, key, n));
+if (res && !/^[1248]k$/.test(res)) { console.error(`bad resolution ${res} (1k, 2k, 4k or 8k)`); process.exit(2); }
+await (model ? fetchModel(id, key, n, res) : fetchTexture(id, key, n));

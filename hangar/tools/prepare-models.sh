@@ -3,6 +3,8 @@
 # textures as KTX2 UASTC, geometry meshopt-compressed.
 #
 #   bash hangar/tools/prepare-models.sh [name ...]       (no names = all of them)
+#   SIMPLIFY=0.002 bash hangar/tools/prepare-models.sh generator   simplify harder (error as a fraction of the
+#                                                                  mesh's extent; gltf-transform's default 0.0001)
 #
 # The plan's one-liner was
 #   npx @gltf-transform/cli optimize <in> <out> --texture-compress ktx2 --compress meshopt
@@ -31,7 +33,7 @@ for name in "${names[@]}"; do
   tmp="$raw/$name/.ktx2.glb"
   node "$here/ktx2-textures.mjs" "$src" "$tmp"
   log="$raw/$name/optimize.log"
-  if ! npx -y @gltf-transform/cli@4.5.1 optimize "$tmp" "$out/$name.glb" --texture-compress false --compress meshopt >"$log" 2>&1 || [ ! -s "$out/$name.glb" ]; then
+  if ! npx -y @gltf-transform/cli@4.5.1 optimize "$tmp" "$out/$name.glb" --texture-compress false --compress meshopt --simplify-error "${SIMPLIFY:-0.0001}" >"$log" 2>&1 || [ ! -s "$out/$name.glb" ]; then
     echo "gltf-transform optimize failed for $name:" >&2; tail -20 "$log" >&2; exit 1
   fi
   rm -f "$tmp"

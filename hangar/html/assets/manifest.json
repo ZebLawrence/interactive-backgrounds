@@ -185,14 +185,6 @@
     }
   },
   "models": {
-    "barrel": {
-      "file": "assets/models/barrel.glb",
-      "scale": 1,
-      "name": "Barrel 03",
-      "source": "https://polyhaven.com/a/barrel_03",
-      "author": "Serhii Khromov",
-      "license": "CC0"
-    },
     "boulder-a": {
       "file": "assets/models/boulder-a.glb",
       "scale": 1,
@@ -215,6 +207,86 @@
       "name": "Old Military Crate",
       "source": "https://polyhaven.com/a/old_military_crate",
       "author": "Jack Mava",
+      "license": "CC0"
+    },
+    "drum-blue": {
+      "file": "assets/models/drum-blue.glb",
+      "scale": 1,
+      "name": "Barrel 02",
+      "source": "https://polyhaven.com/a/Barrel_02",
+      "author": "Jorge Camacho",
+      "license": "CC0"
+    },
+    "drum-red": {
+      "file": "assets/models/drum-red.glb",
+      "scale": 1,
+      "name": "Barrel_01",
+      "source": "https://polyhaven.com/a/Barrel_01",
+      "author": "Jorge Camacho",
+      "license": "CC0"
+    },
+    "extinguisher": {
+      "file": "assets/models/extinguisher.glb",
+      "scale": 1,
+      "name": "Korean Fire Extinguisher 01",
+      "source": "https://polyhaven.com/a/korean_fire_extinguisher_01",
+      "author": "UM JOORIN",
+      "license": "CC0"
+    },
+    "gas-tank": {
+      "file": "assets/models/gas-tank.glb",
+      "scale": 1,
+      "name": "Propane Tank",
+      "source": "https://polyhaven.com/a/propane_tank",
+      "author": "Slinc",
+      "license": "CC0"
+    },
+    "generator": {
+      "file": "assets/models/generator.glb",
+      "scale": 1,
+      "name": "Portable Generator",
+      "source": "https://polyhaven.com/a/portable_generator",
+      "author": "James Ray Cock",
+      "license": "CC0"
+    },
+    "jerrycan": {
+      "file": "assets/models/jerrycan.glb",
+      "scale": 1,
+      "name": "Metal Jerrycan",
+      "source": "https://polyhaven.com/a/metal_jerrycan",
+      "author": "Sean Buckley",
+      "license": "CC0"
+    },
+    "power-box": {
+      "file": "assets/models/power-box.glb",
+      "scale": 1,
+      "name": "Power Box 01",
+      "source": "https://polyhaven.com/a/power_box_01",
+      "author": "Rico Cilliers, Yann Kervran",
+      "license": "CC0"
+    },
+    "tool-chest": {
+      "file": "assets/models/tool-chest.glb",
+      "scale": 1,
+      "name": "Metal Tool Chest",
+      "source": "https://polyhaven.com/a/metal_tool_chest",
+      "author": "Yann Kervran, John Hutcheson",
+      "license": "CC0"
+    },
+    "toolbox": {
+      "file": "assets/models/toolbox.glb",
+      "scale": 1,
+      "name": "Metal Toolbox",
+      "source": "https://polyhaven.com/a/metal_toolbox",
+      "author": "Mateusz Sadek",
+      "license": "CC0"
+    },
+    "utility-box": {
+      "file": "assets/models/utility-box.glb",
+      "scale": 1,
+      "name": "Utility Box 01",
+      "source": "https://polyhaven.com/a/utility_box_01",
+      "author": "James Ray Cock",
       "license": "CC0"
     }
   },

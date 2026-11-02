@@ -22,6 +22,8 @@ import { PhobosSky } from './sky.js';
 import { openEdges, planShell, sectorClass, sunlitSectors } from './phobos.js';
 import { Doors, Lift, Switches, PropMaterials } from './doors.js';
 import { Consoles } from './screens.js';
+import { scatterProps, CATALOGUE, planPipes, planDecals, propObstacles, blockNav } from './scatter.js';
+import { Dressing } from './props.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
@@ -171,7 +173,8 @@ export class Scene {
       }
     }
     this.lightPlan = planLights(annotateFixtures(level), rng.fork('lights'));
-    this.wet = buildWetPatches(planWetPatches(level, this.lightPlan, rng.fork('wet')), this.renderer);
+    const wetPlan = planWetPatches(level, this.lightPlan, rng.fork('wet'));
+    this.wet = buildWetPatches(wetPlan, this.renderer);
     this.scene.add(this.wet);
     const rooms = lightRooms(level);
     this.rig = new LightRig(this.scene, this.lightPlan, { level, rooms });
@@ -185,15 +188,23 @@ export class Scene {
     this.consoles = new Consoles(level, this.scene, rng.fork('consoles'), { renderer: this.renderer, assets: this.props, switches: this.switches.list });
     for (const g of [this.doors.group, this.lift?.group, this.switches.group, this.consoles.group]) if (g) this.scene.add(g);
     this.interactive = [...this.doors.interactive, ...this.switches.interactive, ...this.consoles.interactive];
+    // Seeded dressing: props on the floors and walls (never on the walker's routes or the wet patches), pipe runs,
+    // grime and leaks. The walker plans round the props as round walls, on a nav graph without the nodes they cover.
+    const navGraph = buildNavGraph(level);
+    const placements = scatterProps(level, navGraph, rng.fork('props'), CATALOGUE, { avoid: wetPlan.map((p) => ({ x: p.x, z: p.z, r: p.r * p.stretch + 0.1 })) });
+    this.obstacles = propObstacles(placements);
+    this.graph = blockNav(navGraph, this.obstacles);
+    this.dressing = new Dressing(level, { placements, pipes: planPipes(level, rng.fork('pipes')), decals: planDecals(level, rng.fork('decals')) }, this.props, { sunlit });
+    this.scene.add(this.dressing.group);
     this.pickables = [...this.mesh.colliders, ...this.interactive];
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     // Phobos outside: Mars, the sun, stars, terrain, boulders, the base's outer walls (takes the items so far).
     this.sky = new PhobosSky(this.scene, this.app?.assetItems, rng.fork('sky'), { level, renderer: this.renderer, edges: this.edges, shell: this.shell });
     this.planSunReach();
-    this.graph = buildNavGraph(level);
+    if (this.dressing.sunChanged) this.sky.refreshShadow(); // the sun's shadow map is static: props are new casters
     const tour = makeTour(level.pois, rng.fork('tour'));
-    this.walker = new Walker(level, this.graph, tour, rng.fork('walker'), { doors: this.doors, lift: this.lift });
+    this.walker = new Walker(level, this.graph, tour, rng.fork('walker'), { doors: this.doors, lift: this.lift, obstacles: this.obstacles });
     this.doors.setWalker(this.walker);
     this.applyPose(this.walker.step(0, this.input));
     this.updateLights(1, this.settings); // start with the nearest lights already faded in
@@ -207,6 +218,12 @@ export class Scene {
     // The sky's own assets (Mars, boulders, regolith and concrete for the outside); the probes then re-bake so
     // the courtyard and window rooms see them.
     if (this.sky?.setAsset(kind, name, asset) && this.probes) { this.assignProbes(); this.probeRebakeAt = this.time + 0.5; }
+    // A prop model: its instances appear, cast into the sun's (static) shadow map if the sun reaches them, and
+    // the probes see them after a short settle.
+    if (kind === 'model' && this.dressing?.setModel(name, asset)) {
+      if (this.dressing.sunlitModel(name)) this.sky?.refreshShadow();
+      if (this.probes) { this.assignProbes(); this.probeRebakeAt = this.time + 0.5; }
+    }
     if (kind !== 'material' || !this.mesh || !asset?.color) return;
     if (name === 'mat:steel-brushed') this.walkway?.setMaps(asset);
     const key = name.startsWith('mat:') ? name.slice(4) : name;
@@ -466,6 +483,7 @@ export class Scene {
     this.rig?.dispose();
     this.consoles?.dispose(); // canvas textures (materials and geometry go with the traversal below)
     this.props?.dispose();
+    this.dressing?.dispose(); // this seed's geometry and decal materials (the models' are the page's)
     this.sky?.dispose();
     this.probes?.dispose();
     this.slime?.dispose();
