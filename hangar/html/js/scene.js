@@ -9,6 +9,8 @@ import { makeMaterial, environmentFor, pomUniforms } from './materials.js';
 import { buildNavGraph } from './navgraph.js';
 import { makeRng } from './rng.js';
 import { makeTour } from './tour.js';
+import { annotateFixtures, planLights } from './lightplan.js';
+import { LightRig } from './lights.js';
 import { Walker, resolveClickTarget } from './walker.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
@@ -34,10 +36,19 @@ export class Scene {
     this.scene.background = new THREE.Color(0x0a1018);
     this.camera = new THREE.PerspectiveCamera(70, w / h, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
-    this.scene.add(new THREE.HemisphereLight(0xcfd8e4, 0x303038, 2.2));
-    // A dim neutral room for reflections until Task 8's fixtures and probes: metal reflects something.
+    // Light comes from the fixtures (lights.js) plus a low ambient there. The neutral room stays as a dim
+    // reflection stand-in (the rig sets its intensity) until the room probes replace it, so metal between
+    // highlights reflects something rather than black.
     this.scene.environment = environmentFor(renderer);
-    this.scene.environmentIntensity = 0.35;
+    this.scene.environmentIntensity = 0.06;
+    // Shadow maps render once per frame (render() raises needsUpdate), not on every render() call.
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    this.rig = null;
+    // Emergency Power eases over 1.5 s; a page opened with it on starts there.
+    this.emergency = settings?.emergency ? 1 : 0;
+    this.camDir = new THREE.Vector3();
     this.debugLamp = null;
     this.level = null;
     this.walker = null;
@@ -74,13 +85,20 @@ export class Scene {
       for (let i = 0; i < uv.count; i++) { const [a, b] = jitterUv(uv.getX(i), uv.getY(i), j); uv.setXY(i, a, b); }
       uv.needsUpdate = true;
     }
+    for (const m of this.mesh.group.children) {
+      m.receiveShadow = true;
+      m.castShadow = m.userData.mat !== 'window';
+    }
     this.scene.add(this.mesh.group);
+    this.lightPlan = planLights(annotateFixtures(level), rng.fork('lights'));
+    this.rig = new LightRig(this.scene, this.lightPlan, { level });
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     this.graph = buildNavGraph(level);
     const tour = makeTour(level.pois, rng.fork('tour'));
     this.walker = new Walker(level, this.graph, tour, rng.fork('walker'));
     this.applyPose(this.walker.step(0, this.input));
+    this.updateLights(1, this.settings); // start with the nearest lights already faded in
   }
 
   /**
@@ -96,7 +114,7 @@ export class Scene {
     for (const m of meshes) m.material = material;
   }
 
-  /** Debug only (window.hangar.light): a point lamp to rake across surfaces until Task 8's fixtures exist. */
+  /** Debug only (window.hangar.light): a raking point lamp for close inspection; never created otherwise. */
   setDebugLamp(x, y, z, intensity = 6, distance = 8) {
     if (!this.debugLamp) {
       this.debugLamp = new THREE.PointLight(0xfff2e0, intensity, distance, 2);
@@ -139,6 +157,18 @@ export class Scene {
       if (t) inp.click = { x: t.x, y: hit.y, z: t.z };
     }
     this.applyPose(this.walker.step(dt, inp));
+    this.updateLights(dt, settings ?? this.settings);
+  }
+
+  /** Eases Emergency Power toward the setting (1.5 s, smoothstep-shaped) and updates the light rig. */
+  updateLights(dt, settings) {
+    if (!this.rig) return;
+    const target = settings?.emergency ? 1 : 0;
+    const k = dt / 1.5;
+    this.emergency = target > this.emergency ? Math.min(target, this.emergency + k) : Math.max(target, this.emergency - k);
+    const e = this.emergency * this.emergency * (3 - 2 * this.emergency);
+    this.camera.getWorldDirection(this.camDir);
+    this.rig.update(dt, this.camera.position, e, !!settings?.lowPower, this.camDir);
   }
 
   /** True once when the pointer has come to rest after a deliberate move. */
@@ -169,7 +199,10 @@ export class Scene {
 
   click(pt) { this.pendingClick = { x: pt.x, y: pt.y }; }
 
-  render() { this.renderer.render(this.scene, this.camera); }
+  render() {
+    this.renderer.shadowMap.needsUpdate = true; // one shadow update per frame (guidelines section 3)
+    this.renderer.render(this.scene, this.camera);
+  }
 
   resize(w, h) {
     this.screenW = w;
@@ -179,6 +212,7 @@ export class Scene {
   }
 
   dispose() {
+    this.rig?.dispose();
     this.scene.traverse((o) => {
       o.geometry?.dispose();
       // Scanned materials and their textures belong to the page (materials.js / app.assets), not the scene.

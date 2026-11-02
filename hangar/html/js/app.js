@@ -145,7 +145,7 @@ class App {
   updatePerf(dt) {
     this.perfAcc += dt; this.perfN++;
     if (this.perfAcc >= 0.5) {
-      this.perfEl.textContent = `${(this.perfN / this.perfAcc).toFixed(0)} fps · ${this.pixelRatio}x`;
+      this.perfEl.textContent = `${(this.perfN / this.perfAcc).toFixed(0)} fps · ${(1000 * this.perfAcc / this.perfN).toFixed(1)} ms · ${this.pixelRatio}x`;
       this.perfAcc = 0; this.perfN = 0;
     }
   }
@@ -266,6 +266,8 @@ function installDebug(app) {
       c.rotation.set(THREE.MathUtils.degToRad(pitchDeg), THREE.MathUtils.degToRad(yawDeg), 0);
       c.fov = fovDeg;
       c.updateProjectionMatrix();
+      // Let the pooled lights settle on the new spot (2 s of light time; the walk itself does not move).
+      for (let i = 0; i < 120; i++) app.scene.updateLights?.(1 / 60, app.settings);
       app.scene.render();
     },
     run(seconds, pointer = { x: -10000, y: -10000, inside: false }) {
@@ -274,7 +276,17 @@ function installDebug(app) {
       app.scene.render();
     },
     pause() { app.paused = true; },
-    // Verification helpers: a raking point lamp (nothing lights it by default until Task 8), relief on/off.
+    // GPU frame time in ms: each frame is followed by a 1-pixel readPixels, which waits for the GPU (gl.finish()
+    // does not block in Chrome on macOS, and read 0.5 ms for a 13 ms frame).
+    bench(frames = 60) {
+      const gl = app.renderer.getContext(), px = new Uint8Array(4);
+      const one = () => { app.scene.render(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
+      for (let i = 0; i < 5; i++) one();
+      const t0 = performance.now();
+      for (let i = 0; i < frames; i++) one();
+      return (performance.now() - t0) / frames;
+    },
+    // Verification helpers: an extra raking point lamp for close inspection, relief on/off.
     light(x, y, z, intensity = 6, distance = 8) { app.scene.setDebugLamp(x, y, z, intensity, distance); app.scene.render(); },
     relief(on = true) { app.scene.setRelief(on); app.scene.render(); },
     resume() { app.lastStep = null; app.paused = false; },
