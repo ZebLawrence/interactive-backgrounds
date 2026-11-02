@@ -18,6 +18,8 @@ import { bakeProbes } from './probes.js';
 import { Walkway, BAR_LAYER } from './grate.js';
 import { buildWetPatches } from './wet.js';
 import { planWetPatches, slimeSkirts } from './wetplan.js';
+import { PhobosSky } from './sky.js';
+import { openEdges, planShell, sectorClass } from './phobos.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
@@ -39,8 +41,9 @@ export class Scene {
     this.screenH = h;
     this.time = 0;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a1018);
-    this.camera = new THREE.PerspectiveCamera(70, w / h, 0.05, 400);
+    this.scene.background = new THREE.Color(0x000000); // space: Mars, the sun and the stars are sky.js
+    // Far enough for the ground out to 2 km (the sky itself sits on the far plane, whatever it is).
+    this.camera = new THREE.PerspectiveCamera(70, w / h, 0.05, 2500);
     this.camera.rotation.order = 'YXZ';
     // Light comes from the fixtures (lights.js) plus a low ambient there; reflections from the room probes
     // (probes.js), baked on the first render. There is no scene.environment: before the probes exist nothing
@@ -87,9 +90,17 @@ export class Scene {
     // skirt below its rim (its floor is hidden: the slime surface sits SLIME_DROP lower).
     const walkway = (id) => level.byId.get(id)?.tags.has('walkway');
     const slime = (id) => level.byId.get(id)?.tags.has('slime');
+    // Open sectors' edges of the world: exterior ones go (the terrain runs on), courtyard ones become parapets
+    // (phobos.openEdges); their inner faces join the level mesh, the rest of the base's outside is sky.js.
+    this.edges = openEdges(level);
+    this.shell = planShell(level, this.edges);
+    const wallKey = (sector, a, b) => `${sector}|${a[0].toFixed(3)},${a[1].toFixed(3)}|${b[0].toFixed(3)},${b[1].toFixed(3)}`;
+    const opened = new Set([...this.edges.dropped, ...this.edges.parapets, ...this.edges.lowered.keys()].map((w) => wallKey(w.front, w.a, w.b)));
+    const family = (id) => [...level.byId.get(id).tags].find((t) => t.startsWith('mat:')).slice(4);
     this.mesh = buildLevelMesh(level, mats, undefined, keyOf, {
-      skipWall: (q) => q.kind === 'lower' && walkway(q.back) && slime(q.sector),
-      extraQuads: slimeSkirts(level),
+      skipWall: (q) => (q.kind === 'lower' && walkway(q.back) && slime(q.sector))
+        || ((q.kind === 'solid' || q.kind === 'upper') && opened.has(wallKey(q.sector, [q.corners[0][0], q.corners[0][2]], [q.corners[1][0], q.corners[1][2]]))),
+      extraQuads: [...slimeSkirts(level), ...this.shell.inner.map((q) => ({ ...q, mat: family(q.sector), kind: 'parapet' }))],
     });
     // Anti-tiling, part 1: each room's floor, walls and ceiling start the scan at their own offset (and floors
     // and ceilings at their own quarter turn), so the repeat never lines up from surface to surface. Part 2,
@@ -115,6 +126,9 @@ export class Scene {
     for (const m of this.mesh.group.children) {
       if (m.userData.surface !== 'floor') continue;
       if (slime(m.userData.sector)) m.visible = false; // still a click collider
+      // Exterior floors are the terrain itself (sky.js); the polygon stays as a click collider.
+      const s = level.byId.get(m.userData.sector);
+      if (s && sectorClass(s) === 'exterior' && !s.tags.has('slime')) m.visible = false;
       if (walkway(m.userData.sector)) {
         // The floor polygon becomes the far grating (grate.js); the scanned grate texture never lands here.
         m.material = this.walkway.floorMats.get(m.userData.sector);
@@ -128,6 +142,8 @@ export class Scene {
     this.rig = new LightRig(this.scene, this.lightPlan, { level });
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
+    // Phobos outside: Mars, the sun, stars, terrain, boulders, the base's outer walls (takes the items so far).
+    this.sky = new PhobosSky(this.scene, this.app?.assetItems, rng.fork('sky'), { level, renderer: this.renderer, edges: this.edges, shell: this.shell });
     this.graph = buildNavGraph(level);
     const tour = makeTour(level.pois, rng.fork('tour'));
     this.walker = new Walker(level, this.graph, tour, rng.fork('walker'));
@@ -140,6 +156,9 @@ export class Scene {
    * replaces the greybox on every surface planned to wear it. The tour keeps running throughout.
    */
   applyAsset(kind, name, asset) {
+    // The sky's own assets (Mars, boulders, regolith and concrete for the outside); the probes then re-bake so
+    // the courtyard and window rooms see them.
+    if (this.sky?.setAsset(kind, name, asset) && this.probes) { this.assignProbes(); this.probeRebakeAt = this.time + 0.5; }
     if (kind !== 'material' || !this.mesh || !asset?.color) return;
     if (name === 'mat:steel-brushed') this.walkway?.setMaps(asset);
     const key = name.startsWith('mat:') ? name.slice(4) : name;
@@ -225,6 +244,7 @@ export class Scene {
     }
     this.applyPose(this.walker.step(dt, inp));
     this.updateLights(dt, settings ?? this.settings);
+    this.sky?.update(dt, this.camera);
     // Re-bake the probes once Emergency Power has settled at a new level, or after materials arrived.
     if (this.probes) {
       const settled = this.emergency === 0 || this.emergency === 1;
@@ -300,6 +320,7 @@ export class Scene {
       this.walkway.setMirrorPass(false);
     }
     sm.needsUpdate = true;
+    this.sky?.syncShadow();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -312,6 +333,7 @@ export class Scene {
 
   dispose() {
     this.rig?.dispose();
+    this.sky?.dispose();
     this.probes?.dispose();
     this.slime?.dispose();
     this.walkway?.dispose();
