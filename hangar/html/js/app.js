@@ -56,6 +56,7 @@ class App {
     this.size = this.windowSize();
     this.applyPixelRatio();
     this.assetItems = new Map(); // items loaded so far, for scenes built after they arrived (reseed)
+    this.manifest = null;
     this.assets = this.loadAssets();
     this.rebuild();
     this.bindInput();
@@ -78,6 +79,7 @@ class App {
     let assets;
     try {
       const { manifest, failures: missing } = await loadManifest();
+      this.manifest = manifest; // before any item arrives: scenes read per-tag tiling from it
       assets = await loadAssets(this.renderer, manifest, progress, {
         priority: ASSET_PRIORITY,
         // Items arrive one by one while the tour already runs; the scene may swap greybox for the real thing.
@@ -272,6 +274,9 @@ function installDebug(app) {
       app.scene.render();
     },
     pause() { app.paused = true; },
+    // Verification helpers: a raking point lamp (nothing lights it by default until Task 8), relief on/off.
+    light(x, y, z, intensity = 6, distance = 8) { app.scene.setDebugLamp(x, y, z, intensity, distance); app.scene.render(); },
+    relief(on = true) { app.scene.setRelief(on); app.scene.render(); },
     resume() { app.lastStep = null; app.paused = false; },
   };
 }

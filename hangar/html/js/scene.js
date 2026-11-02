@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { loadLevel } from './level.js';
 import { buildLevelMesh } from './levelmesh.js';
+import { planMaterials } from './materialplan.js';
+import { makeMaterial, environmentFor, pomUniforms } from './materials.js';
 import { buildNavGraph } from './navgraph.js';
 import { makeRng } from './rng.js';
 import { makeTour } from './tour.js';
@@ -13,7 +15,11 @@ import { Walker, resolveClickTarget } from './walker.js';
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
 const REST_MOVE = 30, REST_STILL = 4, REST_HOLD = 0.8;
 
-const GREYS = { steel: 0x8d96a0, concrete: 0x777777, computer: 0x5d7a8a, 'panel-brown': 0x8a6a4e, grate: 0x4a4a4a, regolith: 0xa0907a };
+// Greybox stand-ins, worn until each scanned material arrives (and kept if one never does).
+const GREYS = {
+  steel: 0x8d96a0, 'steel-brushed': 0x9aa2aa, concrete: 0x777777, 'concrete-cracked': 0x737373, 'concrete-stained': 0x6e6c68,
+  'concrete-painted': 0x8a8a86, computer: 0x5d7a8a, 'panel-brown': 0x8a6a4e, grate: 0x4a4a4a, regolith: 0xa0907a,
+};
 
 export class Scene {
   constructor(app, renderer, w, h, settings, seed) {
@@ -29,6 +35,10 @@ export class Scene {
     this.camera = new THREE.PerspectiveCamera(70, w / h, 0.05, 400);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(new THREE.HemisphereLight(0xcfd8e4, 0x303038, 2.2));
+    // A dim neutral room for reflections until Task 8's fixtures and probes: metal reflects something.
+    this.scene.environment = environmentFor(renderer);
+    this.scene.environmentIntensity = 0.35;
+    this.debugLamp = null;
     this.level = null;
     this.walker = null;
     this.raycaster = new THREE.Raycaster();
@@ -45,17 +55,50 @@ export class Scene {
 
   build(json) {
     const level = (this.level = loadLevel(json));
+    const rng = makeRng(this.seed);
+    // Which variant each sector's floor, walls and ceiling wear this seed (rooms differ, a room is uniform).
+    this.plan = planMaterials(level, rng.fork('materials'));
     const mats = new Map();
     for (const [name, color] of Object.entries(GREYS)) mats.set(name, new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.FrontSide }));
     mats.set('window', new THREE.MeshStandardMaterial({ color: 0x88aacc, transparent: true, opacity: 0.18, roughness: 0.1, side: THREE.DoubleSide, depthWrite: false }));
-    this.mesh = buildLevelMesh(level, mats);
+    const keyOf = (sector, mat, surface) => this.plan.get(sector)?.[surface] ?? mat;
+    this.mesh = buildLevelMesh(level, mats, undefined, keyOf);
     this.scene.add(this.mesh.group);
+    // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
+    for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     this.graph = buildNavGraph(level);
-    const rng = makeRng(this.seed);
     const tour = makeTour(level.pois, rng.fork('tour'));
     this.walker = new Walker(level, this.graph, tour, rng.fork('walker'));
     this.applyPose(this.walker.step(0, this.input));
   }
+
+  /**
+   * Called by app.js as each asset finishes loading (and by build for those that came first): a material
+   * replaces the greybox on every surface planned to wear it. The tour keeps running throughout.
+   */
+  applyAsset(kind, name, asset) {
+    if (kind !== 'material' || !this.mesh || !asset?.color) return;
+    const key = name.startsWith('mat:') ? name.slice(4) : name;
+    const meshes = this.mesh.group.children.filter((m) => m.userData.key === key);
+    if (!meshes.length) return;
+    const material = makeMaterial(name, asset, this.app?.manifest?.materials?.[name], this.renderer);
+    for (const m of meshes) m.material = material;
+  }
+
+  /** Debug only (window.hangar.light): a point lamp to rake across surfaces until Task 8's fixtures exist. */
+  setDebugLamp(x, y, z, intensity = 6, distance = 8) {
+    if (!this.debugLamp) {
+      this.debugLamp = new THREE.PointLight(0xfff2e0, intensity, distance, 2);
+      this.scene.add(this.debugLamp);
+    }
+    this.debugLamp.position.set(x, y, z);
+    this.debugLamp.intensity = intensity;
+    this.debugLamp.distance = distance;
+    return this.debugLamp;
+  }
+
+  /** Debug only: parallax relief on or off for every patched material (shared uniform). */
+  setRelief(on) { pomUniforms.pomEnabled.value = on ? 1 : 0; }
 
   applyPose(p) {
     this.camera.position.set(p.x, p.y, p.z);
@@ -127,7 +170,8 @@ export class Scene {
   dispose() {
     this.scene.traverse((o) => {
       o.geometry?.dispose();
-      o.material?.dispose?.();
+      // Scanned materials and their textures belong to the page (materials.js / app.assets), not the scene.
+      if (!o.material?.userData?.shared) o.material?.dispose?.();
     });
   }
 }

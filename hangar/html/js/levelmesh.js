@@ -47,19 +47,22 @@ function quadGeometry(quads) {
 }
 
 /**
- * Build the level. `materials` maps a material name ('steel', 'concrete', ..., 'window') to a THREE.Material.
+ * Build the level. `materials` maps a material key to a THREE.Material. `keyOf(sectorId, mat, surface)` picks
+ * the key for a sector's family `mat` ('steel', 'concrete', ..., 'window') on a surface ('floor', 'ceil' or
+ * 'wall'); by default the key is the family itself. Each mesh records userData { sector, mat, surface, key }.
  * Window openings are two thin sill sectors, so each opening yields two window walls; only one pane (the first
  * per sill sector) is kept, the rest of the opening is left open.
  */
-export function buildLevelMesh(level, materials, tile = TILE) {
+export function buildLevelMesh(level, materials, tile = TILE, keyOf = (sector, mat) => mat) {
   const group = new THREE.Group();
   const bySector = new Map();
   const colliders = [];
-  const add = (sector, mat, geo, collider) => {
-    const m = materials.get(mat);
-    if (!m) throw new Error(`levelmesh: no material for "${mat}"`);
+  const add = (sector, mat, surface, geo, collider) => {
+    const key = mat === 'window' ? mat : keyOf(sector, mat, surface);
+    const m = materials.get(key);
+    if (!m) throw new Error(`levelmesh: no material for "${key}"`);
     const mesh = new THREE.Mesh(geo, m);
-    mesh.userData.sector = sector; mesh.userData.mat = mat;
+    mesh.userData.sector = sector; mesh.userData.mat = mat; mesh.userData.surface = surface; mesh.userData.key = key;
     group.add(mesh);
     if (!bySector.has(sector)) bySector.set(sector, []);
     bySector.get(sector).push(mesh);
@@ -69,8 +72,8 @@ export function buildLevelMesh(level, materials, tile = TILE) {
 
   for (const s of level.sectors) {
     const mat = matOf(s);
-    add(s.id, mat, flatGeometry(s.poly, s.floor, true, tile), true);
-    if (!s.tags.has('sky')) add(s.id, mat, flatGeometry(s.poly, s.ceil, false, tile), false);
+    add(s.id, mat, 'floor', flatGeometry(s.poly, s.floor, true, tile), true);
+    if (!s.tags.has('sky')) add(s.id, mat, 'ceil', flatGeometry(s.poly, s.ceil, false, tile), false);
   }
 
   const bySectorMat = new Map();
@@ -86,7 +89,7 @@ export function buildLevelMesh(level, materials, tile = TILE) {
   }
   for (const [k, quads] of bySectorMat) {
     const [sector, mat] = k.split('|');
-    add(sector, mat, quadGeometry(quads), mat !== 'window');
+    add(sector, mat, 'wall', quadGeometry(quads), mat !== 'window');
   }
   return { group, bySector, colliders };
 }
