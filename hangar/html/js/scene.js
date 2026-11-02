@@ -281,6 +281,7 @@ export class Scene {
     // caster. Probe bakes and the mirror run first and reuse the previous frame's maps (the mirror's camera
     // leaves out the bars and the slime); only the very first bake renders them, with every layer on.
     const sm = this.renderer.shadowMap;
+    sm.needsUpdate = false;
     if (this.level && this.slime) {
       if (!this.probes) {
         // First frame: bake every probe, hand them out, and bake again so metal sees metal (two bounces).
@@ -291,10 +292,9 @@ export class Scene {
         this.probes.bakeAll();
         this.probeEmergency = this.emergency;
       } else {
-        sm.needsUpdate = false;
         this.probes.update(1);
       }
-      sm.needsUpdate = false;
+      this.walkway.update(this.camera, this.renderer);
       this.walkway.setMirrorPass(true);
       this.slime.render(this.camera);
       this.walkway.setMirrorPass(false);

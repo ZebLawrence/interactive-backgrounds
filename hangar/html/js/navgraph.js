@@ -7,19 +7,13 @@
 // Edge kinds: 'walk' (flat), 'stairs' (floors differ, within maxStep), 'door' (touches a door
 // sector), 'lift' (low <-> high ends of a lift). Coordinates are metres, x east / z south.
 
+import { insidePoly } from './level.js';
+
 const GRID = 1.0;
 const CELL = 2.0; // spatial hash cell for wall segments
 const LIFT_WAIT = 6; // extra path cost (metres) for waiting on a lift
 const EPS = 1e-6;
 
-function insidePoly(poly, x, z) {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, zi] = poly[i], [xj, zj] = poly[j];
-    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-  }
-  return c;
-}
 
 function distToSeg(x, z, a, b) {
   const dx = b[0] - a[0], dz = b[1] - a[1];

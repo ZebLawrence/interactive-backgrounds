@@ -29,7 +29,8 @@ function doomArea(poly) {
   return s / 2;
 }
 
-function insidePoly(poly, x, z) {
+/** Even-odd test: is (x, z) inside the [x, z] polygon `poly`? */
+export function insidePoly(poly, x, z) {
   let c = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
     const [xi, zi] = poly[i], [xj, zj] = poly[j];

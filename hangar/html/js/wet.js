@@ -1,62 +1,42 @@
-// Hangar — Wet floors: puddles and damp patches as thin decals over the floor (positions: wetplan).
+// Hangar — Wet floors: puddles as thin decals over the floor (positions: wetplan.planWetPatches).
 //
-// A patch is a flat disc 3 mm above the floor, stretched and turned, cut to a soft irregular outline by one of
-// four mask textures (painted once, seeded, mipmapped). Its material is a smooth water film: near-black
-// diffuse, roughness 0.05 to 0.15, ior 1.33, so the floor shows through darkened and the nearest lamp shows
-// in it twice: as the sharp specular highlight of the live light and in the room probe's reflection. The
-// blend is premultiplied by hand (ONE, ONE_MINUS_SRC_ALPHA, the light faded by the mask in the shader), so
-// the reflection keeps its full strength inside the outline instead of being halved by the darkening.
+// A patch is a flat disc 3 mm above the floor, stretched and turned. Its outline is procedural, evaluated
+// per pixel: a radius that wobbles with the angle (four harmonics, seeded per patch by `shape`), cut with a
+// one-pixel antialiased edge (fwidth), so the water's edge is crisp at any distance and texel density is not
+// a question. Inside, the film darkens the floor a little (more where it is deeper, toward the middle, and
+// in a thin wet margin along the edge) and reflects: a smooth water material (roughness 0.05 to 0.15, ior
+// 1.33) whose light is added at full strength (ONE, ONE_MINUS_SRC_ALPHA), so the nearest lamp shows in it
+// as the live light's sharp highlight and in the room probe.
 
 import * as THREE from 'three';
 import { edit } from './materials.js';
 import { makeRng } from './rng.js';
 
-const MASKS = 4;
-let masks = null;
-
-/** Four soft blob outlines: clusters of overlapping radial gradients, kept inside the disc. */
-function maskTextures(anisotropy) {
-  if (masks) return masks;
-  const rng = makeRng(0x5eed);
-  masks = Array.from({ length: MASKS }, (_, k) => {
-    const N = 256, c = document.createElement('canvas');
-    c.width = c.height = N;
-    const g = c.getContext('2d');
-    g.fillStyle = '#000';
-    g.fillRect(0, 0, N, N);
-    g.globalCompositeOperation = 'lighter';
-    const blobs = 7 + k * 2;
-    for (let i = 0; i < blobs; i++) {
-      const a = rng.range(0, Math.PI * 2), d = rng.range(0, 0.42) * N * 0.5;
-      const x = N / 2 + Math.cos(a) * d, y = N / 2 + Math.sin(a) * d;
-      const r = rng.range(0.22, 0.42) * N * 0.5 * (1 - d / (N * 0.5) * 0.6);
-      const gr = g.createRadialGradient(x, y, 0, x, y, r);
-      gr.addColorStop(0, 'rgba(255,255,255,0.55)');
-      gr.addColorStop(0.6, 'rgba(255,255,255,0.35)');
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-    }
-    // Fade everything to zero before the disc's rim.
-    g.globalCompositeOperation = 'source-over';
-    const rim = g.createRadialGradient(N / 2, N / 2, N * 0.3, N / 2, N / 2, N * 0.49);
-    rim.addColorStop(0, 'rgba(0,0,0,0)');
-    rim.addColorStop(1, 'rgba(0,0,0,1)');
-    g.fillStyle = rim;
-    g.fillRect(0, 0, N, N);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.NoColorSpace;
-    t.anisotropy = anisotropy;
-    t.minFilter = THREE.LinearMipmapLinearFilter;
-    t.generateMipmaps = true;
-    return t;
-  });
-  return masks;
-}
-
-// The light reflected by the film fades with the mask, then the blend adds it to the darkened floor.
+const WET_PARS_V = 'varying vec2 vWetQ;';
+const WET_PARS_F = /* glsl */ `
+varying vec2 vWetQ;
+uniform vec4 wetAmp;
+uniform vec4 wetPhase;
+uniform float wetR0;
+uniform float wetMetres; // metres per unit of vWetQ (the patch's shorter half-axis)
+float wetCover;
+`;
+// Outline radius at angle th: wetR0 x (1 + harmonics 2, 3, 5, 7); continuous across atan's branch cut.
+const WET_ALPHA = /* glsl */ `
+  {
+    float r = length( vWetQ );
+    float th = atan( vWetQ.y, vWetQ.x );
+    float rho = wetR0 * ( 1.0 + wetAmp.x * cos( 2.0 * th + wetPhase.x ) + wetAmp.y * cos( 3.0 * th + wetPhase.y )
+      + wetAmp.z * cos( 5.0 * th + wetPhase.z ) + wetAmp.w * cos( 7.0 * th + wetPhase.w ) );
+    float aa = max( fwidth( r ), 1e-5 );
+    wetCover = smoothstep( - 0.5, 0.5, ( rho - r ) / aa );
+    float inside = max( rho - r, 0.0 ) * wetMetres; // metres in from the edge
+    float margin = 1.0 - smoothstep( 0.004, 0.02, inside ); // the wet margin along the edge
+    float depth = smoothstep( 0.0, 0.25, inside ); // deeper toward the middle
+    diffuseColor.a *= wetCover * ( 0.55 + 0.45 * depth + 0.3 * margin );
+  }
+`;
 const FILM = /* glsl */ `
-  float wetCover = smoothstep( 0.0, 0.22, diffuseColor.a );
   outgoingLight *= wetCover;
 `;
 
@@ -64,21 +44,35 @@ const FILM = /* glsl */ `
 export function buildWetPatches(patches, renderer) {
   const group = new THREE.Group();
   group.name = 'wet';
-  const tex = maskTextures(renderer.capabilities.getMaxAnisotropy());
   const geo = new THREE.CircleGeometry(0.5, 48).rotateX(-Math.PI / 2); // unit diameter, facing up
   for (const p of patches) {
     const m = new THREE.MeshPhysicalMaterial({
       name: 'wet', color: 0x0a0a0a, roughness: p.roughness, metalness: 0, ior: 1.33,
-      alphaMap: tex[p.mask], transparent: true, opacity: 0.4, depthWrite: false,
+      transparent: true, opacity: 0.32, depthWrite: false,
       blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     m.userData.envDirect = true;
-    m.onBeforeCompile = (shader) => {
-      shader.fragmentShader = edit(shader.fragmentShader, '#include <opaque_fragment>', `${FILM}\n#include <opaque_fragment>`, 'the wet fragment shader');
+    const rng = makeRng(p.shape);
+    const own = {
+      wetAmp: { value: new THREE.Vector4(rng.range(0.06, 0.13), rng.range(0.04, 0.09), rng.range(0.02, 0.05), rng.range(0.01, 0.03)) },
+      wetPhase: { value: new THREE.Vector4(rng.range(0, 6.3), rng.range(0, 6.3), rng.range(0, 6.3), rng.range(0, 6.3)) },
+      wetR0: { value: 0.74 }, // the harmonics' sum stays under 0.3, so the outline stays inside the disc
+      wetMetres: { value: p.r },
     };
-    m.customProgramCacheKey = () => 'hangar-wet-1';
+    m.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, own);
+      let vs = shader.vertexShader, fs = shader.fragmentShader;
+      vs = edit(vs, 'void main() {', `${WET_PARS_V}\nvoid main() {`, 'the wet vertex shader');
+      vs = edit(vs, '#include <uv_vertex>', '#include <uv_vertex>\n\tvWetQ = uv * 2.0 - 1.0;', 'the wet vertex shader');
+      fs = edit(fs, 'void main() {', `${WET_PARS_F}\nvoid main() {`, 'the wet fragment shader');
+      fs = edit(fs, '#include <alphamap_fragment>', `#include <alphamap_fragment>\n${WET_ALPHA}`, 'the wet fragment shader');
+      fs = edit(fs, '#include <opaque_fragment>', `${FILM}\n#include <opaque_fragment>`, 'the wet fragment shader');
+      shader.vertexShader = vs;
+      shader.fragmentShader = fs;
+    };
+    m.customProgramCacheKey = () => 'hangar-wet-2';
     const mesh = new THREE.Mesh(geo, m);
     mesh.position.set(p.x, p.y + 0.003, p.z);
     mesh.rotation.y = p.rot;

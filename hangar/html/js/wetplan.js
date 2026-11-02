@@ -4,14 +4,15 @@
 // Rooms are lightplan's rooms (sectors joined across shared edges, split at corridors, doors and sills).
 
 import { lightRooms } from './lightplan.js';
-import { sectorAt } from './level.js';
+import { insidePoly } from './level.js';
 
 export const EYE = 1.7;
 export const MIN_PROBE_ROOM = 8; // m²: smaller rooms (sills, doors, single steps) share the nearest probe
 export const SLIME_DROP = 0.15; // m: the slime surface sits this far below its sector's floor
 export const SLIME_LIGHT_SPACING = 6; // m: one glow light per 6 m of pool
 export const SLIME_LIGHT_HEIGHT = 0.8;
-export const SLIME_LIGHT_CLEAR = 1.2;
+export const SLIME_LIGHT_LOW = 0.25;
+const WET_TRIES = 200;
 const NO_WET = ['slime', 'walkway', 'window', 'door', 'lift', 'sky'];
 
 export function polyArea(poly) {
@@ -20,14 +21,7 @@ export function polyArea(poly) {
   return Math.abs(s / 2);
 }
 
-export function insidePoly(poly, x, z) {
-  let c = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, zi] = poly[i], [xj, zj] = poly[j];
-    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-  }
-  return c;
-}
+export { insidePoly }; // the one even-odd test (level.js), re-exported for the planners' users
 
 /** Distance from (x, z) to the nearest edge of `poly`. */
 export function edgeDistance(poly, x, z) {
@@ -106,7 +100,7 @@ export function planProbes(level) {
  * slime, walkway, sill, door, lift or open sky), each wholly inside one sector. About two in three are
  * dropped near a ceiling fixture (0.6 to 2.5 m off its foot), where a puddle catches the lamp; the rest
  * anywhere on the room's floor. Returns [{ x, y, z, sector, r, stretch, rot, roughness, mask }]: radius r
- * in metres, stretched along its rotated x by `stretch`, `mask` picks one of the soft outline textures.
+ * in metres, stretched along its rotated x by `stretch`; `shape` seeds its outline (wet.js).
  */
 export function planWetPatches(level, fixtures, rng) {
   const out = [];
@@ -118,10 +112,13 @@ export function planWetPatches(level, fixtures, rng) {
     const lamps = fixtures.filter((f) => f.room === room && f.kind !== 'emergency' && !f.dead);
     const n = rng.int(2, 5);
     let placed = 0;
-    for (let tries = 0; tries < 60 && placed < n; tries++) {
-      const r = rng.range(0.35, 1.0), stretch = rng.range(1, 1.7);
+    for (let tries = 0; tries < WET_TRIES && placed < n; tries++) {
+      // A small or crowded room still gets its patches: after every 40 failed tries the patches shrink.
+      const shrink = [1, 0.7, 0.45, 0.3, 0.2][Math.floor(tries / 40)];
+      // No patch longer than a quarter of the room's size across, so a small room has space for two.
+      const stretch = rng.range(1, 1.7), r = Math.min(rng.range(0.35, 1.0), Math.sqrt(area) / 4 / stretch) * shrink;
       let x, z;
-      if (lamps.length && rng.next() < 0.65) {
+      if (lamps.length && tries < 80 && rng.next() < 0.65) {
         const f = lamps[Math.floor(rng.next() * lamps.length)];
         const a = rng.range(0, Math.PI * 2), d = rng.range(0.6, 2.5);
         x = f.x + Math.cos(a) * d; z = f.z + Math.sin(a) * d;
@@ -132,7 +129,7 @@ export function planWetPatches(level, fixtures, rng) {
       const reach = r * stretch;
       if (!s || edgeDistance(s.poly, x, z) < reach + 0.1) continue;
       if (out.some((p) => Math.hypot(p.x - x, p.z - z) < p.r * p.stretch + reach + 0.3)) continue;
-      out.push({ x, y: s.floor, z, sector: s.id, r, stretch, rot: rng.range(0, Math.PI), roughness: rng.range(0.05, 0.15), mask: rng.int(0, 3) });
+      out.push({ x, y: s.floor, z, sector: s.id, r, stretch, rot: rng.range(0, Math.PI), roughness: rng.range(0.05, 0.15), shape: rng.int(1, 0x7fffffff) });
       placed++;
     }
   }
@@ -140,24 +137,54 @@ export function planWetPatches(level, fixtures, rng) {
 }
 
 /**
- * The slime's glow lights: points on a SLIME_LIGHT_SPACING grid inside every slime sector (at least one per
- * pool), SLIME_LIGHT_HEIGHT above the surface and at least SLIME_LIGHT_CLEAR from the pool's edge (a point
- * light hard by a wall burns a hot spot into it). [{ x, y, z, sector }].
+ * The slime's glow lights, the full plan: one point per SLIME_LIGHT_SPACING m square of pool. A pool here is
+ * every slime sector at one surface height together with the walkway sectors over it (the slime runs on
+ * under the grating, slimeUnder). Each grid cell holding at least MIN_CELL_POOL m² of pool gets the point
+ * (on a 0.5 m sub-grid) farthest from the pool's outer edge, so narrow pools still get theirs; points closer
+ * than SLIME_LIGHT_MIN_CLEAR to the edge are dropped (a point light hard by a wall burns a hot spot into it).
+ * SLIME_LIGHT_HEIGHT above the surface (SLIME_LIGHT_LOW under the walkway). [{ x, y, z, sector, clear, power }]. Only the nearest few are live (slime.js).
  */
+const MIN_CELL_POOL = 12; // m²: a third of a cell; a sliver of pool in a cell is lit from the next
+export const SLIME_LIGHT_MIN_CLEAR = 0.35;
 export function slimeLightPoints(level, spacing = SLIME_LIGHT_SPACING) {
+  const under = slimeUnder(level);
+  const pools = new Map(); // surface y -> sectors
+  for (const s of level.sectors) {
+    if (!s.tags.has('slime') && !under.has(s.id)) continue;
+    const y = +(s.tags.has('slime') ? s.floor - SLIME_DROP : under.get(s.id)).toFixed(4);
+    if (!pools.has(y)) pools.set(y, []);
+    pools.get(y).push(s);
+  }
+  const k = ([x, z]) => `${x.toFixed(4)},${z.toFixed(4)}`;
   const out = [];
-  for (const s of level.sectors.filter((t) => t.tags.has('slime'))) {
-    const box = bbox([s.poly]);
-    const y = s.floor - SLIME_DROP + SLIME_LIGHT_HEIGHT;
-    const before = out.length;
-    for (let x = box.x0 + spacing / 2; x < box.x1; x += spacing) for (let z = box.z0 + spacing / 2; z < box.z1; z += spacing) {
-      if (insidePoly(s.poly, x, z) && edgeDistance(s.poly, x, z) > SLIME_LIGHT_CLEAR) out.push({ x, y, z, sector: s.id });
-    }
-    if (out.length === before) {
-      let mx = 0, mz = 0;
-      for (const [x, z] of s.poly) { mx += x; mz += z; }
-      mx /= s.poly.length; mz /= s.poly.length;
-      if (sectorAt(level, mx, mz)?.id === s.id) out.push({ x: mx, y, z: mz, sector: s.id });
+  for (const [y, ss] of pools) {
+    // Outer edges of the pool: edges no other sector of the pool shares.
+    const edges = new Set();
+    for (const s of ss) s.poly.forEach((a, i) => edges.add(`${k(a)}>${k(s.poly[(i + 1) % s.poly.length])}`));
+    const rim = [];
+    for (const s of ss) s.poly.forEach((a, i) => {
+      const b = s.poly[(i + 1) % s.poly.length];
+      if (!edges.has(`${k(b)}>${k(a)}`)) rim.push([a, b]);
+    });
+    const clearAt = (x, z) => Math.min(...rim.map((e) => edgeDistance(e, x, z)));
+    const box = bbox(ss.map((s) => s.poly));
+    for (let cx = box.x0; cx < box.x1; cx += spacing) for (let cz = box.z0; cz < box.z1; cz += spacing) {
+      let best = null, n = 0;
+      for (let x = cx + 0.25; x < Math.min(cx + spacing, box.x1); x += 0.5) for (let z = cz + 0.25; z < Math.min(cz + spacing, box.z1); z += 0.5) {
+        const s = ss.find((t) => insidePoly(t.poly, x, z));
+        if (!s) continue;
+        n++;
+        const c = clearAt(x, z);
+        if (!best || c > best.clear) best = { x, z, sector: s.id, clear: c };
+      }
+      if (best && n * 0.25 >= MIN_CELL_POOL && best.clear >= SLIME_LIGHT_MIN_CLEAR) {
+        // Under the walkway's deck a light 0.8 m up would sit 0.3 m below the bars and burn them white: there it
+        // floats just over the surface (SLIME_LIGHT_LOW), 0.85 m below the deck.
+        const low = under.has(best.sector);
+        // It is also dimmer (power): the deck's underside is what it lights most, and a bright underside would
+        // reflect as bright as the glow, losing the walkway's dark band in the pool.
+        out.push({ x: best.x, y: y + (low ? SLIME_LIGHT_LOW : SLIME_LIGHT_HEIGHT), z: best.z, sector: best.sector, clear: best.clear, power: low ? 0.15 : 1 });
+      }
     }
   }
   return out;

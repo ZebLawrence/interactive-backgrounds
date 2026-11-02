@@ -6,24 +6,28 @@
 //   - slow analytic ripples (six travelling waves, wavelengths 0.3 to 1.5 m, phase speeds 0.04 to 0.08 m/s)
 //     bend the shading normal. Time wraps hourly and every wave's frequency is a whole number of cycles per
 //     hour, so the wrap is seamless; a wave fades out where a pixel covers more than a sixth of it;
-//   - an emissive green (#5fe23a at 2.5) with a slow, faint brightness drift (unchanged by Emergency Power),
-//     under a lit, diffuse scum (albedo 0x9cc85a) that takes the lamps' light and shadows;
+//   - murk: two layers of a tileable fBm field drifting a whole number of tiles per hour set where the liquid
+//     is deep and dark (dim, blue-green glow), where it glows through brightly (yellow-green, above the base
+//     value) and where a film of scum floats (the only lit, diffuse part; it dims the glow under it). The
+//     glow's base value is #5fe23a at 2.5 (the brief's), modulated 0.3x to 1.45x by the murk and +-15% by two
+//     slow swells; none of it changes under Emergency Power. Open liquid is near-black and glossy;
 //   - a planar mirror: the scene rendered from the camera reflected in the plane, with the projection's near
-//     plane made oblique at the surface (as three's Reflector does) so nothing under the slime reflects. The
-//     reflection replaces the glow by a Schlick Fresnel term, distorted by the ripple normal. Its F0 is 0.5,
-//     not water's 0.04: the glow sits under an oily film. At 0.04 the 1.9-bright glow drowned every
-//     reflection but a lamp's (the mirror changed the slime by under 2%), and it sat so high on the tone
-//     curve that the pool read as pale lime; at 0.5 the dark hall halves it near the eye and lamps, lit walls
-//     and the walkway's green-lit underside show in it, more at grazing angles.
+//     plane made oblique at the surface (as three's Reflector does) so nothing under the slime reflects.
+//     Everything the surface gives off (glow, scum, specular) gives way to the reflection by a Schlick
+//     Fresnel term (F0 0.65: the glow sits under an oily film; at water's 0.04 a 1.9-bright glow drowned every
+//     reflection but a lamp's), distorted by the ripple normal. So the walkway, rails and columns show as a
+//     dark band in the pool and lamps as bright ripples.
 // Pools at different heights would each need their own mirror; one render target (half the drawing buffer
 // per side: it is rippled) serves the nearest pool in view each frame that is in the camera's room or within
-// MIRROR_REACH, scissored to the pool's box on screen. Other pools fall back to their room probe (mirrorMix 0).
-// The green light: one point light per SLIME_LIGHT_SPACING m of pool (wetplan.slimeLightPoints), pooled like
-// the lamps: the SLIME_SLOTS nearest are live and fade in and out, unshadowed, range 8 m, 0.8 m above the
-// surface and 1.2 m in from its edge, so walls, columns and the walkway's underside glow from below.
+// MIRROR_REACH, scissored to the pool's box on screen. Other pools fall back to their room probe (mirrorMix 0);
+// changing pools, the mirror fades out of the old one and into the new one over MIRROR_FADE s each.
+// The green light: the plan is one point light per SLIME_LIGHT_SPACING m square of pool, under the walkway
+// too (wetplan.slimeLightPoints); pooled like the lamps, the SLIME_SLOTS nearest are live and fade in and
+// out, unshadowed, range 8 m, 0.8 m above the surface, so walls, columns and the walkway's underside glow
+// from below. The open liquid is near-black, so they barely light the surface they float over.
 
 import * as THREE from 'three';
-import { edit } from './materials.js';
+import { edit, macroTexture } from './materials.js';
 import { slimeLightPoints, slimeUnder, SLIME_DROP } from './wetplan.js';
 import { pickNearest, updateSlots, lightRooms } from './lightplan.js';
 import { sectorAt } from './level.js';
@@ -32,12 +36,13 @@ export const SLIME_LAYER = 1; // the slime surfaces: seen by the main camera and
 export const SLIME_COLOR = 0x5fe23a;
 export const SLIME_GLOW = 2.5;
 export const SLIME_SLOTS = 3;
-const SLIME_CD = 5; // candela per glow light
+const SLIME_CD = 9; // candela per glow light (the pool lights its walls strongly; the walls are the bright backdrop the walkway reflects dark against)
 const PROBE_GLOW = 0.25; // the slime's glow as the room probes see it (see setProbeMode)
 const SLIME_RANGE = 8;
 export const MIRROR_SCALE = 0.5; // mirror target per side, relative to the drawing buffer (it is rippled)
 const CLIP_BIAS = 0.003;
 const MIRROR_REACH = 8; // m
+const MIRROR_FADE = 0.5; // s
 const MIN_SCREEN_SHARE = 0.004; // pools smaller than this share of the screen are not mirrored
 const MIRROR_MARGIN = 0.04; // screen fraction added round a pool's box for the ripples' distortion
 
@@ -57,13 +62,16 @@ varying vec3 vSlimeW;
 varying vec4 vMirror;
 `;
 const PARS_F = /* glsl */ `
-#define SLIME_F0 0.5
+#define SLIME_F0 0.65
 uniform float slimeTime;
 uniform sampler2D mirrorMap;
 uniform float mirrorMix;
+uniform sampler2D slimeMurkMap;
 varying vec3 vSlimeW;
 varying vec4 vMirror;
 vec3 slimeNW;
+float slimeMurk; // 0 deep, dark murk .. 1 a bright glowing patch
+float slimeFilm; // 0 open liquid .. 1 under a floating film of scum
 // Adds one travelling wave's slope to g. fp is the pixel footprint in metres: a wave a pixel cannot resolve
 // fades out instead of aliasing.
 void slimeWave( inout vec2 g, vec2 p, vec2 d, float L, float A, float cyc, float fp ) {
@@ -86,12 +94,31 @@ ${waveCalls}
     normal = normalize( ( viewMatrix * vec4( slimeNW, 0.0 ) ).xyz );
   }
 `;
-// Two slow crossing swells of brightness, +-12%, also whole cycles per hour.
+// Murk: two layers of the page's tileable fBm field (materials.macroTexture, mipmapped, so nothing
+// shimmers), 11 m and 4.3 m across, drifting by a whole number of tiles per hour (0.007 and 0.004 m/s),
+// so the hourly wrap is seamless. They set where the liquid is deep and dark, where it glows through
+// brightly, and where a film of scum floats on it. The film is the only lit, diffuse part; open liquid is
+// near-black glossy (it takes the lamps only as specular and mirror).
+const MURK = /* glsl */ `
+  {
+    float tH = slimeTime / 3600.0;
+    vec4 ma = texture2D( slimeMurkMap, vSlimeW.xz / 11.0 + vec2( 1.0, 2.0 ) * tH );
+    vec4 mb = texture2D( slimeMurkMap, mat2( 0.8, 0.6, - 0.6, 0.8 ) * vSlimeW.xz / 4.3 + vec2( - 3.0, 1.0 ) * tH );
+    slimeMurk = smoothstep( 0.22, 0.78, 0.65 * ma.r + 0.35 * mb.r );
+    slimeFilm = smoothstep( 0.6, 0.8, 0.55 * ma.g + 0.45 * mb.g );
+    diffuseColor.rgb = mix( vec3( 0.012, 0.02, 0.008 ), vec3( 0.075, 0.085, 0.04 ), slimeFilm );
+  }
+`;
+// Glow: deep murk is dim and blue-green, bright patches are yellow-green and above the base value; a
+// film dims what is under it. Plus two slow crossing swells of +-15%, whole cycles per hour.
 const GLOW = /* glsl */ `
   {
     float sw = sin( dot( vSlimeW.xz, vec2( 0.53, 0.21 ) ) + 6.2831853 * 7.0 * slimeTime / 3600.0 )
              * sin( dot( vSlimeW.xz, vec2( -0.17, 0.61 ) ) - 6.2831853 * 5.0 * slimeTime / 3600.0 );
-    totalEmissiveRadiance *= 1.0 + 0.12 * sw;
+    vec3 deep = totalEmissiveRadiance * vec3( 0.35, 0.75, 0.65 );
+    vec3 bright = totalEmissiveRadiance * vec3( 1.3, 1.05, 0.6 );
+    totalEmissiveRadiance = mix( deep, bright, slimeMurk ) * mix( 0.3, 1.45, slimeMurk ) * ( 1.0 - 0.75 * slimeFilm );
+    totalEmissiveRadiance *= 1.0 + 0.15 * sw;
   }
 `;
 const MIRROR = /* glsl */ `
@@ -103,9 +130,9 @@ const MIRROR = /* glsl */ `
     mc.xy += slimeNW.xz * 0.05 * mc.w;
     vec3 refl = max( texture2DProj( mirrorMap, mc ).rgb, vec3( 0.0 ) );
     if ( any( isnan( refl ) ) || any( isinf( refl ) ) ) refl = vec3( 0.0 );
-    // The scum on top is lit and takes the lamps' shadows (the walkway's bars on the pool) unchanged; the
-    // glow beneath and the surface's own specular give way to the mirror.
-    outgoingLight = totalDiffuse + mix( totalSpecular + totalEmissiveRadiance, refl, sF * mirrorMix );
+    // Everything the surface gives off (scum, glow, its own specular) gives way to the mirror by Fresnel,
+    // so the walkway, rails and columns over it show as a dark band.
+    outgoingLight = mix( totalDiffuse + totalSpecular + totalEmissiveRadiance, refl, sF * mirrorMix );
   }
 `;
 
@@ -134,7 +161,7 @@ export class Slime {
     this.group = new THREE.Group();
     this.group.name = 'slime';
     scene.add(this.group);
-    this.shared = { slimeTime: { value: 0 }, mirrorMap: { value: null }, mirrorMatrix: { value: new THREE.Matrix4() } };
+    this.shared = { slimeTime: { value: 0 }, mirrorMap: { value: null }, mirrorMatrix: { value: new THREE.Matrix4() }, slimeMurkMap: { value: macroTexture() } };
     const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
     this.target = new THREE.WebGLRenderTarget(Math.max(1, Math.round(buf.x * MIRROR_SCALE)), Math.max(1, Math.round(buf.y * MIRROR_SCALE)), {
       type: THREE.HalfFloatType, colorSpace: THREE.LinearSRGBColorSpace, generateMipmaps: false,
@@ -181,7 +208,7 @@ export class Slime {
 
   makeMaterial() {
     const m = new THREE.MeshStandardMaterial({
-      name: 'slime', color: 0x9cc85a, roughness: 0.14, metalness: 0,
+      name: 'slime', color: 0xffffff, roughness: 0.14, metalness: 0,
       emissive: SLIME_COLOR, emissiveIntensity: SLIME_GLOW,
     });
     const own = { mirrorMix: { value: 0 } };
@@ -193,13 +220,14 @@ export class Slime {
       vs = edit(vs, 'void main() {', `${PARS_V}\nvoid main() {`, 'the slime vertex shader');
       vs = edit(vs, '#include <project_vertex>', '#include <project_vertex>\n\tvSlimeW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\n\tvMirror = mirrorMatrix * vec4( vSlimeW, 1.0 );', 'the slime vertex shader');
       fs = edit(fs, 'void main() {', `${PARS_F}\nvoid main() {`, 'the slime fragment shader');
+      fs = edit(fs, '#include <color_fragment>', `#include <color_fragment>\n${MURK}`, 'the slime fragment shader');
       fs = edit(fs, '#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${NORMAL}`, 'the slime fragment shader');
       fs = edit(fs, '#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${GLOW}`, 'the slime fragment shader');
       fs = edit(fs, 'vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;', `vec3 outgoingLight;\n${MIRROR}`, 'the slime fragment shader');
       shader.vertexShader = vs;
       shader.fragmentShader = fs; // written back (guidelines section 4)
     };
-    m.customProgramCacheKey = () => 'hangar-slime-1';
+    m.customProgramCacheKey = () => 'hangar-slime-2';
     return m;
   }
 
@@ -232,7 +260,7 @@ export class Slime {
       if (s.id === null) { s.light.intensity = 0; continue; }
       const p = this.points[s.id];
       s.light.position.set(p.x, p.y, p.z);
-      s.light.intensity = SLIME_CD * s.w * s.w * (3 - 2 * s.w);
+      s.light.intensity = SLIME_CD * (p.power ?? 1) * s.w * s.w * (3 - 2 * s.w);
     }
     // The pool to mirror: in view, below the eye, nearest.
     camera.updateMatrixWorld();
@@ -249,8 +277,17 @@ export class Slime {
       if (rect.area < MIN_SCREEN_SHARE) continue; // a sliver through a far window: the probe will do
       if (d < bd) { bd = d; best = p; }
     }
-    this.active = best;
-    for (const p of this.planes) p.material.userData.slime.mirrorMix.value = p === best ? 1 : 0;
+    // The mirror serves one pool at a time. Changing pools, the one it serves fades out first (still mirrored),
+    // then the new one fades in, MIRROR_FADE s each way, so no pool's reflection pops on or off.
+    const step = dt / MIRROR_FADE;
+    const mix = (p) => p.material.userData.slime.mirrorMix;
+    if (this.active && this.active !== best) {
+      mix(this.active).value = Math.max(0, mix(this.active).value - step);
+      if (mix(this.active).value === 0) this.active = null;
+    }
+    if (!this.active && best) this.active = best;
+    if (this.active && this.active === best) mix(this.active).value = Math.min(1, mix(this.active).value + step);
+    for (const p of this.planes) if (p !== this.active) mix(p).value = 0;
   }
 
   /**
@@ -275,7 +312,7 @@ export class Slime {
   /** Renders the mirror for the active pool (call before the main pass; it never re-renders shadow maps). */
   render(camera) {
     const p = this.active;
-    if (!p) return;
+    if (!p || p.material.userData.slime.mirrorMix.value <= 0) return;
     const r = this.renderer, t = this.tmp, vc = this.mirrorCam;
     const buf = r.getDrawingBufferSize(t.v);
     const w = Math.max(1, Math.round(buf.x * MIRROR_SCALE)), h = Math.max(1, Math.round(buf.y * MIRROR_SCALE));
