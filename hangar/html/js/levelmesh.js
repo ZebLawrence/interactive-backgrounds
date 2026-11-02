@@ -4,7 +4,11 @@ import * as THREE from 'three';
 import { wallQuads } from './level.js';
 
 const TILE = 2;
-const matOf = (s) => [...s.tags].find((t) => t.startsWith('mat:')).slice(4);
+const matOf = (s) => {
+  const t = [...s.tags].find((x) => x.startsWith('mat:'));
+  if (!t) throw new Error(`levelmesh: sector "${s.id}" has no mat: tag`);
+  return t.slice(4);
+};
 
 function geometry(pos, uv, nrm) {
   const g = new THREE.BufferGeometry();

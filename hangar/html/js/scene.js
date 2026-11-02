@@ -22,7 +22,10 @@ export class Scene {
     this.camera.rotation.order = 'YXZ';
     this.scene.add(new THREE.HemisphereLight(0xcfd8e4, 0x303038, 2.2));
     this.level = null;
-    this.ready = fetch('./data/e1m1.json').then((r) => r.json()).then((json) => this.build(json));
+    this.ready = fetch('./data/e1m1.json').then((r) => {
+      if (!r.ok) throw new Error(`level data ${r.url} returned HTTP ${r.status}`);
+      return r.json();
+    }).then((json) => this.build(json));
   }
 
   build(json) {

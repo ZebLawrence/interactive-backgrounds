@@ -159,7 +159,9 @@ export function wallQuads(level, tile = TILE) {
     const [ax, az] = w.a, [bx, bz] = w.b;
     const len = Math.hypot(bx - ax, bz - az) || 1;
     const normal = [(bz - az) / len, 0, -(bx - ax) / len];
-    const mat = w.kind === 'window' ? 'window' : [...front.tags].find((t) => t.startsWith('mat:')).slice(4);
+    const matTag = [...front.tags].find((t) => t.startsWith('mat:'));
+    if (!matTag && w.kind !== 'window') throw new Error(`wallQuads: sector "${front.id}" has no mat: tag`);
+    const mat = w.kind === 'window' ? 'window' : matTag.slice(4);
     const v0 = w.bottom / tile, v1 = w.top / tile, u1 = len / tile;
     return {
       corners: [[ax, w.bottom, az], [bx, w.bottom, bz], [bx, w.top, bz], [ax, w.top, az]],

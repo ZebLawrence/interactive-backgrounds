@@ -72,7 +72,10 @@ class App {
   rebuild(reseed = false) {
     if (reseed) this.seed = (Math.random() * 4294967296) >>> 0;
     const old = this.scene;
-    this.scene = new Scene(this, this.renderer, this.size.w, this.size.h, this.settings, this.seed);
+    const scene = new Scene(this, this.renderer, this.size.w, this.size.h, this.settings, this.seed);
+    this.scene = scene;
+    // The scene may load its level asynchronously; show a failure instead of leaving an empty canvas.
+    Promise.resolve(scene.ready).catch((err) => { if (this.scene === scene) showError('Hangar could not load the level. ', err); });
     if (old) old.dispose();
     this.updateMenu();
   }
@@ -232,6 +235,13 @@ function installDebug(app) {
   };
 }
 
+function showError(prefix, err) {
+  console.error(err);
+  const el = document.getElementById('error');
+  el.hidden = false;
+  el.textContent = prefix + (err?.message ?? '');
+}
+
 function start() {
   // Some hosts report a 0x0 window while the page is still being laid out; wait for a real size.
   if (!(window.innerWidth > 0 && window.innerHeight > 0)) { requestAnimationFrame(start); return; }
@@ -239,10 +249,7 @@ function start() {
     const app = new App();
     installDebug(app);
   } catch (err) {
-    console.error(err);
-    const el = document.getElementById('error');
-    el.hidden = false;
-    el.textContent = 'Hangar needs WebGL 2 to run. ' + (err?.message ?? '');
+    showError('Hangar needs WebGL 2 to run. ', err);
   }
 }
 start();
