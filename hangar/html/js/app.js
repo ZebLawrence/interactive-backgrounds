@@ -29,6 +29,10 @@ const Settings = {
   get fps() { return this.lowPower ? 30 : 60; },
 };
 
+// Fetched first: the level's own surfaces (the start room is brown panels, steel and concrete), then the
+// sky, so the walk starts looking right; props and the trim/variety sets follow.
+const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:grate', 'mat:regolith', 'mars'];
+
 function initialSeed() {
   const s = Number(params.get('seed'));
   return params.has('seed') && Number.isFinite(s) ? s >>> 0 : (Math.random() * 4294967296) >>> 0;
@@ -51,6 +55,7 @@ class App {
 
     this.size = this.windowSize();
     this.applyPixelRatio();
+    this.assetItems = new Map(); // items loaded so far, for scenes built after they arrived (reseed)
     this.assets = this.loadAssets();
     this.rebuild();
     this.bindInput();
@@ -73,7 +78,14 @@ class App {
     let assets;
     try {
       const { manifest, failures: missing } = await loadManifest();
-      assets = await loadAssets(this.renderer, manifest, progress);
+      assets = await loadAssets(this.renderer, manifest, progress, {
+        priority: ASSET_PRIORITY,
+        // Items arrive one by one while the tour already runs; the scene may swap greybox for the real thing.
+        onItem: (kind, name, asset) => {
+          this.assetItems.set(`${kind}:${name}`, { kind, name, asset });
+          this.scene?.applyAsset?.(kind, name, asset);
+        },
+      });
       assets.manifest = manifest;
       assets.failures.unshift(...missing);
     } catch (err) {

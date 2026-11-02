@@ -9,6 +9,7 @@
 import path from 'node:path';
 import { mkdirSync, readdirSync, copyFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+// The API has no author field; ambientCG is Lennart Demes's library (see README, "ambientCG author").
 import { RAW, slugOf, materialMaps, readManifest, writeManifest, download } from './manifest-lib.mjs';
 
 const [id, tag, num] = process.argv.slice(2);

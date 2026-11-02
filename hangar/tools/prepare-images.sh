@@ -23,5 +23,9 @@ print('source', im.size)
 im.resize((8192, 4096), Image.LANCZOS).save(sys.argv[2])
 EOF
 mkdir -p "$out"
-basisu -ktx2 -uastc -uastc_level 3 -ktx2_zstandard_level 19 -mipmap -y_flip "$tmp" -output_file "$out/mars.ktx2" >/dev/null
+log="$here/raw/images/mars/basisu.log"
+rm -f "$out/mars.ktx2"
+if ! basisu -ktx2 -uastc -uastc_level 3 -ktx2_zstandard_level 19 -mipmap -y_flip "$tmp" -output_file "$out/mars.ktx2" >"$log" 2>&1 || [ ! -s "$out/mars.ktx2" ]; then
+  echo "basisu failed for mars:" >&2; tail -20 "$log" >&2; exit 1
+fi
 ls -la "$out/mars.ktx2"

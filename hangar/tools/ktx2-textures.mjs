@@ -9,7 +9,7 @@
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, KHRTextureBasisu } from '@gltf-transform/extensions';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -40,7 +40,12 @@ try {
     writeFileSync(src, tex.getImage());
     const r = role.get(tex) ?? 'linear';
     const flags = r === 'srgb' ? [] : r === 'normal' ? ['-normal_map'] : ['-linear'];
-    execFileSync('basisu', ['-ktx2', '-uastc', '-uastc_level', '3', '-ktx2_zstandard_level', '19', '-mipmap', ...flags, src, '-output_file', dst], { stdio: 'ignore' });
+    try {
+      execFileSync('basisu', ['-ktx2', '-uastc', '-uastc_level', '3', '-ktx2_zstandard_level', '19', '-mipmap', ...flags, src, '-output_file', dst], { encoding: 'utf8', stdio: 'pipe' });
+    } catch (err) {
+      throw new Error(`basisu failed for ${tex.getName() || i}:\n${String(err.stdout ?? '').split('\n').slice(-20).join('\n')}${err.stderr ?? ''}`);
+    }
+    if (!existsSync(dst) || statSync(dst).size === 0) throw new Error(`basisu wrote no output for ${tex.getName() || i}`);
     tex.setImage(new Uint8Array(readFileSync(dst))).setMimeType('image/ktx2');
     if (tex.getURI()) tex.setURI(tex.getURI().replace(/\.(png|jpe?g)$/i, '.ktx2'));
     console.log(`  ${tex.getName() || tex.getURI() || i}: ${r}`);

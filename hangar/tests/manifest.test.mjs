@@ -1,7 +1,7 @@
 // Node-only: checks hangar/html/assets/manifest.json against the files on disk and the level's material tags.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -11,7 +11,20 @@ const assetsDir = path.join(htmlDir, 'assets');
 const manifestPath = path.join(assetsDir, 'manifest.json');
 const MB = 1024 * 1024;
 const LICENSES = new Set(['CC0', 'CC-BY-4.0', 'PD']);
-const MAP_SIZE = 2048;
+const KTX2_MAGIC = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]); // «KTX 20»\r\n\x1a\n
+const MIN_BYTES = 16 * 1024; // smaller than any real 2K map or model: catches empty or truncated outputs
+
+/** The first `n` bytes of a file. */
+function head(p, n) {
+  const fd = openSync(p, 'r');
+  try { const b = Buffer.alloc(n); readSync(fd, b, 0, n, 0); return b; } finally { closeSync(fd); }
+}
+
+/** KTX2 header fields we rely on: magic, then pixelWidth/pixelHeight (uint32 LE at bytes 20/24), levelCount (40). */
+function ktx2Header(p) {
+  const b = head(p, 48);
+  return { magic: b.subarray(0, 12).equals(KTX2_MAGIC), width: b.readUInt32LE(20), height: b.readUInt32LE(24), levels: b.readUInt32LE(40) };
+}
 
 const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
 const level = JSON.parse(readFileSync(path.join(htmlDir, 'data', 'e1m1.json'), 'utf8'));
@@ -97,10 +110,36 @@ test('every material tag used in e1m1.json has a manifest entry', () => {
   for (const t of tags) assert.ok(manifest.materials[t], `no manifest entry for ${t}`);
 });
 
-test('tile gives at least 1024 px per metre for a 2048 px map', () => {
+test('every texture is a real KTX2 file with a mip chain, every model a binary glTF', () => {
+  for (const [name, f] of files()) {
+    const p = path.join(htmlDir, f);
+    if (!existsSync(p)) continue; // reported by the existence test
+    assert.ok(statSync(p).size >= MIN_BYTES, `${name}: ${f} is only ${statSync(p).size} bytes`);
+    if (f.endsWith('.ktx2')) {
+      const h = ktx2Header(p);
+      assert.ok(h.magic, `${name}: ${f} lacks the KTX2 identifier`);
+      assert.ok(h.width > 0 && h.height > 0, `${name}: ${f} has no size`);
+      assert.equal(h.levels, Math.floor(Math.log2(Math.max(h.width, h.height))) + 1, `${name}: ${f} has ${h.levels} mip levels`);
+    } else if (f.endsWith('.glb')) {
+      const b = head(p, 12);
+      assert.equal(b.toString('latin1', 0, 4), 'glTF', `${name}: ${f} lacks the glTF magic`);
+      assert.equal(b.readUInt32LE(4), 2, `${name}: ${f} is not glTF 2`);
+      assert.equal(b.readUInt32LE(8), statSync(p).size, `${name}: ${f} header length does not match the file`);
+    } else {
+      assert.fail(`${name}: ${f} is neither .ktx2 nor .glb`);
+    }
+  }
+});
+
+test("tile gives at least 1024 px per metre, from each map's real pixel width", () => {
   for (const [name, m] of Object.entries(manifest.materials)) {
     assert.ok(Number.isFinite(m.tile) && m.tile > 0, `${name}: bad tile ${m.tile}`);
-    assert.ok(MAP_SIZE / m.tile >= 1024, `${name}: tile ${m.tile} m gives ${(MAP_SIZE / m.tile).toFixed(0)} px/m`);
+    for (const [k, f] of Object.entries(m.maps)) {
+      const p = path.join(htmlDir, f);
+      if (!existsSync(p)) continue;
+      const { width } = ktx2Header(p);
+      assert.ok(width / m.tile >= 1024, `${name}.${k}: ${width} px over ${m.tile} m gives ${(width / m.tile).toFixed(0)} px/m`);
+    }
   }
 });
 

@@ -59,7 +59,7 @@ Downloads are skipped when the raw file already exists, so reruns are cheap.
 | `fetch-ambientcg.mjs` | ambientCG 2K PNG zip, maps renamed to the same layout. For what Poly Haven lacks (brushed steel, plates, grating, diamond plate, hazard paint). |
 | `fetch-mars.mjs` | USGS Viking MDIM2.1 colour mosaic, 1 km/px JPEG (the 232 m GeoTIFF is 12.7 GB). |
 | `pack-maps.py` | Normalises a raw material: 2048², 8-bit, packs `orm` (AO R, roughness G, metalness B), puts grating opacity in the colour alpha. |
-| `prepare-textures.sh` | KTX2 UASTC level 3, zstd 19, mipmaps: colour sRGB, normal `-normal_map`, orm and height linear. Stored bottom row first (`-y_flip`) so maps sit on the level's v-up UVs like TextureLoader images. |
+| `prepare-textures.sh` | Stops with basisu's log if an encode fails or writes an empty file. KTX2 UASTC level 3, zstd 19, mipmaps: colour sRGB, normal `-normal_map`, orm and height linear. Stored bottom row first (`-y_flip`) so maps sit on the level's v-up UVs like TextureLoader images. |
 | `prepare-images.sh` | Mars resampled to 8192 x 4096, same KTX2 settings. |
 | `ktx2-textures.mjs` + `prepare-models.sh` | glTF textures to KTX2 (basisu), then `gltf-transform optimize --compress meshopt`. |
 | `manifest-lib.mjs` | Shared paths, manifest read/write, downloads. |
@@ -74,7 +74,15 @@ Downloads are skipped when the raw file already exists, so reruns are cheap.
   "images":    { "<name>": { "file", "source", "author", "license" } } }
 ```
 
+**ambientCG author:** the ambientCG API (`/api/v2/full_json`) has no per-asset author field. ambientCG is
+Lennart Demes's library, and he makes its assets, so `fetch-ambientcg.mjs` credits every one as
+"ambientCG (Lennart Demes)". That is an assumption, not data from the API. CC0 needs no attribution,
+so the credit is a courtesy. Correct it here and in the manifest if an asset turns out to be someone
+else's.
+
 `alpha: true` on a material means its colour map carries opacity in alpha (the grating). Licences are
 `CC0`, `CC-BY-4.0` or `PD`. `hangar/tests/manifest.test.mjs` checks credits, files, sizes (each file
 < 100 MB, all assets < 600 MB), that every `mat:` tag in `e1m1.json` has an entry, and that every tile
-gives at least 1024 px per metre from a 2048 px map.
+gives at least 1024 px per metre (map width read from each KTX2 header). It also checks that every file is
+real: the KTX2 identifier and a full mip chain, the `glTF` magic and length on models, and a minimum size.
+`hangar/tests/assetjobs.test.mjs` covers the loader's fetch order (priority first) and byte-weighted progress.

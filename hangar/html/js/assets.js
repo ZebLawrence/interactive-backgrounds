@@ -1,9 +1,12 @@
 // Hangar — Asset loader: KTX2 material maps, images and meshopt glTF models listed in assets/manifest.json.
 //
-// loadAssets(renderer, manifest, onProgress(fraction)) resolves to { textures, models, failures }:
+// loadAssets(renderer, manifest, onProgress(fraction), opts) resolves to { textures, models, failures }:
 //   textures  Map, key `<tag>.<map>` for material maps (e.g. `mat:steel.normal`) and `image.<name>` for images
 //   models    Map, key = model name, value = the loaded glTF scene (a THREE.Group) with `userData.scale` set
 //   failures  the manifest paths that could not be loaded
+// opts.priority: material tags / model names / image names to fetch first (e.g. the start room's materials).
+// opts.onItem(kind, name, asset): called as each item completes ('material' -> { color, normal, orm, height },
+//   'model' -> Group, 'image' -> Texture), so the scene can swap greybox for real materials while it runs.
 // A file that fails resolves to a neutral stand-in (mid-grey colour, flat normal, AO 1 / roughness 0.7 /
 // metalness 0, mid height, or an empty group for a model) and is listed in `failures`; the load as a whole
 // never rejects. Every texture gets mipmaps and the renderer's maximum anisotropy.
@@ -12,9 +15,11 @@ import * as THREE from 'three';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { manifestItems, progressFraction } from './assetjobs.js';
+
+export { manifestItems, manifestJobs } from './assetjobs.js';
 
 const TRANSCODER = 'https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/basis/';
-const MAP_KEYS = ['color', 'normal', 'orm', 'height'];
 
 // Stand-in texel per map kind (RGBA8). orm = AO 1, roughness 0.7, metalness 0.
 const FALLBACK = {
@@ -35,40 +40,36 @@ export function fallbackTexture(kind) {
   return t;
 }
 
-/** Every file the manifest lists, as jobs { kind, key, path, map }. */
-export function manifestJobs(manifest) {
-  const jobs = [];
-  for (const [tag, m] of Object.entries(manifest.materials ?? {})) {
-    for (const map of MAP_KEYS) if (m.maps?.[map]) jobs.push({ kind: 'texture', key: `${tag}.${map}`, path: m.maps[map], map });
-  }
-  for (const [name, m] of Object.entries(manifest.images ?? {})) jobs.push({ kind: 'texture', key: `image.${name}`, path: m.file, map: 'image' });
-  for (const [name, m] of Object.entries(manifest.models ?? {})) jobs.push({ kind: 'model', key: name, path: m.file, scale: m.scale ?? 1 });
-  return jobs;
-}
-
 /**
  * Loads every asset in the manifest. Paths are relative to the page (hangar/html/). Progress is the fraction of
  * bytes received across all files (files whose size is not known yet count by file until they report it).
  */
-export async function loadAssets(renderer, manifest, onProgress = () => {}) {
+export async function loadAssets(renderer, manifest, onProgress = () => {}, opts = {}) {
   const ktx2 = new KTX2Loader().setTranscoderPath(TRANSCODER).detectSupport(renderer);
   const gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const jobs = manifestJobs(manifest);
+  const items = manifestItems(manifest, opts.priority ?? []);
+  const jobs = items.flatMap((item, it) => item.files.map((f) => ({ ...f, item: it })));
   const textures = new Map(), models = new Map(), failures = [];
 
-  // Per-file progress: [loaded, total]; a file with no total yet weighs 1 unknown unit.
-  const prog = jobs.map(() => [0, 0]);
-  const done = jobs.map(() => false);
-  const report = () => {
-    let frac = 0;
-    for (let i = 0; i < jobs.length; i++) {
-      const [l, t] = prog[i];
-      frac += done[i] ? 1 : (t > 0 ? Math.min(l / t, 0.99) : 0);
-    }
-    onProgress(jobs.length ? frac / jobs.length : 1);
-  };
+  // Byte-weighted progress (see progressFraction).
+  const prog = jobs.map(() => ({ loaded: 0, total: 0, done: false }));
+  // Never step backwards when a large file reports its size late.
+  let shown = 0;
+  const report = () => { shown = Math.max(shown, progressFraction(prog)); onProgress(shown); };
   report();
+
+  // An item is handed to onItem once all of its files have settled (loaded or stood in).
+  const left = items.map((item) => item.files.length);
+  const settle = (job) => {
+    if (--left[job.item] > 0 || !opts.onItem) return;
+    const item = items[job.item];
+    let asset;
+    if (item.kind === 'material') asset = Object.fromEntries(item.files.map((f) => [f.map, textures.get(f.key)]));
+    else if (item.kind === 'model') asset = models.get(item.name);
+    else asset = textures.get(item.files[0].key);
+    try { opts.onItem(item.kind, item.name, asset); } catch (err) { console.error('Hangar: onItem failed for', item.name, err); }
+  };
 
   const finishTexture = (tex, job) => {
     tex.colorSpace = job.map === 'color' || job.map === 'image' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
@@ -85,7 +86,7 @@ export async function loadAssets(renderer, manifest, onProgress = () => {}) {
   };
 
   const run = (job, i) => new Promise((resolve) => {
-    const onProg = (e) => { if (e?.lengthComputable || e?.total) { prog[i] = [e.loaded, e.total]; report(); } };
+    const onProg = (e) => { if (e?.total > 0) { prog[i].loaded = e.loaded; prog[i].total = e.total; report(); } };
     const fail = (err) => {
       console.warn(`Hangar: could not load ${job.path}`, err);
       failures.push(job.path);
@@ -114,9 +115,10 @@ export async function loadAssets(renderer, manifest, onProgress = () => {}) {
         ok();
       }, onProg, fail);
     }
-  }).then(() => { done[i] = true; report(); });
+  }).then(() => { prog[i].done = true; report(); settle(job); });
 
-  // A few at a time: the basis transcoder runs in a small worker pool, and this keeps memory flat.
+  // A few at a time, in priority order: the basis transcoder runs in a small worker pool, the first area's
+  // materials arrive before the rest are requested, and memory stays flat.
   const LIMIT = 6;
   let next = 0;
   const worker = async () => { while (next < jobs.length) { const i = next++; await run(jobs[i], i); } };

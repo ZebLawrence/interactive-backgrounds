@@ -30,7 +30,10 @@ for name in "${names[@]}"; do
   [ -n "$src" ] || { echo "no .gltf/.glb in $raw/$name" >&2; exit 1; }
   tmp="$raw/$name/.ktx2.glb"
   node "$here/ktx2-textures.mjs" "$src" "$tmp"
-  npx -y @gltf-transform/cli@4.5.1 optimize "$tmp" "$out/$name.glb" --texture-compress false --compress meshopt >/dev/null
+  log="$raw/$name/optimize.log"
+  if ! npx -y @gltf-transform/cli@4.5.1 optimize "$tmp" "$out/$name.glb" --texture-compress false --compress meshopt >"$log" 2>&1 || [ ! -s "$out/$name.glb" ]; then
+    echo "gltf-transform optimize failed for $name:" >&2; tail -20 "$log" >&2; exit 1
+  fi
   rm -f "$tmp"
   echo "$name: $(du -h "$out/$name.glb" | cut -f1)"
 done

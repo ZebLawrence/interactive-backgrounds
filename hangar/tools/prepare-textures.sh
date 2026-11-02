@@ -34,7 +34,12 @@ for slug in "${slugs[@]}"; do
   mkdir -p "$out/$slug"
   enc() { # map, extra flags...
     local map="$1"; shift
-    basisu "${common[@]}" "$@" "$src/out/$map.png" -output_file "$out/$slug/$map.ktx2" >/dev/null
+    local dst="$out/$slug/$map.ktx2" log="$src/out/$map.basisu.log"
+    rm -f "$dst"
+    # basisu is chatty; keep its log and show it if the encode fails or writes nothing.
+    if ! basisu "${common[@]}" "$@" "$src/out/$map.png" -output_file "$dst" >"$log" 2>&1 || [ ! -s "$dst" ]; then
+      echo "basisu failed for $slug/$map:" >&2; tail -20 "$log" >&2; exit 1
+    fi
   }
   enc color
   enc normal -normal_map
