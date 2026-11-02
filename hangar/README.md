@@ -23,10 +23,19 @@ first and the walk starts as soon as it is ready; the rest of the textures and p
   walls, ledges or props: the walker treats props as walls), string-pulled, meandered a little and
   smoothed. Speed eases in and out and slows on stairs and sharp turns; the body turns on a spring, the
   head looks ahead along the path, glances aside now and then, and bobs and sways a little.
-- **Doors and the lift.** Sliding door panels open as the camera approaches and close behind it; it
-  waits for a closed door and rides the lift.
-- **Resting cursor:** the head leans toward it.
-- **Click the floor:** the camera walks there. **Click a door, switch or console:** it operates.
+- **Doors and the lift.** Each door is two panels meeting at a horizontal seam with hazard bands either
+  side of it: as the camera approaches, the top panel rises into the lintel and the bottom one sinks
+  into the floor, and they close again behind it. The camera waits for a closed door and rides the lift.
+- **The cursor.** Moving the cursor biases the gaze: the head leans toward wherever it is. A cursor
+  that comes to rest after moving (it travelled, then held still for 0.8 s) makes the camera stop,
+  and look at the spot under it for about 4 s; a cursor that has not moved never triggers that pause.
+- **Click the floor:** the camera walks there. **Click a door:** it opens (or closes, if the camera is
+  not using it). **Click a wall switch:** that room's lights fade off, or back on (Emergency Power still
+  overrides: its red lamps light the room either way). **Click a console:** its screen wakes and
+  scrolls a burst of log text.
+- **The courtyard is open to the sky.** Doom's tall courtyard walls on the open (south) side and the gaps
+  between buildings are lowered to 1.1 m parapets, so Mars hangs over the courtyard and fills the
+  computer-room window; the walkable layout is unchanged.
 - Every launch and every New Tour scatters the props, grime and lamp quirks differently and takes a
   different route.
 
@@ -38,7 +47,7 @@ Top-right button (it fades when idle):
 |---|---|---|
 | New Tour | | reseeds the dressing and the route |
 | Emergency Power | `E` | the main lights drop out; red emergency lamps and the slime carry the scene |
-| Low Power | | 30 fps, the drawing buffer capped near 1920 x 1080 pixels, and fewer shadow casters |
+| Low Power | | 30 fps, the drawing buffer capped near 1920 x 1080 pixels (still 4x MSAA), no ambient occlusion, and fewer shadow casters |
 | Full Screen | | |
 
 Flags: `?seed=N` (fixed tour), `?emergency` / `?noemergency`, `?lowpower`, `?perf` (frame timing,
@@ -76,7 +85,6 @@ USGS for the Viking mosaic. How the files were fetched and encoded: `tools/READM
 | Material | `mat:concrete-painted` | Painted Concrete 02 | Rob Tuytel | CC0 | https://polyhaven.com/a/painted_concrete_02 |
 | Material | `mat:concrete-stained` | Concrete Wall 006 | Dario Barresi, Charlotte Baglioni | CC0 | https://polyhaven.com/a/concrete_wall_006 |
 | Material | `mat:diamond-plate` | DiamondPlate001 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/DiamondPlate001 |
-| Material | `mat:grate` | MetalWalkway006 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/MetalWalkway006 |
 | Material | `mat:hazard` | PaintedMetal016 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/PaintedMetal016 |
 | Material | `mat:panel-brown` | Metal Plate 02 | Rob Tuytel | CC0 | https://polyhaven.com/a/metal_plate_02 |
 | Material | `mat:regolith` | Moon 01 | Greg Zaal, Rico Cilliers, Jenelle van Heerden, Dario Barresi | CC0 | https://polyhaven.com/a/moon_01 |

@@ -3,8 +3,10 @@
 // The owner chose sharpness over frame rate, so resolution never moves; only the frame rate does. Two signals:
 // - intervals: the delivered time between rendered frames while trying for 60. A share of them well past the
 //   frame budget means vsyncs are being missed (the real symptom, whatever the cause).
-// - probes: about once a second the app times one frame end to end (the GPU drained before and after), which
-//   is the frame's full cost. At 30 that is the only way to see headroom.
+// - probes: about once a second while at 30 the app times one frame end to end (the GPU drained before and
+//   after), which is the frame's full cost and the only way to see headroom for a climb. Never at 60: draining
+//   the GPU there makes a near-budget frame miss its vsync, a periodic stutter on a machine that holds 60, and
+//   late frames already show in the intervals (wantsProbe).
 // It drops to 30 on either signal and climbs back only when the probes show clear headroom (under fastMs, well
 // below slowMs) for a while, and after a cooldown that doubles each time a climb fails soon after, so it never
 // flaps between the two.
@@ -20,6 +22,7 @@ export const GOVERNOR = {
   cooldown: 8, // s at 30 before the first climb
   maxCooldown: 240, // s
   flapWindow: 30, // s: a drop this soon after a climb doubles the cooldown
+  probeEvery: 1, // s between probes at 30 (none at 60)
 };
 
 const median = (a) => {
@@ -38,6 +41,18 @@ export class FrameGovernor {
     this.reason = 'start';
     this.intervals = [];
     this.probeMs = [];
+    this.probeAt = 0; // earliest time (s) of the next probe
+  }
+
+  /**
+   * Whether the frame at time t (s) should be timed end to end (and then fed to probe). Only at 30: at 60 the
+   * GPU drain itself could make the frame miss vsync, and the intervals are the signal there. `synced` (the
+   * ?perf overlay drains the GPU every frame anyway, so it feeds no intervals) probes at either rate.
+   */
+  wantsProbe(t, synced = false) {
+    if ((this.fps !== 30 && !synced) || t < this.probeAt) return false;
+    this.probeAt = t + this.o.probeEvery;
+    return true;
   }
 
   /** Forget the recent samples (after a hidden tab, a mode change or a pause); the current rate stays. */

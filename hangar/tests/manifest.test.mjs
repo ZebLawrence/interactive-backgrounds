@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync, statSync, readdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { VARIANTS } from '../html/js/materialplan.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const htmlDir = path.join(here, '..', 'html');
@@ -104,10 +105,21 @@ test('hangar/html/assets/ totals under 600 MB', () => {
   assert.ok(total < 600 * MB, `assets total ${(total / MB).toFixed(1)} MB`);
 });
 
-test('every material tag used in e1m1.json has a manifest entry', () => {
+test('every material the level can wear has a manifest entry (walkway floors are grate.js geometry)', () => {
   const tags = levelTags();
   assert.ok(tags.size > 0, 'no mat: tags found in the level');
-  for (const t of tags) assert.ok(manifest.materials[t], `no manifest entry for ${t}`);
+  for (const t of tags) {
+    const family = t.slice(4);
+    // A family's floor, wall and ceiling variants (materialplan.VARIANTS), or the family's own tag everywhere.
+    for (const [surface, list] of Object.entries(VARIANTS[family] ?? { any: [[family, 1]] })) {
+      // The grate family's floors are walkways: grate.js draws real bars there, never a scanned texture.
+      if (family === 'grate' && surface === 'floor') continue;
+      for (const [variant] of list) assert.ok(manifest.materials[`mat:${variant}`], `${t} ${surface}: no manifest entry for mat:${variant}`);
+    }
+  }
+  for (const s of level.sectors) {
+    if (s.tags.includes('mat:grate')) assert.ok(s.tags.includes('walkway'), `${s.id}: grate floor off the walkway would have no material`);
+  }
 });
 
 test('every texture is a real KTX2 file with a mip chain, every model a binary glTF', () => {

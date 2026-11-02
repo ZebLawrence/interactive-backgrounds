@@ -1,4 +1,4 @@
-// Hangar — Post stack at native resolution: the scene into a half-float target (4x MSAA, none in Low Power),
+// Hangar — Post stack at native resolution: the scene into a half-float target (4x MSAA, Low Power too),
 // ground-contact AO (GTAO, off in Low Power), haze in the tall spaces, bloom on the emissives and the slime,
 // then ACES tone mapping. No TAA and no upscaling: sharpness over frame rate (the frame rate governor in app.js
 // gives instead).
@@ -205,8 +205,10 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
   const W = () => Math.max(1, Math.round(w * pr)), H = () => Math.max(1, Math.round(h * pr));
   const depthTexture = new THREE.DepthTexture(W(), H());
   depthTexture.type = THREE.UnsignedIntType;
+  // 4x MSAA in Low Power too: at its ~2 MP buffer it is cheap, it keeps railings and stair edges from
+  // stair-stepping when the buffer is scaled up, and the far grating's alpha to coverage needs the samples.
   const beauty = new THREE.WebGLRenderTarget(W(), H(), {
-    type: THREE.HalfFloatType, samples: lowPower ? 0 : POST.msaa, depthTexture, generateMipmaps: false,
+    type: THREE.HalfFloatType, samples: POST.msaa, depthTexture, generateMipmaps: false,
   });
   beauty.texture.name = 'hangar-beauty';
   // The composer's own ping-pong buffers carry no depth and no MSAA: only full-screen passes draw into them.

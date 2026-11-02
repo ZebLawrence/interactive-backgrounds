@@ -8,7 +8,8 @@
 
 // [variant, weight] lists per family and surface. Families not listed wear their own tag everywhere.
 // Concrete Wall 006 (concrete-stained) is a cast wall with form-tie holes in rows, so it never goes on a
-// floor. Grate risers and ceilings are steel (a grating texture standing on edge reads as a mistake).
+// floor. Grate risers and ceilings are steel (a grating texture standing on edge reads as a mistake). Grate
+// floors are all walkways, drawn as real bars by grate.js: 'grate' there only names their greybox.
 export const VARIANTS = {
   concrete: {
     floor: [['concrete', 0.5], ['concrete-cracked', 0.5]],

@@ -17,13 +17,10 @@
 
 import * as THREE from 'three';
 
-// Relief depth in metres for a full black-to-white height range. Panels, grating and concrete are the
+// Relief depth in metres for a full black-to-white height range. Panels and concrete are the
 // plan's values; the others are judged from their scans (brushed steel is grain, not relief).
 export const HEIGHT_SCALE = {
   'mat:panel-brown': 0.012, 'mat:steel': 0.012, 'mat:computer': 0.012, 'mat:diamond-plate': 0.012, 'mat:hazard': 0.012,
-  // Grating: the plan's 0.02 m made POM stretch edge texels down the bar sides (smears at fov 20 and 10).
-  // Until the walkway gets real bar geometry (Ruling R15) it is held to 8 mm, with the sides flattened below.
-  'mat:grate': 0.008,
   'mat:concrete': 0.006, 'mat:concrete-cracked': 0.006, 'mat:concrete-painted': 0.006, 'mat:concrete-stained': 0.006,
   'mat:regolith': 0.01, 'mat:rust': 0.008, 'mat:rubber': 0.006, 'mat:steel-brushed': 0.003,
 };

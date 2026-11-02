@@ -130,7 +130,9 @@ export async function loadAssets(renderer, manifest, onProgress = () => {}, opts
 /** Fetches assets/manifest.json; a missing or broken manifest yields an empty one and a failure entry. */
 export async function loadManifest(url = './assets/manifest.json') {
   try {
-    const r = await fetch(url);
+    // The manifest carries this module's own ?v= (from the import map), so it is never older than the code.
+    const v = new URL(import.meta.url).searchParams.get('v');
+    const r = await fetch(v ? `${url}?v=${v}` : url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return { manifest: await r.json(), failures: [] };
   } catch (err) {

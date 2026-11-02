@@ -9,13 +9,21 @@ const json = JSON.parse(readFileSync(new URL('../html/data/e1m1.json', import.me
 const manifest = JSON.parse(readFileSync(new URL('../html/assets/manifest.json', import.meta.url), 'utf8'));
 const level = loadLevel(json);
 
-test('every planned variant has a manifest material', () => {
+// Walkway floors are drawn as real bars by grate.js (the plan's 'grate' key is only their greybox): no scan.
+const walkwayFloor = (id) => level.byId.get(id).tags.has('walkway');
+
+test('every planned variant has a manifest material (walkway floors are grate.js geometry)', () => {
   for (let seed = 0; seed < 50; seed++) {
     for (const [id, p] of planMaterials(level, makeRng(seed).fork('materials'))) {
-      for (const v of [p.floor, p.wall, p.ceil]) assert.ok(manifest.materials[`mat:${v}`], `${id}: mat:${v} not in manifest`);
+      for (const v of walkwayFloor(id) ? [p.wall, p.ceil] : [p.floor, p.wall, p.ceil]) assert.ok(manifest.materials[`mat:${v}`], `${id}: mat:${v} not in manifest`);
     }
   }
-  for (const fam of Object.values(VARIANTS)) for (const list of Object.values(fam)) for (const [v] of list) assert.ok(manifest.materials[`mat:${v}`], v);
+  for (const [name, fam] of Object.entries(VARIANTS)) {
+    for (const [surface, list] of Object.entries(fam)) {
+      if (name === 'grate' && surface === 'floor') continue;
+      for (const [v] of list) assert.ok(manifest.materials[`mat:${v}`], v);
+    }
+  }
 });
 
 test('the plan is deterministic per seed and differs across seeds', () => {

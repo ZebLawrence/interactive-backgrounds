@@ -176,9 +176,8 @@ test('the walker never brushes a prop: 10 simulated minutes, three seeds, camera
     }
     report.push(`seed ${seed}: ${min.toFixed(2)} m at ${at}, ${reached.size} pois`);
     assert.ok(min >= 0.35, `seed ${seed}: camera ${min.toFixed(3)} m from a prop at (${at})`);
-    assert.ok(reached.size >= 4, `seed ${seed}: reached only ${reached.size} pois`);
+    assert.ok(reached.size >= 4, `seed ${seed}: reached only ${reached.size} pois (closest passes so far: ${report.join('; ')})`);
   }
-  console.log(`  closest camera pass: ${report.join('; ')}`);
 });
 
 test('pipes run along walls above head height, with brackets, clear of doors', () => {

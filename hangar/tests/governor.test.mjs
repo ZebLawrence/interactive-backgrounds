@@ -77,3 +77,13 @@ test('governor: describe names the state', () => {
   probes(g, 5, 20, 0);
   assert.match(g.describe(5), /^30 \(frame 20\.0 ms; retry in \d+ s\)/);
 });
+
+test('governor: probes once a second at 30, never at 60 (the GPU drain would stutter a held 60) unless synced', () => {
+  const g = new FrameGovernor();
+  const due = (from, to, synced = false) => { let n = 0; for (let t = from; t < to; t += 1 / 60) if (g.wantsProbe(t, synced)) n++; return n; };
+  assert.equal(due(0, 10), 0, 'no probes while holding 60');
+  assert.equal(due(10, 13, true), 3, '?perf (already synced) probes at 60 too');
+  g.drop(13, 'test');
+  assert.equal(g.fps, 30);
+  assert.equal(due(13, 18), 5, 'once a second at 30');
+});

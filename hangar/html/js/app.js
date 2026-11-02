@@ -31,10 +31,7 @@ const Settings = {
 
 // Fetched first: the level's own surfaces (the start room is brown panels, steel and concrete), then the
 // sky, so the walk starts looking right; props and the trim/variety sets follow.
-const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:grate', 'mat:regolith', 'mars'];
-
-// Governor probes: every 4 s while holding 60, every second at 30 (ms, by the current rate).
-const PROBE_EVERY = { 60: 4000, 30: 1000 };
+const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:regolith', 'mars'];
 
 /** Low Power's pixel ratio: native, but no more than about 1920x1080 pixels in all. */
 export function lowPowerRatio(w, h, dpr) {
@@ -58,7 +55,6 @@ class App {
     this.seed = initialSeed();
     // Ruling R17: 60, or a steady 30 when 60 can't hold (Low Power is always 30). Resolution never moves.
     this.governor = new FrameGovernor();
-    this.probeAt = 0; // next time (ms) a frame is timed end to end for the governor (see PROBE_EVERY)
     this.settleUntil = 0; // no timing until builds, resizes and mode changes have settled
     this.assetsDone = false;
 
@@ -177,11 +173,12 @@ class App {
     if (govern && since !== null && !this.perfEl) this.governor.interval(since, now / 1000);
     this.scene.step(dt, this.pointer, this.settings);
     this.renderer.info.reset();
-    // Now and then while governing (every frame with ?perf) a frame is timed end to end, the GPU drained either
-    // side; Low Power never pays for the stall. At 60 the stall itself could make that frame miss vsync, so it
-    // is rare there (late frames are already caught by the intervals); at 30 there is room, and it is the only
-    // way to see headroom for a climb.
-    const probe = govern && now >= this.probeAt;
+    // Once a second while governing at 30 (every frame with ?perf) a frame is timed end to end, the GPU drained
+    // either side: at 30 there is room for the stall, and it is the only way to see headroom for a climb. At 60
+    // never (governor.wantsProbe): the stall could make a near-budget frame miss vsync, and late frames show in
+    // the intervals; ?perf, which drains every frame and so feeds no intervals, probes at 60 too. Low Power never
+    // pays for it.
+    const probe = govern && this.governor.wantsProbe(now / 1000, !!this.perfEl);
     let ms = null;
     if (probe || this.perfEl) {
       this.syncGpu();
@@ -192,10 +189,7 @@ class App {
     } else {
       this.scene.render();
     }
-    if (probe) {
-      this.probeAt = now + (this.perfEl ? 1000 : PROBE_EVERY[this.governor.fps]); // ?perf syncs every frame anyway
-      this.governor.probe(ms, now / 1000);
-    }
+    if (probe) this.governor.probe(ms, now / 1000);
     if (this.perfEl) this.updatePerf(dt, ms, now);
   }
 
@@ -222,7 +216,7 @@ class App {
     this.perfEl.textContent = [
       `${(this.perfN / this.perfAcc).toFixed(0)} fps · frame ${med.toFixed(1)} ms (max ${max.toFixed(1)}, GPU-synced)`,
       `${info.render.calls} draws · ${(info.render.triangles / 1e6).toFixed(2)} M tris · tex ≈${this.texMB.toFixed(0)} MB (${info.memory.textures} textures, ${info.programs?.length ?? 0} programs)`,
-      `${c.width}x${c.height} @ ${+this.pixelRatio.toFixed(3)}x${this.settings.lowPower ? '' : ' · 4x MSAA · GTAO'} · ${mode}`,
+      `${c.width}x${c.height} @ ${+this.pixelRatio.toFixed(3)}x · 4x MSAA${this.settings.lowPower ? '' : ' · GTAO'} · ${mode}`,
     ].join('\n');
     this.perfAcc = 0; this.perfN = 0; this.perfMs.length = 0;
   }
@@ -246,7 +240,8 @@ class App {
     });
 
     window.addEventListener('keydown', (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // A held key's auto-repeat would flip Emergency Power on and off for as long as it is held.
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       const k = e.key.toLowerCase();
       if (k === 'e') this.toggle('emergency');
       else if (k === 'escape') this.closeMenu();
@@ -383,20 +378,32 @@ function installDebug(app) {
   };
 }
 
-/** A non-blocking note along the top of the page (asset failures): the scene keeps running underneath. */
+// How long the soft note stays before it fades (ms); the console keeps the text.
+const NOTE_MS = 20000;
+let noteTimer = 0;
+
+/** A non-blocking note along the top of the page (asset failures): the scene keeps running underneath. Fades after NOTE_MS. */
 function showNote(text) {
   console.warn(text);
   const el = document.getElementById('error');
   if (!el.hidden && !el.classList.contains('soft')) return; // a fatal error is already showing
   el.classList.add('soft');
+  el.classList.remove('faded');
   el.hidden = false;
   el.textContent = text;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(() => {
+    if (!el.classList.contains('soft')) return; // a fatal error replaced it: that one stays
+    el.classList.add('faded'); // a 1.5 s opacity transition (styles.css), then gone
+    noteTimer = setTimeout(() => { if (el.classList.contains('faded')) el.hidden = true; }, 1600);
+  }, NOTE_MS);
 }
 
 function showError(prefix, err) {
   console.error(err);
+  clearTimeout(noteTimer);
   const el = document.getElementById('error');
-  el.classList.remove('soft');
+  el.classList.remove('soft', 'faded');
   el.hidden = false;
   el.textContent = prefix + (err?.message ?? '');
 }

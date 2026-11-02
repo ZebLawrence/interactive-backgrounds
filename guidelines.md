@@ -303,7 +303,13 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
 - **Frame rate gives way before resolution.** When the owner has said sharpness wins, a governor
   that locks to a steady 30 when 60 will not hold is the only knob; Low Power may cap the buffer at
   about 1080p, but `pixelRatio = 1` is a no-op on a 1x 4K display, so cap pixels, not the ratio.
-  Judge cost at the owner's resolution: a full-screen effect that is 2 ms at 1400 x 900 is 16 ms at 4K.
+  A capped buffer is scaled up, so keep its anti-aliasing (MSAA is cheap at ~2 MP): without it
+  railings and stair edges stair-step and crawl. Judge cost at the owner's resolution: a full-screen
+  effect that is 2 ms at 1400 x 900 is 16 ms at 4K.
+- **Never drain the GPU to time a frame while holding 60.** `gl.finish()` plus a 1-pixel
+  `readPixels` stalls the pipeline, so a near-budget frame misses vsync: a periodic stutter on a
+  machine that holds 60. Watch the delivered frame intervals at 60; time synced frames only at 30,
+  where there is room.
 - **Skip lighting that cannot reach.** Interior meshes that cannot see the sky do not need the sun's
   shadow lookup; per-fragment cost you can remove is cheaper than a lower frame rate.
 - **Dynamic things need to tell the static shadow.** Doors and a lift that move must refresh a

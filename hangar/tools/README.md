@@ -31,7 +31,6 @@ node $T/fetch-polyhaven.mjs rust_coarse_01        mat:rust             2
 node $T/fetch-polyhaven.mjs rubber_tiles          mat:rubber           2
 node $T/fetch-ambientcg.mjs MetalPlates001        mat:steel            2
 node $T/fetch-ambientcg.mjs Metal009              mat:steel-brushed    1
-node $T/fetch-ambientcg.mjs MetalWalkway006       mat:grate            1
 node $T/fetch-ambientcg.mjs DiamondPlate001       mat:diamond-plate    0.5
 node $T/fetch-ambientcg.mjs PaintedMetal016       mat:hazard           1
 bash $T/prepare-textures.sh

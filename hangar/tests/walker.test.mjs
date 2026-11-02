@@ -255,8 +255,7 @@ test('doors that open only on approach: never walks through a closed door in 30 
     if (w.state === 'pausing' && w.target) reached.add(w.target.id);
   }
   const through = [...passed.values()].reduce((a, b) => a + b, 0);
-  console.log(`door passages ${through} ${JSON.stringify([...passed])}, pois ${reached.size}, calls ${doors.calls}`);
-  assert.equal(doors.farCalls, 0, 'announced a door from more than 3 m away');
+  assert.equal(doors.farCalls, 0, `announced a door from more than 3 m away (${doors.farCalls} of ${doors.calls} calls)`);
   assert.ok(through >= 6, `walked through doors only ${through} times (${JSON.stringify([...passed])})`);
   assert.ok(reached.size >= 6, `reached only ${reached.size} pois`);
 });

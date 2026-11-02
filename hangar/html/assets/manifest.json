@@ -78,20 +78,6 @@
       "author": "ambientCG (Lennart Demes)",
       "license": "CC0"
     },
-    "mat:grate": {
-      "tile": 1,
-      "maps": {
-        "color": "assets/materials/grate/color.ktx2",
-        "normal": "assets/materials/grate/normal.ktx2",
-        "orm": "assets/materials/grate/orm.ktx2",
-        "height": "assets/materials/grate/height.ktx2"
-      },
-      "name": "MetalWalkway006",
-      "source": "https://ambientcg.com/a/MetalWalkway006",
-      "author": "ambientCG (Lennart Demes)",
-      "license": "CC0",
-      "alpha": true
-    },
     "mat:hazard": {
       "tile": 1,
       "maps": {

@@ -27,6 +27,11 @@ import { Dressing } from './props.js';
 import { buildPost, textureMemory } from './post.js';
 import { planHaze } from './hazeplan.js';
 
+// The level data carries this module's own ?v= (from the import map in index.html), so a push that changes it
+// is fetched fresh, not served from a cached copy alongside new code.
+const VERSION = new URL(import.meta.url).searchParams.get('v');
+const versioned = (url) => (VERSION ? `${url}?v=${VERSION}` : url);
+
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
 const REST_MOVE = 30, REST_STILL = 4, REST_HOLD = 0.8;
@@ -101,6 +106,7 @@ export class Scene {
     this.emergency = settings?.emergency ? 1 : 0;
     this.camDir = new THREE.Vector3();
     this.debugLamp = null;
+    this.disposed = false; // set by dispose(): a level that arrives later is not built (see build)
     this.level = null;
     this.walker = null;
     this.raycaster = new THREE.Raycaster();
@@ -112,13 +118,16 @@ export class Scene {
     // The post stack (post.js): native-size targets, rebuilt on resize and on a Low Power change, nothing else.
     this.lowPower = !!settings?.lowPower;
     this.post = buildPost(renderer, this.scene, this.camera, w, h, app?.pixelRatio ?? renderer.getPixelRatio(), this.lowPower);
-    this.ready = fetch('./data/e1m1.json').then((r) => {
+    this.ready = fetch(versioned('./data/e1m1.json')).then((r) => {
       if (!r.ok) throw new Error(`level data ${r.url} returned HTTP ${r.status}`);
       return r.json();
     }).then((json) => this.build(json));
   }
 
   build(json) {
+    // A reseed (or two) while the level was still fetching disposes this scene before the data arrives: build
+    // nothing then, or the lights, probes and textures of a scene nobody draws would never be freed.
+    if (this.disposed) return;
     const level = (this.level = loadLevel(json));
     const rng = makeRng(this.seed);
     // Which variant each sector's floor, walls and ceiling wear this seed (rooms differ, a room is uniform).
@@ -163,7 +172,6 @@ export class Scene {
     // Slime, the walkway's real grating and railings, wet floors.
     this.slime = new Slime(level, this.renderer, this.scene);
     this.walkway = new Walkway(level);
-    this.walkway.setDither(this.lowPower);
     this.scene.add(this.walkway.group);
     this.hazePlan = planHaze(level);
     this.post.setHazeMap(this.hazePlan);
@@ -491,7 +499,7 @@ export class Scene {
     this.post.resize(w, h, pixelRatio);
   }
 
-  /** Low Power on or off: the post stack is rebuilt (no MSAA, no AO) and the far grating dithers; the walk stays. */
+  /** Low Power on or off: the post stack is rebuilt (no AO; MSAA stays) at the new pixel ratio; the walk stays. */
   setLowPower(on, pixelRatio) {
     on = !!on;
     if (on === this.lowPower && pixelRatio === this.post.pixelRatio) return;
@@ -500,7 +508,6 @@ export class Scene {
     this.post = buildPost(this.renderer, this.scene, this.camera, this.screenW, this.screenH, pixelRatio, on);
     if (this.hazePlan) this.post.setHazeMap(this.hazePlan);
     this.post.setEmergency(this.emergency * this.emergency * (3 - 2 * this.emergency));
-    this.walkway?.setDither(on);
   }
 
   /** ?perf: estimated texture memory in bytes (scene textures, post targets, probes, the slime mirror). */
@@ -510,6 +517,7 @@ export class Scene {
   }
 
   dispose() {
+    this.disposed = true;
     this.post?.dispose();
     this.rig?.dispose();
     this.consoles?.dispose(); // canvas textures (materials and geometry go with the traversal below)
