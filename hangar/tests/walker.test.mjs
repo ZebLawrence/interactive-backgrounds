@@ -196,3 +196,67 @@ test('a closed door makes it stop short and wait, then walk through once open', 
   for (let i = 0; i < 60 * 120 && !got; i++) { const q = w.step(DT, NONE); got = sectorAt(level, q.x, q.z)?.id === 'comp-main'; }
   assert.ok(got, 'went through once the door opened');
 });
+
+// A doors stub like the real Doors: a door opens only when the walker announces it (onApproach) from within
+// 3 m, takes 1.2 s to open, and closes (at once impassable) 4 s after the last announcement.
+function doorStub(getWalker) {
+  const doors = new Map(level.doors.map((d) => [d.sector, { open: 0, last: -Infinity, opening: null }]));
+  const sectors = new Map(level.doors.map((d) => [d.sector, level.byId.get(d.sector)]));
+  const distTo = (id, x, z) => {
+    const poly = sectors.get(id).poly;
+    if (sectorAt(level, x, z)?.id === id) return 0;
+    let best = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+      const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L));
+      best = Math.min(best, Math.hypot(ax + dx * t - x, az + dz * t - z));
+    }
+    return best;
+  };
+  let time = 0;
+  const stub = {
+    calls: 0, farCalls: 0,
+    isOpen: (id) => !doors.has(id) || doors.get(id).open >= 1,
+    onApproach(id) {
+      const d = doors.get(id), w = getWalker();
+      if (!d) return;
+      stub.calls++;
+      if (distTo(id, w.x, w.z) > 3 + 1e-6) { stub.farCalls++; return; }
+      d.last = time;
+    },
+    tick(dt) {
+      time += dt;
+      for (const d of doors.values()) {
+        const want = time - d.last < 4;
+        d.open = want ? Math.min(1, d.open + dt / 1.2) : 0;
+      }
+    },
+    distTo,
+  };
+  return stub;
+}
+
+test('doors that open only on approach: never walks through a closed door in 30 minutes, and keeps touring', () => {
+  let w = null;
+  const doors = doorStub(() => w);
+  w = makeWalker(7, { doors });
+  const reached = new Set();
+  const passed = new Map(); // door sector -> times walked through
+  let inDoor = null;
+  for (let i = 0; i < 30 * 60 * 60; i++) {
+    doors.tick(DT);
+    const p = w.step(DT, NONE);
+    const s = sectorAt(level, w.x, w.z);
+    if (s?.tags.has('door')) {
+      assert.ok(doors.isOpen(s.id), `inside closed door ${s.id} at step ${i} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+      inDoor = s.id;
+    } else if (inDoor) { passed.set(inDoor, (passed.get(inDoor) ?? 0) + 1); inDoor = null; }
+    if (w.state === 'pausing' && w.target) reached.add(w.target.id);
+  }
+  const through = [...passed.values()].reduce((a, b) => a + b, 0);
+  console.log(`door passages ${through} ${JSON.stringify([...passed])}, pois ${reached.size}, calls ${doors.calls}`);
+  assert.equal(doors.farCalls, 0, 'announced a door from more than 3 m away');
+  assert.ok(through >= 6, `walked through doors only ${through} times (${JSON.stringify([...passed])})`);
+  assert.ok(reached.size >= 6, `reached only ${reached.size} pois`);
+});

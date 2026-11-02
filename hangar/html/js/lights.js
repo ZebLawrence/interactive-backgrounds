@@ -20,6 +20,7 @@ export const RED_SLOTS = 4;
 export const SHADOW_CASTERS = 4;
 export const SHADOW_CASTERS_LOW = 2;
 const SLOT_FADE = 0.8; // s for a pooled light to fade in or out as the camera moves
+const ROOM_FADE = 0.7; // s for a wall switch to take a room's lights down or up (eased, never a pop)
 
 const STRIP_COLOR = new THREE.Color().setRGB(0.82, 0.92, 1.0); // ~6500 K tube
 const LAMP_COLOR = new THREE.Color().setRGB(1.0, 0.66, 0.34); // high-pressure sodium
@@ -92,6 +93,37 @@ export class LightRig {
     });
     this.lowPower = null;
     this.setLowPower(false);
+    // Wall switches: per light room (lightplan.lightRooms index), a target and an eased level 0..1.
+    this.roomOf = opts.rooms ?? null; // Map<sectorId, room>
+    this.roomTarget = new Map();
+    this.roomLevel = new Map();
+  }
+
+  /** A wall switch: the lights of `sectorId`'s room fade off or back on. Emergency Power still overrides. */
+  setRoom(sectorId, on) {
+    const room = this.roomOf?.get(sectorId) ?? this.plan.find((f) => f.sector === sectorId)?.room;
+    if (room === undefined || room === null) return false;
+    this.roomTarget.set(room, on ? 1 : 0);
+    if (!this.roomLevel.has(room)) this.roomLevel.set(room, 1);
+    return true;
+  }
+
+  /** Is `sectorId`'s room switched on (its target, not the fade)? */
+  roomOn(sectorId) {
+    const room = this.roomOf?.get(sectorId) ?? this.plan.find((f) => f.sector === sectorId)?.room;
+    return (this.roomTarget.get(room) ?? 1) > 0.5;
+  }
+
+  /** True while any room is still fading. */
+  get roomsMoving() {
+    for (const [room, t] of this.roomTarget) if (this.roomLevel.get(room) !== t) return true;
+    return false;
+  }
+
+  /** Switch level of fixture i's room, eased. */
+  roomK(i) {
+    const lv = this.roomLevel.get(this.plan[i].room);
+    return lv === undefined ? 1 : smooth(lv);
   }
 
   ceilAt(f) {
@@ -188,7 +220,7 @@ export class LightRig {
   /** Brightness of fixture i right now, before Emergency Power: 0 dead, flicker for failing tubes. */
   liveness(i) {
     const f = this.plan[i];
-    return f.dead ? 0 : flickerAt(f.flicker, this.time);
+    return f.dead ? 0 : flickerAt(f.flicker, this.time) * this.roomK(i);
   }
 
   /**
@@ -202,6 +234,11 @@ export class LightRig {
     const main = 1 - e;
     const pulse = 0.8 + 0.2 * Math.sin(2 * Math.PI * PULSE_HZ * this.time);
     const plan = this.plan;
+    const step = Number.isFinite(dt) && dt > 0 ? dt / ROOM_FADE : 0;
+    for (const [room, t] of this.roomTarget) {
+      const lv = this.roomLevel.get(room) ?? 1;
+      this.roomLevel.set(room, t > lv ? Math.min(t, lv + step) : Math.max(t, lv - step));
+    }
 
     // Glowing meshes.
     plan.forEach((f, i) => {

@@ -9,7 +9,7 @@ import { makeMaterial, pomUniforms, envVariant } from './materials.js';
 import { buildNavGraph } from './navgraph.js';
 import { makeRng } from './rng.js';
 import { makeTour } from './tour.js';
-import { annotateFixtures, planLights } from './lightplan.js';
+import { annotateFixtures, planLights, lightRooms } from './lightplan.js';
 import { LightRig } from './lights.js';
 import { Walker, resolveClickTarget } from './walker.js';
 import { sectorAt } from './level.js';
@@ -20,6 +20,8 @@ import { buildWetPatches } from './wet.js';
 import { planWetPatches, slimeSkirts } from './wetplan.js';
 import { PhobosSky } from './sky.js';
 import { openEdges, planShell, sectorClass, sunlitSectors } from './phobos.js';
+import { Doors, Lift, Switches, PropMaterials } from './doors.js';
+import { Consoles } from './screens.js';
 
 // The cursor "comes to rest after moving": it travelled more than REST_MOVE px within the last
 // second, then stayed within REST_STILL px for REST_HOLD s. A cursor that just sits does nothing.
@@ -171,7 +173,19 @@ export class Scene {
     this.lightPlan = planLights(annotateFixtures(level), rng.fork('lights'));
     this.wet = buildWetPatches(planWetPatches(level, this.lightPlan, rng.fork('wet')), this.renderer);
     this.scene.add(this.wet);
-    this.rig = new LightRig(this.scene, this.lightPlan, { level });
+    const rooms = lightRooms(level);
+    this.rig = new LightRig(this.scene, this.lightPlan, { level, rooms });
+    // The base reacting: doors, the lift, wall switches and consoles (they wear the scanned steels as they arrive).
+    this.props = new PropMaterials();
+    const sunlit = sunlitSectors(level);
+    this.doors = new Doors(level, this.mesh, this.props, { sunlit });
+    this.lift = level.lifts.length ? new Lift(level, this.mesh, this.props, level.lifts[0], { sunlit }) : null;
+    const hasLights = (id) => this.lightPlan.some((f) => f.kind !== 'emergency' && f.room === rooms.get(id));
+    this.switches = new Switches(level, this.doors.frames, this.props, this.rig, hasLights);
+    this.consoles = new Consoles(level, this.scene, rng.fork('consoles'), { renderer: this.renderer, assets: this.props, switches: this.switches.list });
+    for (const g of [this.doors.group, this.lift?.group, this.switches.group, this.consoles.group]) if (g) this.scene.add(g);
+    this.interactive = [...this.doors.interactive, ...this.switches.interactive, ...this.consoles.interactive];
+    this.pickables = [...this.mesh.colliders, ...this.interactive];
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     // Phobos outside: Mars, the sun, stars, terrain, boulders, the base's outer walls (takes the items so far).
@@ -179,7 +193,8 @@ export class Scene {
     this.planSunReach();
     this.graph = buildNavGraph(level);
     const tour = makeTour(level.pois, rng.fork('tour'));
-    this.walker = new Walker(level, this.graph, tour, rng.fork('walker'));
+    this.walker = new Walker(level, this.graph, tour, rng.fork('walker'), { doors: this.doors, lift: this.lift });
+    this.doors.setWalker(this.walker);
     this.applyPose(this.walker.step(0, this.input));
     this.updateLights(1, this.settings); // start with the nearest lights already faded in
   }
@@ -196,10 +211,12 @@ export class Scene {
     if (name === 'mat:steel-brushed') this.walkway?.setMaps(asset);
     const key = name.startsWith('mat:') ? name.slice(4) : name;
     const meshes = this.mesh.group.children.filter((m) => m.userData.key === key && !m.userData.walkway);
+    const made = () => makeMaterial(name, asset, this.app?.manifest?.materials?.[name], this.renderer); // cached per tag
     if (meshes.length) {
-      const material = makeMaterial(name, asset, this.app?.manifest?.materials?.[name], this.renderer);
+      const material = made();
       for (const m of meshes) m.material = material;
     }
+    if (this.props?.has(name)) this.props.set(name, made());
     // The probes see the new surfaces after a short settle (assets arrive in bursts).
     if (this.probes) { this.assignProbes(); this.probeRebakeAt = this.time + 0.5; }
   }
@@ -325,11 +342,23 @@ export class Scene {
     if (this.pendingClick) {
       const hit = this.pick(this.pendingClick, false);
       this.pendingClick = null;
-      const t = resolveClickTarget(this.level, this.graph, hit);
-      if (t) inp.click = { x: t.x, y: hit.y, z: t.z };
+      // A door, switch or console operates; anything else is a hint of where to walk.
+      if (!this.operate(hit?.object)) {
+        const t = resolveClickTarget(this.level, this.graph, hit);
+        if (t) inp.click = { x: t.x, y: hit.y, z: t.z };
+      }
     }
-    this.applyPose(this.walker.step(dt, inp));
+    const pose = this.walker.step(dt, inp);
+    this.applyPose(pose);
+    // Doors and the lift; the sun's shadow map is static, so it re-renders while one it can see moves.
+    let sunMoved = this.doors?.update(dt, pose) ?? false;
+    if (this.lift?.update(dt)) sunMoved = true;
+    if (sunMoved) this.sky?.refreshShadow();
+    this.switches?.update(dt);
+    if (this.rig?.roomsMoving) this.roomsSettle = true;
+    else if (this.roomsSettle) { this.roomsSettle = false; this.probeRebakeAt = this.time; } // reflections see the room's new light
     this.updateLights(dt, settings ?? this.settings);
+    this.consoles?.update(dt, this.camera);
     this.sky?.update(dt, this.camera);
     // Re-bake the probes once Emergency Power has settled at a new level, or after materials arrived.
     if (this.probes) {
@@ -367,20 +396,33 @@ export class Scene {
     return false;
   }
 
-  /** World point under a screen point (CSS px, y up): the first collider hit, or (if `far`) a point 40 m out. */
+  /**
+   * World point under a screen point (CSS px, y up): the first hit among the colliders and the doors, switches
+   * and consoles ({ x, y, z, object }), or (if `far`) a point 40 m out.
+   */
   pick(pt, far) {
     if (!this.mesh) return null;
     this.ndc.set((pt.x / this.screenW) * 2 - 1, (pt.y / this.screenH) * 2 - 1);
     this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.ndc, this.camera);
-    const hit = this.raycaster.intersectObjects(this.mesh.colliders, false)[0];
-    if (hit) return { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+    const hit = this.raycaster.intersectObjects(this.pickables ?? this.mesh.colliders, false)[0];
+    if (hit && Number.isFinite(hit.point.x)) return { x: hit.point.x, y: hit.point.y, z: hit.point.z, object: hit.object };
     if (!far) return null;
     const p = this.raycaster.ray.at(40, new THREE.Vector3());
     return { x: p.x, y: p.y, z: p.z };
   }
 
   click(pt) { this.pendingClick = { x: pt.x, y: pt.y }; }
+
+  /** Operates the door, switch or console `object` belongs to; false if it is none of those. */
+  operate(object) {
+    const it = object?.userData?.interactive;
+    if (!it) return false;
+    if (it.kind === 'door') this.doors?.operate(it.id);
+    else if (it.kind === 'switch') this.switches?.operate(it.id);
+    else if (it.kind === 'console') this.consoles?.operate(it.id);
+    return true;
+  }
 
   render() {
     // One shadow-map update per frame (guidelines section 3), in the main pass, whose camera sees every
@@ -422,6 +464,8 @@ export class Scene {
 
   dispose() {
     this.rig?.dispose();
+    this.consoles?.dispose(); // canvas textures (materials and geometry go with the traversal below)
+    this.props?.dispose();
     this.sky?.dispose();
     this.probes?.dispose();
     this.slime?.dispose();

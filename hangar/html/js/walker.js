@@ -9,8 +9,13 @@
 // yaw 0 looks north (-z) and grows to the left, like a three.js camera's rotation.y.
 //
 // A lift edge splits a leg into pieces: walk to the boarding point, call the lift, step on, ride,
-// walk off. Doors: a closed door (opts.doors.isOpen(sectorId) false) makes the walker stop short
-// of it and wait; by default every door is open and the lift is simulated here.
+// walk off. Doors: while a door on the path lies within DOOR_NEAR metres ahead (or the walker is
+// inside it) the walker announces it every step (opts.doors.onApproach(sectorId)), so a real door
+// opens ahead and stays open until the walker is through; a closed door
+// (opts.doors.isOpen(sectorId) false) makes the walker stop short of it and wait, and it never
+// steps into a closed door sector, whatever its speed. By default every door is open and the lift
+// is simulated here; a real lift (opts.lift) gives ride/call promises, the platform height and
+// optionally the ride's duration.
 
 import { sectorAt } from './level.js';
 import { nearestNode, findPath, clearanceAt } from './navgraph.js';
@@ -34,6 +39,7 @@ const PITCH_RATE = (60 * Math.PI) / 180;
 const GAZE_YAW = (15 * Math.PI) / 180, GAZE_PITCH = (10 * Math.PI) / 180;
 const LIFT_SPEED = 0.45;
 const DOOR_STOP = 0.9; // metres short of a closed door
+const DOOR_NEAR = 3; // announce a door this far ahead along the path
 const MAX_DT = 1 / 15;
 const DEG = Math.PI / 180;
 
@@ -327,11 +333,12 @@ class PathBuilder {
     }
     vmax[n - 1] = 0;
     for (let i = n - 2; i >= 0; i--) vmax[i] = Math.min(vmax[i], Math.sqrt(vmax[i + 1] ** 2 + 2 * DECEL * (ss[i + 1] - ss[i])));
-    // Door runs: index of the first sample of each stretch inside a door sector.
+    // Door runs: arc length where each stretch inside a door sector starts (s) and ends (e).
     const doors = [];
     for (let i = 0; i < n; i++) {
       const s = sectors[i];
-      if (s?.tags.has('door') && (i === 0 || sectors[i - 1] !== s)) doors.push({ i, s: ss[i], sector: s.id });
+      if (s?.tags.has('door') && (i === 0 || sectors[i - 1] !== s)) doors.push({ i, s: ss[i], e: ss[n - 1], sector: s.id });
+      else if (doors.length && sectors[i] !== sectors[i - 1] && sectors[i - 1]?.id === doors[doors.length - 1].sector) doors[doors.length - 1].e = ss[i];
     }
     return { kind: 'walk', n, xs, zs, ss, floors, vmax, hd, sectors, doors, len: ss[n - 1] };
   }
@@ -493,7 +500,8 @@ export class Walker {
     const cur = this.liftY.get(p.lift);
     const target = p.kind === 'call' ? p.h : p.to;
     const start = p.kind === 'call' ? cur : p.from;
-    const dur = Math.abs(target - start) / LIFT_SPEED * 1.3 + (p.kind === 'ride' ? 0.8 : 0);
+    const own = this.lift?.duration ? this.lift.duration(start, target) : NaN;
+    const dur = Number.isFinite(own) && own >= 0 ? own : Math.abs(target - start) / LIFT_SPEED * 1.3 + (p.kind === 'ride' ? 0.8 : 0);
     this.ride = { t: 0, dur, start, target, done: !this.lift, promise: null, wait: p.kind === 'ride' ? 0.8 : 0.3 };
     if (this.lift) {
       const fn = p.kind === 'call' ? this.lift.call ?? (() => Promise.resolve()) : this.lift.ride;
@@ -566,6 +574,7 @@ export class Walker {
       let v = this.profileAt(p, this.s);
       const wobble = 0.965 + 0.035 * Math.sin(this.time * 0.37 + this.wob[0]) * Math.sin(this.time * 0.23 + this.wob[1]);
       v *= wobble;
+      this.announceDoors(p, this.s);
       for (const d of p.doors) {
         if (d.s + 0.05 < this.s) continue;
         if (d.s - this.s > 4) break;
@@ -630,12 +639,15 @@ export class Walker {
       const hh = this.lift?.height ? finite(this.lift.height(p.lift), h) : h;
       this.liftY.set(p.lift, hh);
       if (p.kind === 'ride') this.floor = hh;
+      // Near the end of the ride, open the door the next walk starts through.
+      if (k > 0.7 && this.pieces[0]?.kind === 'walk') this.announceDoors(this.pieces[0], 0);
       const look = p.open && k < 0.7 ? p.open : p.face;
       const fx = look.x - this.x, fz = look.z - this.z;
       const face = Math.hypot(fx, fz) > 0.2 ? headingOf(fx, fz) : this.body.x;
       headTarget = this.head.x + wrap(face - this.head.x) + 6 * DEG * Math.sin(this.time * 0.4 + this.wob[1]);
       pitchTarget = p.kind === 'ride' && p.open && k < 0.7 ? -Math.sign(p.to - p.from) * 10 * DEG : 0;
-      if (k >= 1 && (rd.done || !this.lift)) {
+      // Done when the lift's promise settled, or (without waiting a microtask) when it reports itself at rest there.
+      if (k >= 1 && (rd.done || !this.lift || this.lift.settled?.(rd.target))) {
         rd.wait -= dt;
         if (rd.wait <= 0) { this.liftY.set(p.lift, rd.target); this.nextPiece(); }
       }
@@ -668,7 +680,16 @@ export class Walker {
       let ds = this.speed * dt;
       // Never stall a hair short of the end.
       if (!this.attn && !this.pendingGoal && rem < 0.05) ds = Math.min(rem, Math.max(ds, 0.03 * dt));
-      this.s = Math.min(p.len, this.s + ds);
+      let s1 = Math.min(p.len, this.s + ds);
+      // Never step into a closed door: the braking above stops short of it, but a door that shuts
+      // inside the braking distance must not let the 0.4 m/s² limit carry the walker in.
+      for (const d of p.doors) {
+        if (d.s + 0.05 < this.s) continue;
+        if (d.s > s1 + 0.05) break;
+        if (!this.doors.isOpen(d.sector) && this.s < d.s) { s1 = Math.max(this.s, Math.min(s1, d.s - 0.06)); if (s1 <= this.s + 1e-9) this.speed = 0; }
+        break;
+      }
+      this.s = s1;
       while (this.idx < p.n - 2 && p.ss[this.idx + 1] <= this.s) this.idx++;
       const [x, z, f] = this.pointAt(p, this.s);
       this.x = x; this.z = z; this.floor = f;
@@ -728,6 +749,17 @@ export class Walker {
     const acc = clamp(w * w * err - 2 * w * h.v, -HEAD_ACCEL, HEAD_ACCEL);
     h.v = clamp(h.v + acc * dt, -HEAD_RATE, HEAD_RATE);
     h.x += h.v * dt;
+  }
+
+  /** Tells the doors about every door of walk piece `p` within DOOR_NEAR ahead of arc length `s`, or underfoot. */
+  announceDoors(p, s) {
+    const fn = this.doors.onApproach;
+    if (!fn) return;
+    for (const d of p.doors) {
+      if (d.e < s - 0.05) continue;
+      if (d.s - s > DOOR_NEAR) break;
+      fn.call(this.doors, d.sector);
+    }
   }
 
   tangentAt(i) { return this.piece.hd[i]; }
