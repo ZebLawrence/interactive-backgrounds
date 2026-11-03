@@ -71,11 +71,30 @@ richer CC-BY props (consoles, doors, lift, railings) the owner can download by h
 the current ones are modelled in code or Blender with the scanned materials. The floor plan is
 traced from published top-down maps (`tools/REFERENCES.md`). Tests: `node --test 'hangar/tests/*.test.mjs'`.
 
+### Sky and ground
+
+The sky is the real one. Stars are the Hipparcos catalogue (118,000 stars down to V 12, each at its
+measured position, brightness and colour), drawn as sharp points. The Milky Way is NASA's Deep Star
+Maps 2020 (built from Gaia DR2), drawn behind them. Both are turned so the galactic centre hangs beside
+Mars, on the side away from the sun.
+
+The ground outside is real terrain: a 4 km square of the Moon's Descartes highlands at the Apollo 16
+site, measured by the Lunar Reconnaissance Orbiter. It has 2 m height posts and a 0.5 m photograph
+draped over it as one continuous image (8192 x 8192), with the shading of the photo's own sun divided
+out. No such data exists for Phobos (its best images are about 7 m a pixel), so the Moon stands in.
+Each tour turns the square to a new angle round the base. The Phobos grooves, the far ridges, the
+curve of the horizon and the flat pad round the base stay as before. The tiled regolith scan adds only
+the fine grain near the camera, fading to half strength by 60 m so it never repeats visibly.
+`tools/prepare-sky-ground.py` makes all of these files.
+
 ## Credits
 
 Every asset the page loads is listed in `html/assets/manifest.json` with its source, author and
 licence; this table mirrors it. Thanks to Poly Haven and ambientCG for CC0 scans, and to NASA / JPL /
-USGS for the Viking mosaic. How the files were fetched and encoded: `tools/README.md`.
+USGS for the Viking mosaic, to NASA GSFC / Arizona State University for the LROC terrain model, to
+NASA GSFC's Scientific Visualization Studio (and ESA/Gaia/DPAC) for the Milky Way, and to ESA's
+Hipparcos mission (via NASA HEASARC) for the stars. How the files were fetched and encoded:
+`tools/README.md`.
 
 | Kind | Key | Asset | Author | Licence | Source |
 |---|---|---|---|---|---|
@@ -106,6 +125,11 @@ USGS for the Viking mosaic. How the files were fetched and encoded: `tools/READM
 | Model | `toolbox` | Metal Toolbox | Mateusz Sadek | CC0 | https://polyhaven.com/a/metal_toolbox |
 | Model | `utility-box` | Utility Box 01 | James Ray Cock | CC0 | https://polyhaven.com/a/utility_box_01 |
 | Image | `mars` | Mars Viking MDIM2.1 Colorized Global Mosaic (1 km/px release), resampled to 8192 x 4096 | NASA / JPL / USGS Astrogeology Science Center | PD | https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m |
+| Image | `milkyway` | Deep Star Maps 2020, Milky Way without the Hipparcos/Tycho stars, 8192 x 4096 | NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC | PD | https://svs.gsfc.nasa.gov/4851 |
+| Image | `ground-albedo` | LROC NAC DTM APOLLO16_1, orthophoto M119754107 at 0.5 m, a 4096 m window, shading divided out | NASA / GSFC / Arizona State University | PD | https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/ |
+| Image | `ground-normal` | LROC NAC DTM APOLLO16_1, normals of the same window (2 m posts) | NASA / GSFC / Arizona State University | PD | https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/ |
+| Data | `data/ground.bin` | LROC NAC DTM APOLLO16_1, heights of the same window (2 m posts, tilt removed) | NASA / GSFC / Arizona State University | PD | as above |
+| Data | `data/stars.bin` | Hipparcos Main Catalogue (ESA 1997), HEASARC copy: positions, V magnitudes, B-V colours | ESA Hipparcos mission; NASA HEASARC | PD | https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/hipparcos.html |
 
 Viking mosaic: USGS Astrogeology, *Mars Viking MDIM2.1 Colorized Global Mosaic*, downloaded from
 https://astrogeology.usgs.gov/ckan/dataset/7131d503-cdc9-45a5-8f83-5126c0fd397e/resource/5ea881c6-01b3-41fa-a7af-42d2131b54f1/download/mars_viking_mdim21_clrmosaic_1km.jpg, resampled to 8192 x 4096.

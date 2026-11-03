@@ -38,6 +38,14 @@ bash $T/prepare-textures.sh
 # Mars (USGS Viking colour mosaic, public domain), 8192 x 4096 KTX2
 node $T/fetch-mars.mjs && bash $T/prepare-images.sh
 
+# The real sky and ground (see hangar/README.md, "Sky and ground"). Downloads by hand into raw/:
+#   raw/sky/hipparcos.tdat.gz      https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_hipparcos.tdat.gz
+#   raw/sky/milkyway_2020_8k.exr   https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_8k.exr
+#   raw/lroc/NAC_DTM_APOLLO16_1.TIF and NAC_DTM_APOLLO16_1_M119754107_50CM.IMG from
+#     https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/
+python3 -m venv $T/raw/.venv && $T/raw/.venv/bin/pip install numpy pillow tifffile OpenEXR
+$T/raw/.venv/bin/python $T/prepare-sky-ground.py
+
 # models: --model <asset> <name> <scale to metres>
 node $T/fetch-polyhaven.mjs --model moon_rock_01       boulder-a 1
 node $T/fetch-polyhaven.mjs --model moon_rock_03       boulder-b 1
@@ -72,6 +80,7 @@ Downloads are skipped when the raw file already exists, so reruns are cheap.
 | `pack-maps.py` | Normalises a raw material: 2048², 8-bit, packs `orm` (AO R, roughness G, metalness B), puts grating opacity in the colour alpha. |
 | `prepare-textures.sh` | Stops with basisu's log if an encode fails or writes an empty file. KTX2 UASTC level 3, zstd 19, mipmaps: colour sRGB, normal `-normal_map`, orm and height linear. Stored bottom row first (`-y_flip`) so maps sit on the level's v-up UVs like TextureLoader images. |
 | `prepare-images.sh` | Mars resampled to 8192 x 4096, same KTX2 settings. |
+| `prepare-sky-ground.py` | The star catalogue to `data/stars.bin`; the Milky Way map to KTX2; a 4 km window of the Apollo 16 terrain model to `data/ground.bin`, its normals and its de-shaded photograph to KTX2 (no y flip: the page samples them in the heights' row order). |
 | `ktx2-textures.mjs` + `prepare-models.sh` | glTF textures to KTX2 (basisu), then `gltf-transform optimize --compress meshopt`. |
 | `manifest-lib.mjs` | Shared paths, manifest read/write, downloads. |
 

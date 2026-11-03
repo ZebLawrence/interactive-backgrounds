@@ -19,7 +19,8 @@ export function manifestItems(manifest, priority = []) {
     items.push({ kind: 'model', name, files: [{ kind: 'model', key: name, path: m.file, scale: m.scale ?? 1 }] });
   }
   for (const [name, m] of Object.entries(manifest?.images ?? {})) {
-    items.push({ kind: 'image', name, files: [{ kind: 'texture', key: `image.${name}`, path: m.file, map: 'image' }] });
+    // `linear` (a normal map, say) skips the sRGB decode; `clamp` stops it wrapping (a map of one place).
+    items.push({ kind: 'image', name, files: [{ kind: 'texture', key: `image.${name}`, path: m.file, map: 'image', linear: !!m.linear, clamp: !!m.clamp }] });
   }
   const rank = new Map();
   priority.forEach((name, i) => { if (!rank.has(name)) rank.set(name, i); });

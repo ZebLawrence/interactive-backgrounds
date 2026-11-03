@@ -72,9 +72,10 @@ export async function loadAssets(renderer, manifest, onProgress = () => {}, opts
   };
 
   const finishTexture = (tex, job) => {
-    tex.colorSpace = job.map === 'color' || job.map === 'image' ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-    // Material maps tile; an equirectangular image wraps round in longitude and clamps at the poles.
-    tex.wrapS = THREE.RepeatWrapping;
+    tex.colorSpace = (job.map === 'color' || job.map === 'image') && !job.linear ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    // Material maps tile; an equirectangular image wraps round in longitude and clamps at the poles; a map of
+    // one place (the ground) clamps both ways.
+    tex.wrapS = job.clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
     tex.wrapT = job.map === 'image' ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
     tex.anisotropy = anisotropy;
     // The KTX2 files carry a full mip chain; a 1x1 stand-in has none and must not ask for one.

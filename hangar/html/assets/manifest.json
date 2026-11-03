@@ -284,6 +284,30 @@
       "download": "https://astrogeology.usgs.gov/ckan/dataset/7131d503-cdc9-45a5-8f83-5126c0fd397e/resource/5ea881c6-01b3-41fa-a7af-42d2131b54f1/download/mars_viking_mdim21_clrmosaic_1km.jpg",
       "author": "NASA / JPL / USGS Astrogeology Science Center",
       "license": "PD"
+    },
+    "milkyway": {
+      "file": "assets/images/milkyway.ktx2",
+      "name": "Deep Star Maps 2020: the Milky Way without the Hipparcos and Tycho stars (milkyway_2020_8k.exr), 8192 x 4096",
+      "source": "https://svs.gsfc.nasa.gov/4851",
+      "author": "NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC",
+      "license": "PD"
+    },
+    "ground-albedo": {
+      "file": "assets/images/ground-albedo.ktx2",
+      "clamp": true,
+      "name": "LROC NAC DTM APOLLO16_1 orthophoto M119754107 (0.5 m), a 4096 m window, shading from the terrain model divided out",
+      "source": "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/",
+      "author": "NASA / GSFC / Arizona State University (LROC)",
+      "license": "PD"
+    },
+    "ground-normal": {
+      "file": "assets/images/ground-normal.ktx2",
+      "clamp": true,
+      "linear": true,
+      "name": "LROC NAC DTM APOLLO16_1 (2 m posts), normals of the same 4096 m window",
+      "source": "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/",
+      "author": "NASA / GSFC / Arizona State University (LROC)",
+      "license": "PD"
     }
   }
 }

@@ -13,6 +13,12 @@
 // so the near horizon under it curves away clean. Every far feature tapers to nothing before the mesh ends.
 // Near the base the ground is a flat pad just below the courtyard; inside an exterior sector it is that
 // sector's floor exactly, and it ramps out of that basin over 25 m.
+//
+// With the real ground (decodeGround), its measured heights replace the made-up craters and fBm: a 4 km
+// square of the Moon's Descartes highlands centred on the base and turned to a seeded angle, plus the
+// grooves, the far ridges and the sphere's drop. reliefWeight(x, z) says how much of the scan a point wears
+// (0 on the pad and in the exterior basins, 1 out on the open ground), so sky.js can light the scan's own
+// normals over the coarser far mesh; baseHeight is the ground without it.
 
 import { insidePoly } from './level.js';
 import { edgeDistance } from './wetplan.js';
@@ -32,6 +38,10 @@ export const SHELL_BOTTOM = -8; // m: façades reach down into the ground
 export const ROOF_THICK = 0.5;
 export const LOW_BUILDING = 4; // m above the courtyard floor: lower blocks keep their own roofline
 export const TERRAIN_REACH = 2000; // m from the base centre
+// The real ground (data/ground.bin, tools/prepare-sky-ground.py): an LROC NAC terrain model of the Apollo 16
+// site, GROUND_N x GROUND_N int16 heights in cm on GROUND_STEP m posts, its regional tilt removed.
+export const GROUND_N = 2048;
+export const GROUND_STEP = 2; // m
 
 const DEG = Math.PI / 180;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -256,13 +266,48 @@ function craterProfile(s, depth, rim) {
   return rim * Math.pow(s, -3) * (1 - smooth(2.2, 3, s));
 }
 
+/** data/ground.bin (an ArrayBuffer) as { n, step, size, h: Float32Array of metres, row-major }. */
+export function decodeGround(buffer, n = GROUND_N, step = GROUND_STEP) {
+  const cm = new Int16Array(buffer);
+  if (cm.length !== n * n) throw new Error(`ground.bin holds ${cm.length} heights, expected ${n * n}`);
+  const h = new Float32Array(cm.length);
+  for (let i = 0; i < cm.length; i++) h[i] = cm[i] / 100;
+  return { n, step, size: n * step, h };
+}
+
+/**
+ * The real ground placed on the world: centred on `center`, turned by `angle`. uv(x, z) gives the scan's
+ * coordinates (u along a row, v down the rows, 0..1; the same frame as ground-albedo and ground-normal),
+ * height(x, z) the scan's height there (bilinear; clamped at the square's edge).
+ */
+function placeGround(g, center, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const uv = (x, z) => {
+    const dx = x - center[0], dz = z - center[1];
+    return { u: (c * dx + s * dz) / g.size + 0.5, v: (-s * dx + c * dz) / g.size + 0.5 };
+  };
+  const height = (x, z) => {
+    const { u, v } = uv(x, z);
+    const fx = Math.min(g.n - 1, Math.max(0, u * g.n - 0.5)), fz = Math.min(g.n - 1, Math.max(0, v * g.n - 0.5));
+    const i = Math.min(g.n - 2, Math.floor(fx)), j = Math.min(g.n - 2, Math.floor(fz));
+    const tx = fx - i, tz = fz - j, k = j * g.n + i;
+    const a = g.h[k] + (g.h[k + 1] - g.h[k]) * tx;
+    const b = g.h[k + g.n] + (g.h[k + g.n + 1] - g.h[k + g.n]) * tx;
+    return a + (b - a) * tz;
+  };
+  return { angle, cos: c, sin: s, center, size: g.size, uv, height };
+}
+
 /**
  * The ground outside, for this seed. Returns { height(x, z), shade(x, z), center, footprint, exteriors,
- * craters, grooves, inFootprint(x, z), footprintDistance(x, z) }. `footprint` is the polygons where the
- * terrain must not show (interior and courtyard sectors, and any open sector whose floor is a slime pool);
- * `exteriors` are the open sectors whose floor the terrain itself becomes.
+ * craters, grooves, inFootprint(x, z), footprintDistance(x, z), ground, baseHeight(x, z), reliefWeight(x, z) }.
+ * `footprint` is the polygons where the terrain must not show (interior and courtyard sectors, and any open
+ * sector whose floor is a slime pool); `exteriors` are the open sectors whose floor the terrain itself
+ * becomes. sample(x, z) is { base, scan, weight } in one go (height = base + scan x weight). `realGround`
+ * (decodeGround) replaces the made-up craters and fBm with measured heights; `ground` is
+ * then its placement (placeGround), else null.
  */
-export function makeTerrain(level, rng, marsFlat = [0, 1]) {
+export function makeTerrain(level, rng, marsFlat = [0, 1], realGround = null) {
   const footprint = [], exteriors = [];
   for (const s of level.sectors) {
     if (sectorClass(s) === 'exterior' && !s.tags.has('slime')) exteriors.push(s);
@@ -314,11 +359,14 @@ export function makeTerrain(level, rng, marsFlat = [0, 1]) {
       k++;
     }
   };
-  place(250, 650, 900, 1600, 4, true);
-  place(30, 140, 200, 1500, 40, false);
-  place(14, 40, 50, 300, 10, false);
-  place(6, 40, 30, 600, 70, false);
-  place(1.2, 8, 6, 300, 160, false);
+  // The real ground brings its own craters.
+  if (!realGround) {
+    place(250, 650, 900, 1600, 4, true);
+    place(30, 140, 200, 1500, 40, false);
+    place(14, 40, 50, 300, 10, false);
+    place(6, 40, 30, 600, 70, false);
+    place(1.2, 8, 6, 300, 160, false);
+  }
 
   // Grooves: one family of near-parallel troughs with pit chains along them, kept off the base.
   const grooves = [];
@@ -336,10 +384,12 @@ export function makeTerrain(level, rng, marsFlat = [0, 1]) {
     for (const [wl, amp, n] of octaves) s += amp * n(x / wl + 17.3, z / wl - 9.1);
     return s;
   };
-  // Relief that grows with distance (rough, but never a cliff), and broad ridges far out.
+  const ground = realGround ? placeGround(realGround, center, rng.range(0, Math.PI * 2)) : null;
+  // Relief that grows with distance (rough, but never a cliff), and broad ridges far out. The real ground
+  // replaces the made-up near and mid relief (it is added in `natural`, so it can be weighed apart).
   const relief = (x, z, r) => {
-    const near = fbm(x, z, [[3, 0.05, n1], [9, 0.18, n2], [23, 0.55, n1], [60, 1.6, n2]]);
-    const mid = fbm(x, z, [[160, 3, n1], [420, 7, n2]]) * (0.6 + smooth(80, 700, r));
+    const near = ground ? 0 : fbm(x, z, [[3, 0.05, n1], [9, 0.18, n2], [23, 0.55, n1], [60, 1.6, n2]]);
+    const mid = ground ? 0 : fbm(x, z, [[160, 3, n1], [420, 7, n2]]) * (0.6 + smooth(80, 700, r));
     const ridgeN = 1 - Math.abs(n2(x / 700 + 3.1, z / 700 + 7.7));
     const ang = Math.atan2(z - center[1], x - center[0]) - marsAz;
     const towardMars = Math.max(0, Math.cos(ang));
@@ -369,30 +419,33 @@ export function makeTerrain(level, rng, marsFlat = [0, 1]) {
     return h;
   };
 
-  const natural = (x, z) => {
-    const r = Math.hypot(x - center[0], z - center[1]);
-    const dB = footprintDistance(x, z);
-    const keep = smooth(1, 22, dB); // flat pad by the walls, full relief 22 m out
-    // The sphere's drop is measured from the base centre (under 0.2 m anywhere on the base).
-    return PAD + (relief(x, z, r) + craterHeight(x, z) + grooveHeight(x, z)) * keep - curvatureDrop(r);
-  };
-
-  const height = (x, z) => {
-    let h = null, ramp = 1, floor = 0;
+  // One evaluation of everything at a point: the ground without the scan (base), the scan's height there and
+  // the weight it carries (the pad's keep times the exterior basin's ramp, tapered before the mesh ends).
+  const evaluate = (x, z) => {
+    let ramp = 1, floor = 0;
     for (let i = 0; i < exteriors.length; i++) {
       const s = exteriors[i];
       const d = polyDist(s, exBounds[i], x, z);
-      if (d === 0) return s.floor;
+      if (d === 0) return { base: s.floor, scan: 0, weight: 0 };
       const t = smooth(0, 25, d);
       if (t < ramp) { ramp = t; floor = s.floor; }
     }
-    h = natural(x, z);
-    return ramp < 1 ? floor + (h - floor) * ramp : h;
+    const r = Math.hypot(x - center[0], z - center[1]);
+    const keep = smooth(1, 22, footprintDistance(x, z)); // flat pad by the walls, full relief 22 m out
+    // The sphere's drop is measured from the base centre (under 0.2 m anywhere on the base).
+    const nat = PAD + (relief(x, z, r) + craterHeight(x, z) + grooveHeight(x, z)) * keep - curvatureDrop(r);
+    const base = ramp < 1 ? floor + (nat - floor) * ramp : nat;
+    if (!ground) return { base, scan: 0, weight: 0 };
+    return { base, scan: ground.height(x, z), weight: keep * ramp * (1 - smooth(1650, 1930, r)) };
   };
+  const height = (x, z) => { const e = evaluate(x, z); return e.base + e.scan * e.weight; };
+  const baseHeight = (x, z) => evaluate(x, z).base;
+  const reliefWeight = (x, z) => evaluate(x, z).weight;
 
   // Albedo multiplier: fresh craters and their ejecta are bright, groove floors and old crater bowls darker,
   // and broad patches of lighter and darker dust.
   const shade = (x, z) => {
+    if (ground) return 1; // the real ground's albedo is its photograph (sky.js)
     let k = 1 + 0.12 * n1(x / 90 - 4.2, z / 90 + 1.3) + 0.06 * n2(x / 23, z / 23);
     for (const c of craters) {
       const dx = x - c.x, dz = z - c.z;
@@ -408,7 +461,10 @@ export function makeTerrain(level, rng, marsFlat = [0, 1]) {
     return Math.min(1.6, Math.max(0.55, k));
   };
 
-  return { height, shade, center, halfDiag, footprint, exteriors, craters, grooves, inFootprint, footprintDistance, bounds: all };
+  return {
+    height, shade, center, halfDiag, footprint, exteriors, craters, grooves, inFootprint, footprintDistance, bounds: all,
+    ground, baseHeight, reliefWeight, sample: evaluate,
+  };
 }
 
 /**
@@ -447,4 +503,67 @@ export function scatterBoulders(terrain, rng, box, counts = { near: 130, far: 26
     k++;
   }
   return out;
+}
+
+// ---- the real sky ----
+// Stars and the Milky Way come in the ICRS frame (x toward RA 0, z toward the north celestial pole).
+// skyOrientation turns that frame onto the world so the galactic centre, the brightest stretch of the band,
+// hangs MILKY_WAY.fromMars degrees of azimuth to the side of Mars away from the sun, MILKY_WAY.elevation up,
+// with the band climbing steeply (MILKY_WAY.tilt from the horizontal) away from Mars: in the courtyard and
+// computer-room views Mars and the galaxy share the frame, and the sun's glare stays on the other side.
+const radec = (ra, dec) => [Math.cos(dec * DEG) * Math.cos(ra * DEG), Math.cos(dec * DEG) * Math.sin(ra * DEG), Math.sin(dec * DEG)];
+export const GALACTIC_CENTER = radec(266.405, -28.936); // Sgr A*
+export const GALACTIC_POLE = radec(192.8595, 27.1283); // north galactic pole
+export const MILKY_WAY = { fromMars: 50, elevation: 22, tilt: 62 }; // degrees
+
+const v3 = {
+  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+  cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+  norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+  axpy: (k, a, b) => [b[0] + k * a[0], b[1] + k * a[1], b[2] + k * a[2]],
+};
+
+/** The rotation (row-major 3x3) taking ICRS directions to world directions (see above). */
+export function skyOrientation(marsDir, sunDir, mw = MILKY_WAY) {
+  const az = (v) => Math.atan2(v[2], v[0]);
+  const mAz = az(marsDir);
+  const side = Math.sign(Math.sin(az(sunDir) - mAz)) || 1;
+  const a = mAz - side * mw.fromMars * DEG, e = mw.elevation * DEG;
+  const wc = [Math.cos(e) * Math.cos(a), Math.sin(e), Math.cos(e) * Math.sin(a)];
+  const up = [0, 1, 0];
+  const upPerp = v3.norm(v3.axpy(-v3.dot(up, wc), wc, up));
+  let h = v3.norm(v3.cross(up, wc));
+  if (h[0] * marsDir[0] + h[2] * marsDir[2] > 0) h = h.map((x) => -x); // away from Mars
+  const t = v3.axpy(Math.sin(mw.tilt * DEG), upPerp, h.map((x) => x * Math.cos(mw.tilt * DEG)));
+  const wn = v3.norm(v3.cross(wc, t));
+  const gc = GALACTIC_CENTER;
+  const gn = v3.norm(v3.axpy(-v3.dot(GALACTIC_POLE, gc), gc, GALACTIC_POLE));
+  const W = [wc, wn, v3.cross(wc, wn)], G = [gc, gn, v3.cross(gc, gn)];
+  const Q = new Array(9).fill(0);
+  for (let k = 0; k < 3; k++) for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) Q[i * 3 + j] += W[k][i] * G[k][j];
+  return Q;
+}
+
+/** Q (row-major 3x3) applied to a direction. */
+export function applySky(Q, d) {
+  return [Q[0] * d[0] + Q[1] * d[1] + Q[2] * d[2], Q[3] * d[0] + Q[4] * d[1] + Q[5] * d[2], Q[6] * d[0] + Q[7] * d[1] + Q[8] * d[2]];
+}
+
+/**
+ * data/stars.bin (tools/prepare-sky-ground.py: the Hipparcos catalogue, brightest first, 10 bytes a star) as
+ * { count, dir: Float32Array (ICRS unit vectors), mag: Float32Array (V), color: Float32Array (rgb 0..1) }.
+ */
+export function decodeStars(buffer) {
+  const count = Math.floor(buffer.byteLength / 10);
+  const dv = new DataView(buffer);
+  const dir = new Float32Array(count * 3), mag = new Float32Array(count), color = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const o = i * 10;
+    const x = dv.getInt16(o, true), y = dv.getInt16(o + 2, true), z = dv.getInt16(o + 4, true);
+    const l = Math.hypot(x, y, z) || 1;
+    dir[i * 3] = x / l; dir[i * 3 + 1] = y / l; dir[i * 3 + 2] = z / l;
+    mag[i] = dv.getUint8(o + 6) / 16 - 2;
+    for (let c = 0; c < 3; c++) color[i * 3 + c] = dv.getUint8(o + 7 + c) / 255;
+  }
+  return { count, dir, mag, color };
 }

@@ -18,7 +18,7 @@ import { bakeProbes } from './probes.js';
 import { Walkway, BAR_LAYER } from './grate.js';
 import { buildWetPatches } from './wet.js';
 import { planWetPatches, slimeSkirts } from './wetplan.js';
-import { PhobosSky } from './sky.js';
+import { PhobosSky, loadSkyData } from './sky.js';
 import { openEdges, planShell, sectorClass, sunlitSectors } from './phobos.js';
 import { Doors, Lift, Switches, PropMaterials } from './doors.js';
 import { Consoles } from './screens.js';
@@ -118,10 +118,11 @@ export class Scene {
     // The post stack (post.js): native-size targets, rebuilt on resize and on a Low Power change, nothing else.
     this.lowPower = !!settings?.lowPower;
     this.post = buildPost(renderer, this.scene, this.camera, w, h, app?.pixelRatio ?? renderer.getPixelRatio(), this.lowPower);
-    this.ready = fetch(versioned('./data/e1m1.json')).then((r) => {
+    // The level, and the real ground and stars (sky.js; fetched once per page, null if they fail).
+    this.ready = Promise.all([fetch(versioned('./data/e1m1.json')).then((r) => {
       if (!r.ok) throw new Error(`level data ${r.url} returned HTTP ${r.status}`);
       return r.json();
-    }).then((json) => this.build(json));
+    }), loadSkyData()]).then(([json, skyData]) => { this.skyData = skyData; this.build(json); });
   }
 
   build(json) {
@@ -216,7 +217,7 @@ export class Scene {
     // Scanned materials that arrived before this scene was built (a reseed, or a slow level fetch).
     for (const it of this.app?.assetItems?.values?.() ?? []) this.applyAsset(it.kind, it.name, it.asset);
     // Phobos outside: Mars, the sun, stars, terrain, boulders, the base's outer walls (takes the items so far).
-    this.sky = new PhobosSky(this.scene, this.app?.assetItems, rng.fork('sky'), { level, renderer: this.renderer, edges: this.edges, shell: this.shell });
+    this.sky = new PhobosSky(this.scene, this.app?.assetItems, rng.fork('sky'), { level, renderer: this.renderer, edges: this.edges, shell: this.shell, data: this.skyData });
     this.planSunReach();
     if (this.dressing.sunChanged) this.sky.refreshShadow(); // the sun's shadow map is static: props are new casters
     const tour = makeTour(level.pois, rng.fork('tour'));

@@ -7,6 +7,10 @@
 // concrete scans and the boulder models as they stream in. `assets` is the map of items that arrived before
 // (app.assetItems); the sky works on stand-ins until each arrives.
 //
+// The real sky (phobos.skyOrientation turns it so the galactic centre hangs beside Mars, away from the sun):
+// the Hipparcos stars as points, the NASA SVS Milky Way on a sphere; opts.data (loadSkyData) brings the
+// catalogue and the real ground's heights, and without them the sky and ground fall back to made-up ones.
+//
 // The sky (stars, the sun's disc, Mars) is drawn first, with no depth test, in a frame that moves with
 // whichever camera renders it (main view, probe faces, the slime's mirror): positions are directions times a
 // fixed distance, rotated by the camera but never translated, and pushed to the far plane, so it is
@@ -30,7 +34,9 @@
 // 2 km whose rings widen with distance (the inner rings close onto the grid's edge), both cut into chunks that
 // share one vertex buffer so every camera culls them. The grid discards
 // fragments inside the base's footprint (a 5 cm mask), so the courtyard floor, the pits and the rooms are
-// the level's own; the exterior sectors' floors are the terrain itself. Regolith scan, with an albedo
+// the level's own; the exterior sectors' floors are the terrain itself. With the real ground (phobos.js)
+// its de-shaded 0.5 m photograph is the albedo and its 2 m normals light the far mesh's craters (see the
+// GROUND parts of the outdoor shader); otherwise: regolith scan, with an albedo
 // multiplier per vertex (crater ejecta, groove floors, dust patches) and the scan's own large-scale
 // luminance re-sampled at 13x to break its repeat. The base's outside (façades, roofs, parapets) is
 // phobos.planShell in the stained concrete scan.
@@ -38,10 +44,30 @@
 import * as THREE from 'three';
 import {
   makeTerrain, marsDirection, sunDirection, openEdges, planShell, scatterBoulders, marsAngularDiameter,
-  SUN_INTENSITY, TERRAIN_REACH,
+  SUN_INTENSITY, TERRAIN_REACH, decodeGround, decodeStars, skyOrientation,
 } from './phobos.js';
 import { makeMaterial } from './materials.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// The data files carry this module's own ?v= (from the import map), like the level data.
+const VERSION = new URL(import.meta.url).searchParams.get('v');
+const versioned = (url) => (VERSION ? `${url}?v=${VERSION}` : url);
+let skyData = null;
+
+/**
+ * The real ground's heights (data/ground.bin) and the star catalogue (data/stars.bin), fetched once for the
+ * page (reseeds reuse them): { ground, stars }. Never rejects: a file that fails is null, and the sky falls
+ * back to made-up ground or stars.
+ */
+export function loadSkyData() {
+  const get = (url, decode) => fetch(versioned(url))
+    .then((r) => { if (!r.ok) throw new Error(`${r.url} returned HTTP ${r.status}`); return r.arrayBuffer(); })
+    .then(decode)
+    .catch((err) => { console.warn(`Hangar: ${url} unavailable, using a stand-in`, err); return null; });
+  skyData ??= Promise.all([get('./data/ground.bin', decodeGround), get('./data/stars.bin', decodeStars)])
+    .then(([ground, stars]) => ({ ground, stars }));
+  return skyData;
+}
 
 export const SKY_DISTANCE = 100; // m: radius of the camera-relative sky frame (anything inside the far plane)
 export const SUN_SHADOW_SIZE = 4096;
@@ -127,32 +153,71 @@ void main() {
 }
 `;
 
-const STAR_VERT = /* glsl */ `
-${SKY_VERT}
-attribute float mag;
-uniform float starScale;
+// Washed out round Mars (its glare and its disc) and the sun: shared by the stars and the Milky Way.
+const SKY_WASH = /* glsl */ `
 uniform vec3 starMars;
 uniform float starMarsCos;
 uniform vec3 starSun;
-varying float vStar;
-void main() {
-  vec3 d = normalize( position );
-  // Washed out round Mars (its glare and its disc) and the sun.
+float skyWash( vec3 d ) {
   float m = dot( d, starMars );
   float s = dot( d, starSun );
-  float wash = ( 1.0 - smoothstep( starMarsCos - 0.25, starMarsCos, m ) ) * ( 1.0 - smoothstep( 0.55, 0.96, s ) );
-  vStar = mag * wash;
-  gl_PointSize = starScale * ( 1.0 + 1.6 * mag );
-  gl_Position = skyPosition( position );
+  return ( 1.0 - smoothstep( starMarsCos - 0.03, starMarsCos, m ) ) * ( 1.0 - smoothstep( 0.55, 0.96, s ) );
+}
+`;
+
+// Stars: the Hipparcos catalogue (or a made-up stand-in), each at its V magnitude. Brightness steps 1.51x a
+// magnitude instead of the true 2.512x (flux to the 0.45), so the naked-eye stars stand out and
+// the faint ones down to V 12 still dust the sky, as in a long exposure; the brightest grow a little.
+const STAR_VERT = /* glsl */ `
+${SKY_VERT}
+${SKY_WASH}
+attribute float mag;
+attribute vec3 starColor;
+uniform float starScale;
+uniform float starGain;
+varying vec3 vStar;
+void main() {
+  vec3 w = mat3( modelMatrix ) * position;
+  float b = starGain * exp2( - 0.6 * mag ) * skyWash( normalize( w ) );
+  float big = clamp( ( 2.0 - mag ) / 3.5, 0.0, 1.0 );
+  vStar = starColor * min( b, 1.6 );
+  gl_PointSize = starScale * ( 1.7 + 2.6 * big );
+  gl_Position = b < 0.002 ? vec4( 2.0, 2.0, 2.0, 1.0 ) : skyPosition( w );
 }
 `;
 
 const STAR_FRAG = /* glsl */ `
-varying float vStar;
+varying vec3 vStar;
 void main() {
   vec2 q = gl_PointCoord * 2.0 - 1.0;
   float a = exp( - 3.0 * dot( q, q ) );
-  gl_FragColor = vec4( vec3( 0.9, 0.93, 1.0 ) * vStar * a * 0.9, 1.0 );
+  gl_FragColor = vec4( vStar * a, 1.0 );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+// The Milky Way: NASA SVS's Deep Star Maps 2020 (Gaia DR2), without its Hipparcos and Tycho stars (those are
+// the points above), on a sphere turned by the same rotation as the stars.
+const MW_VERT = /* glsl */ `
+${SKY_VERT}
+varying vec2 vMwUv;
+varying vec3 vMwDir;
+void main() {
+  vMwUv = uv;
+  vMwDir = ( modelMatrix * vec4( position, 1.0 ) ).xyz;
+  gl_Position = skyPosition( vMwDir );
+}
+`;
+
+const MW_FRAG = /* glsl */ `
+${SKY_WASH}
+uniform sampler2D mwMap;
+uniform float mwGain;
+varying vec2 vMwUv;
+varying vec3 vMwDir;
+void main() {
+  gl_FragColor = vec4( texture2D( mwMap, vMwUv ).rgb * mwGain * skyWash( normalize( vMwDir ) ), 1.0 );
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -194,7 +259,14 @@ varying vec3 vOutN;
 varying vec2 vOutUv;
 varying vec3 vOutCol;
 varying vec4 vOutSh;
+#ifdef GROUND
+attribute float relief;
+varying float vRelief;
+#endif
 void main() {
+#ifdef GROUND
+  vRelief = relief;
+#endif
   vec4 p = vec4( position, 1.0 );
   vec3 n = normal;
 #ifdef USE_INSTANCING
@@ -239,6 +311,17 @@ uniform sampler2D terrainMask;
 uniform vec2 terrainMaskMin;
 uniform vec2 terrainMaskSize;
 #endif
+#ifdef GROUND
+uniform sampler2D groundAlbedo;
+uniform sampler2D groundNormal;
+uniform float hasGroundAlbedo;
+uniform float hasGroundNormal;
+uniform vec2 groundCenter;
+uniform vec2 groundRot;
+uniform float groundSize;
+uniform float groundContrast;
+varying float vRelief;
+#endif
 varying vec3 vOutW;
 varying vec3 vOutN;
 varying vec2 vOutUv;
@@ -263,6 +346,20 @@ void main() {
   }
 #endif
   vec3 Ng = normalize( vOutN ) * ( gl_FrontFacing ? 1.0 : - 1.0 );
+  float detail = 1.0;
+#ifdef GROUND
+  // The real ground: its scan coordinates (the seed's turn about the base centre), its 2 m normals tilting
+  // the smooth base shape's (as far as the relief weight lets them), and the tiling scan kept for the fine
+  // grain at the camera's feet, half strength from 60 m so its repeat never shows.
+  vec2 gd = vOutW.xz - groundCenter;
+  vec2 gq = vec2( groundRot.x * gd.x + groundRot.y * gd.y, - groundRot.y * gd.x + groundRot.x * gd.y ) / groundSize + 0.5;
+  if ( hasGroundNormal > 0.5 && vRelief > 0.0 ) {
+    vec3 t = texture2D( groundNormal, gq ).xyz * 2.0 - 1.0;
+    vec2 wxz = vec2( groundRot.x * t.x - groundRot.y * t.y, groundRot.y * t.x + groundRot.x * t.y );
+    Ng = normalize( Ng + vRelief * ( vec3( wxz.x, t.z, wxz.y ) - vec3( 0.0, 1.0, 0.0 ) ) );
+  }
+  detail = mix( 1.0, 0.5, smoothstep( 8.0, 60.0, distance( vOutW, cameraPosition ) ) );
+#endif
   vec3 N = Ng;
   vec3 albedo = tint * vOutCol;
   if ( hasMap > 0.5 ) {
@@ -274,8 +371,15 @@ void main() {
     vec2 q = mat2( 0.8, 0.6, - 0.6, 0.8 ) * vOutW.xz / 26.0 + 0.37;
     c *= clamp( mix( 1.0, dot( texture2D( map, q ).rgb, lw ) / mean, 0.7 ), 0.5, 1.6 );
 #endif
+#ifdef GROUND
+    c = mix( textureLod( map, vec2( 0.5 ), 12.0 ).rgb, c, detail );
+#endif
     albedo *= c;
   }
+#ifdef GROUND
+  // The photograph: albedo x 2 stored (mean 1), its contrast raised a little (the highlands are even-toned).
+  if ( hasGroundAlbedo > 0.5 ) albedo *= pow( texture2D( groundAlbedo, gq ).r * 2.0, groundContrast );
+#endif
   if ( hasNormal > 0.5 ) {
     vec3 q0 = dFdx( vOutW ), q1 = dFdy( vOutW );
     vec2 st0 = dFdx( vOutUv ), st1 = dFdy( vOutUv );
@@ -286,7 +390,7 @@ void main() {
     if ( det > 0.0 ) {
       float k = inversesqrt( det );
       vec3 mn = texture2D( normalMap, vOutUv ).xyz * 2.0 - 1.0;
-      mn.xy *= normalScale;
+      mn.xy *= normalScale * detail;
       vec3 Np = T * ( mn.x * k ) + B * ( mn.y * k ) + Ng * mn.z;
       float l = length( Np );
       if ( l > 1e-6 ) N = Np / l;
@@ -301,10 +405,13 @@ void main() {
 }
 `;
 
+const GROUND_CONTRAST = 1.8; // exponent on the real ground's albedo multiplier
+const STAR_GAIN = 3.0; // linear brightness of a V 0 star's centre pixel
+const MW_GAIN = 0.15; // the Milky Way map's stored value (radiance / 0.2) to linear
 const OUTDOOR_FILL = new THREE.Color().setRGB(0.1, 0.1, 0.11);
 const MARS_FILL = new THREE.Color().setRGB(0.22, 0.11, 0.05); // Mars at half phase, 42° across, albedo 0.25
 
-/** An outdoor material (see above). `opts`: { tint, mask, antiTile, vertexColors }. */
+/** An outdoor material (see above). `opts`: { tint, mask, antiTile, vertexColors, ground (terrain.ground) }. */
 function outdoorMaterial(sky, opts = {}) {
   const u = {
     map: { value: null }, normalMap: { value: null }, hasMap: { value: 0 }, hasNormal: { value: 0 },
@@ -315,8 +422,17 @@ function outdoorMaterial(sky, opts = {}) {
     sunBias: { value: -0.0003 }, sunShadowMatrix: { value: sky.sun.shadow.matrix }, sunNormalBias: { value: 0.04 },
   };
   if (opts.mask) Object.assign(u, { terrainMask: { value: opts.mask.texture }, terrainMaskMin: { value: opts.mask.min }, terrainMaskSize: { value: opts.mask.size } });
+  const g = opts.ground;
+  if (g) {
+    Object.assign(u, {
+      groundAlbedo: { value: null }, groundNormal: { value: null }, hasGroundAlbedo: { value: 0 }, hasGroundNormal: { value: 0 },
+      groundCenter: { value: new THREE.Vector2(...g.center) }, groundRot: { value: new THREE.Vector2(g.cos, g.sin) },
+      groundSize: { value: g.size }, groundContrast: { value: GROUND_CONTRAST },
+    });
+  }
   const defines = {};
   if (opts.mask) defines.TERRAIN_MASK = '';
+  if (g) defines.GROUND = '';
   if (opts.antiTile) defines.ANTI_TILE = '';
   const m = new THREE.ShaderMaterial({ uniforms: u, defines, vertexShader: OUTDOOR_VERT, fragmentShader: OUTDOOR_FRAG, vertexColors: !!opts.vertexColors });
   m.name = opts.name ?? 'outdoor';
@@ -431,8 +547,9 @@ export class PhobosSky {
     const area = (p) => Math.abs(p.reduce((a, [x, z], i) => { const [x2, z2] = p[(i + 1) % p.length]; return a + x * z2 - x2 * z; }, 0)) / 2;
     this.envSector = yards.sort((a, b) => area(b.poly) - area(a.poly))[0]?.id ?? level.sectors[0].id;
 
+    this.data = opts.data ?? {};
     this.buildSky(rng.fork('stars'), rng.next());
-    this.terrain = makeTerrain(level, rng.fork('terrain'), mars.flat);
+    this.terrain = makeTerrain(level, rng.fork('terrain'), mars.flat, this.data.ground ?? null);
     this.buildSun();
     this.buildTerrain();
     this.shell = opts.shell ?? planShell(level, this.edges);
@@ -479,28 +596,65 @@ export class PhobosSky {
     this.group.add(this.mars);
     this.setMarsSpin(this.marsSpin);
 
-    // Stars: a few thousand, magnitudes on a steep power law (most faint).
-    const N = 3500, pos = new Float32Array(N * 3), mag = new Float32Array(N);
-    for (let i = 0; i < N; i++) {
-      const u = rng.range(-1, 1), a = rng.range(0, Math.PI * 2), s = Math.sqrt(1 - u * u);
-      pos[i * 3] = Math.cos(a) * s * D; pos[i * 3 + 1] = u * D; pos[i * 3 + 2] = Math.sin(a) * s * D;
-      mag[i] = Math.pow(rng.next(), 6) * 1.2 + 0.05;
+    // The celestial sphere's turn (phobos.skyOrientation): the catalogue and the Milky Way are in ICRS.
+    const Q = skyOrientation(this.marsDir.toArray(), this.sunDir.toArray());
+    this.skyMatrix = new THREE.Matrix4().set(Q[0], Q[1], Q[2], 0, Q[3], Q[4], Q[5], 0, Q[6], Q[7], Q[8], 0, 0, 0, 0, 1);
+    const wash = {
+      starMars: { value: this.marsDir.clone() }, starSun: { value: this.sunDir.clone() },
+      starMarsCos: { value: Math.cos(((marsAngularDiameter() / 2 + 3) * Math.PI) / 180) },
+    };
+
+    // Stars: the Hipparcos catalogue (118,000 stars to V 12), or without it a made-up sky of a few thousand.
+    const cat = this.data.stars;
+    let N, pos, mag, col;
+    if (cat) {
+      N = cat.count; mag = cat.mag; col = cat.color;
+      pos = new Float32Array(N * 3);
+      for (let i = 0; i < N * 3; i++) pos[i] = cat.dir[i] * D;
+    } else {
+      N = 3500; pos = new Float32Array(N * 3); mag = new Float32Array(N); col = new Float32Array(N * 3).fill(0.95);
+      for (let i = 0; i < N; i++) {
+        const u = rng.range(-1, 1), a = rng.range(0, Math.PI * 2), s = Math.sqrt(1 - u * u);
+        pos[i * 3] = Math.cos(a) * s * D; pos[i * 3 + 1] = u * D; pos[i * 3 + 2] = Math.sin(a) * s * D;
+        mag[i] = 1 + 6 * Math.pow(rng.next(), 0.3); // most faint
+      }
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     sg.setAttribute('mag', new THREE.BufferAttribute(mag, 1));
+    sg.setAttribute('starColor', new THREE.BufferAttribute(col, 3));
     this.starMat = new THREE.ShaderMaterial({
       name: 'stars',
-      uniforms: {
-        starScale: { value: 1 }, starMars: { value: this.marsDir.clone() },
-        starMarsCos: { value: Math.cos(((marsAngularDiameter() / 2 + 3) * Math.PI) / 180) }, starSun: { value: new THREE.Vector3(0, 1, 0) },
-      },
+      uniforms: { starScale: { value: 1 }, starGain: { value: STAR_GAIN }, ...wash },
       vertexShader: STAR_VERT, fragmentShader: STAR_FRAG, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
     });
     this.stars = new THREE.Points(sg, this.starMat);
     this.stars.frustumCulled = false;
     this.stars.renderOrder = -1002;
+    this.stars.matrixAutoUpdate = false;
+    if (cat) this.stars.matrix.copy(this.skyMatrix);
     this.group.add(this.stars);
+
+    // The Milky Way, shown once its map arrives. SphereGeometry's uv u runs RA 180 -> -180 (the map's RA 0 is
+    // its centre, RA rising to the left) round local +y; P takes that local frame to ICRS (x, z, y).
+    this.mwMat = new THREE.ShaderMaterial({
+      name: 'milkyway',
+      uniforms: { mwMap: { value: null }, mwGain: { value: MW_GAIN }, ...wash },
+      vertexShader: MW_VERT, fragmentShader: MW_FRAG, depthTest: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    this.milkyWay = new THREE.Mesh(new THREE.SphereGeometry(D, 128, 64), this.mwMat);
+    this.milkyWay.name = 'milkyway';
+    this.milkyWay.frustumCulled = false;
+    // Unlike the rest of the sky it draws after the opaque scene, depth-tested at the far plane, so a room
+    // with no view out pays nothing for it. It adds nothing over Mars or the sun (skyWash), so it needs no
+    // depth of theirs.
+    this.milkyWay.renderOrder = 900;
+    this.milkyWay.visible = false;
+    this.milkyWay.matrixAutoUpdate = false;
+    const P = new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+    this.milkyWay.matrix.copy(this.skyMatrix).multiply(P);
+    this.group.add(this.milkyWay);
   }
 
   setMarsSpin(a) {
@@ -517,7 +671,7 @@ export class PhobosSky {
     const sun = (this.sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY));
     sun.name = 'sun';
     this.marsMat.uniforms.marsSun.value.copy(this.sunDir);
-    this.starMat.uniforms.starSun.value.copy(this.sunDir);
+
     // The shadow box: the base and SHADOW_MARGIN round it, from below the façades' feet to above the roofs.
     const b = this.terrain.bounds;
     this.shadowBox = { x0: b.x0 - SHADOW_MARGIN, z0: b.z0 - SHADOW_MARGIN, x1: b.x1 + SHADOW_MARGIN, z1: b.z1 + SHADOW_MARGIN };
@@ -590,19 +744,37 @@ export class PhobosSky {
     tex.colorSpace = THREE.NoColorSpace;
     this.maskTex = tex;
     const mask = { texture: tex, min: new THREE.Vector2(mx0, mz0), size: new THREE.Vector2(mw, mh) };
-    this.nearMat = outdoorMaterial(this, { name: 'terrain-near', tint: STAND_IN, mask, antiTile: true, vertexColors: true });
-    this.farMat = outdoorMaterial(this, { name: 'terrain-far', tint: STAND_IN, antiTile: true, vertexColors: true });
+    const ground = T.ground;
+    this.nearMat = outdoorMaterial(this, { name: 'terrain-near', tint: STAND_IN, mask, antiTile: true, vertexColors: true, ground });
+    this.farMat = outdoorMaterial(this, { name: 'terrain-far', tint: STAND_IN, antiTile: true, vertexColors: true, ground });
+    // With the real ground, vertex normals are the smooth base shape's (grooves, ridges, pad, basins, the
+    // sphere) and the shader tilts them by the scan's own 2 m normals, times the relief weight: the far mesh's
+    // rings are tens of metres apart out there, but its craters still catch the light. Without it the normals
+    // are the mesh's own.
+    const sampleAt = (x, z) => {
+      if (!ground) return { y: T.height(x, z), base: 0, w: 0, k: T.shade(x, z) };
+      const e = T.sample(x, z);
+      return { y: e.base + e.scan * e.weight, base: e.base, w: e.weight, k: 1 };
+    };
+    const normalsFrom = (geo, baseY, posArr) => {
+      if (!ground) { geo.computeVertexNormals(); return; }
+      const p = geo.attributes.position.array;
+      for (let i = 0; i < baseY.length; i++) p[i * 3 + 1] = baseY[i];
+      geo.computeVertexNormals();
+      for (let i = 0; i < baseY.length; i++) p[i * 3 + 1] = posArr[i * 3 + 1];
+      geo.attributes.position.needsUpdate = true;
+    };
 
     // Near grid.
     const gx0 = Math.floor(b.x0 - NEAR_MARGIN), gz0 = Math.floor(b.z0 - NEAR_MARGIN);
     const gx1 = Math.ceil(b.x1 + NEAR_MARGIN), gz1 = Math.ceil(b.z1 + NEAR_MARGIN);
     const nx = Math.round((gx1 - gx0) / NEAR_STEP) + 1, nz = Math.round((gz1 - gz0) / NEAR_STEP) + 1;
     this.nearRect = { x0: gx0, z0: gz0, x1: gx0 + (nx - 1) * NEAR_STEP, z1: gz0 + (nz - 1) * NEAR_STEP };
-    const pos = [], col = [], uv = [], idx = [];
-    const vert = (x, y, z, k) => { pos.push(x, y, z); col.push(k, k, k); uv.push(x / 2, z / 2); return pos.length / 3 - 1; };
+    const pos = [], col = [], uv = [], idx = [], rel = [], baseY = [];
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const x = gx0 + i * NEAR_STEP, z = gz0 + j * NEAR_STEP;
-      vert(x, T.height(x, z), z, T.shade(x, z));
+      const s = sampleAt(x, z);
+      pos.push(x, s.y, z); col.push(s.k, s.k, s.k); uv.push(x / 2, z / 2); rel.push(s.w); baseY.push(s.base);
     }
     for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const a = j * nx + i, bb = a + 1, c = a + nx, d = c + 1;
@@ -613,7 +785,7 @@ export class PhobosSky {
     near.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     near.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     near.setIndex(idx);
-    near.computeVertexNormals();
+    normalsFrom(near, baseY, pos);
     // Skirt: the grid's rim dropped 1.5 m, so the far mesh's differently spaced edge never shows a crack.
     const nrm = Array.from(near.attributes.normal.array);
     const rim = [];
@@ -628,6 +800,7 @@ export class PhobosSky {
       col.push(col[v * 3], col[v * 3], col[v * 3]);
       uv.push(uv[v * 2], uv[v * 2 + 1]);
       nrm.push(nrm[v * 3], nrm[v * 3 + 1], nrm[v * 3 + 2]);
+      rel.push(rel[v]);
     }
     for (let k = 0; k < rim.length - 1; k++) {
       const a = rim[k], bb = rim[k + 1], c = base + k, d = base + k + 1;
@@ -637,6 +810,7 @@ export class PhobosSky {
     near.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     near.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     near.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    if (ground) near.setAttribute('relief', new THREE.Float32BufferAttribute(rel, 1));
     near.setIndex(idx);
     // Tiles of 40 m sharing the one vertex buffer, so the frustum (main view, mirror, probe faces) culls them.
     this.near = chunked(near, this.nearMat, 'terrain-near', (x, z) => `${Math.floor(x / 40)},${Math.floor(z / 40)}`);
@@ -645,7 +819,7 @@ export class PhobosSky {
     const [cx, cz] = [(this.nearRect.x0 + this.nearRect.x1) / 2, (this.nearRect.z0 + this.nearRect.z1) / 2];
     const hw = (this.nearRect.x1 - this.nearRect.x0) / 2, hh = (this.nearRect.z1 - this.nearRect.z0) / 2;
     const r0 = Math.min(hw, hh) * 0.6;
-    const fpos = [], fcol = [], fuv = [], fidx = [];
+    const fpos = [], fcol = [], fuv = [], fidx = [], frel = [], fbase = [];
     for (let i = 0; i <= FAR_RINGS; i++) {
       const ri = r0 * Math.pow(TERRAIN_REACH / r0, i / FAR_RINGS);
       for (let j = 0; j < FAR_SEGMENTS; j++) {
@@ -653,10 +827,11 @@ export class PhobosSky {
         const edge = Math.min(Math.abs(ca) > 1e-9 ? hw / Math.abs(ca) : Infinity, Math.abs(sa) > 1e-9 ? hh / Math.abs(sa) : Infinity);
         const r = Math.max(ri, edge);
         const x = cx + ca * r, z = cz + sa * r;
-        fpos.push(x, T.height(x, z), z);
-        const k = T.shade(x, z);
-        fcol.push(k, k, k);
+        const s = sampleAt(x, z);
+        fpos.push(x, s.y, z);
+        fcol.push(s.k, s.k, s.k);
         fuv.push(x / 2, z / 2);
+        frel.push(s.w); fbase.push(s.base);
       }
     }
     for (let i = 0; i < FAR_RINGS; i++) for (let j = 0; j < FAR_SEGMENTS; j++) {
@@ -669,7 +844,8 @@ export class PhobosSky {
     far.setAttribute('color', new THREE.Float32BufferAttribute(fcol, 3));
     far.setAttribute('uv', new THREE.Float32BufferAttribute(fuv, 2));
     far.setIndex(fidx);
-    far.computeVertexNormals();
+    normalsFrom(far, fbase, fpos);
+    if (ground) far.setAttribute('relief', new THREE.Float32BufferAttribute(frel, 1));
     this.far = chunked(far, this.farMat, 'terrain-far', (x, z) => `${Math.floor(((Math.atan2(z - cz, x - cx) + Math.PI) / (2 * Math.PI)) * 16)}`);
     for (const g of [this.near, this.far]) {
       for (const m of g.children) {
@@ -811,6 +987,17 @@ export class PhobosSky {
       this.buildBoulders();
       return true;
     }
+    if (kind === 'image' && name === 'milkyway' && asset && !asset.userData?.fallback) {
+      this.mwMat.uniforms.mwMap.value = asset;
+      this.milkyWay.visible = true;
+      return true;
+    }
+    if (kind === 'image' && (name === 'ground-albedo' || name === 'ground-normal') && asset && !asset.userData?.fallback && this.terrain.ground) {
+      const key = name === 'ground-albedo' ? 'groundAlbedo' : 'groundNormal';
+      const has = name === 'ground-albedo' ? 'hasGroundAlbedo' : 'hasGroundNormal';
+      for (const m of [this.nearMat, this.farMat]) { m.uniforms[key].value = asset; m.uniforms[has].value = 1; }
+      return true;
+    }
     if (kind === 'material' && name === 'mat:regolith' && asset?.color && this.renderer) {
       for (const m of [this.nearMat, this.farMat]) {
         m.userData.setMaps(asset.color, asset.normal);
@@ -848,6 +1035,9 @@ export class PhobosSky {
     this.farMat?.dispose();
     this.marsMat?.dispose();
     this.starMat?.dispose();
+    this.stars?.geometry.dispose();
+    this.mwMat?.dispose();
+    this.milkyWay?.geometry.dispose();
     this.sunMat?.dispose();
     this.planarMat?.dispose();
     this.shellMat?.dispose();

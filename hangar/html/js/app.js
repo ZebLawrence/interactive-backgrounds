@@ -31,7 +31,7 @@ const Settings = {
 
 // Fetched first: the level's own surfaces (the start room is brown panels, steel and concrete), then the
 // sky, so the walk starts looking right; props and the trim/variety sets follow.
-const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:regolith', 'mars'];
+const ASSET_PRIORITY = ['mat:panel-brown', 'mat:steel', 'mat:concrete', 'mat:computer', 'mat:regolith', 'mars', 'milkyway', 'ground-normal', 'ground-albedo'];
 
 /** Low Power's pixel ratio: native, but no more than about 1920x1080 pixels in all. */
 export function lowPowerRatio(w, h, dpr) {
