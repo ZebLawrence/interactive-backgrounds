@@ -1,0 +1,10 @@
+{
+  "name": "hangar-tools",
+  "private": true,
+  "description": "Offline asset tools for Hangar (not used by the page). npm install here before prepare-models.sh.",
+  "type": "module",
+  "dependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1"
+  }
+}

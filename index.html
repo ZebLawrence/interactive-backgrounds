@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interactive Backgrounds</title>
-<meta name="description" content="Seven animated 3D scenes that react to the mouse: an aquarium, a firefly meadow, a balloon dawn, a mountain lake, a boreal night, an aspen grove in snow, and a sandstone arch under the aurora.">
+<meta name="description" content="Eight animated 3D scenes that react to the mouse: an aquarium, a firefly meadow, a balloon dawn, a mountain lake, a boreal night, an aspen grove in snow, a sandstone arch under the aurora, and a walkable remaster of Doom's first level.">
 <meta name="theme-color" content="#07090e">
 <style>
   :root {
@@ -114,11 +114,11 @@
   <div class="hero-slides" id="slides" aria-hidden="true"></div>
   <div class="hero-inner">
     <h1>Interactive Backgrounds</h1>
-    <p class="lead">Seven animated 3D scenes that react to your mouse: a fingertip that stirs the water, creatures that come to a resting cursor, a click that skips a stone or fires a burner. Each is a single web page, served straight from this repository.</p>
+    <p class="lead">Eight animated 3D scenes that react to your mouse: a fingertip that stirs the water, creatures that come to a resting cursor, a click that skips a stone or fires a burner. Each is a single web page, served straight from this repository.</p>
     <div class="hero-bar">
       <a class="hero-now" id="heroNow" href="#"><span class="dot"></span><small>Now showing</small><strong id="heroTitle">…</strong></a>
       <div class="hero-dots" id="heroDots" role="tablist" aria-label="Scenes"></div>
-      <a class="btn btn-ghost" href="#scenes">All seven scenes ↓</a>
+      <a class="btn btn-ghost" href="#scenes">All eight scenes ↓</a>
     </div>
   </div>
 </header>
@@ -131,7 +131,7 @@
   <div class="grid" id="grid"></div>
   <noscript>
     <ul>
-      <li><a href="fishbowl/html/">Fishbowl</a> · <a href="meadow/html/">Firefly Meadow</a> · <a href="balloons/html/">Balloon Dawn</a> · <a href="lake/html/">Loon Lake</a> · <a href="boreal/html/">Boreal Night</a> · <a href="aspen/html/">Aspen Snow</a> · <a href="arch/html/">Sandstone Arch</a></li>
+      <li><a href="fishbowl/html/">Fishbowl</a> · <a href="meadow/html/">Firefly Meadow</a> · <a href="balloons/html/">Balloon Dawn</a> · <a href="lake/html/">Loon Lake</a> · <a href="boreal/html/">Boreal Night</a> · <a href="aspen/html/">Aspen Snow</a> · <a href="arch/html/">Sandstone Arch</a> · <a href="hangar/html/">Hangar</a></li>
     </ul>
   </noscript>
 </main>
@@ -152,7 +152,7 @@
 
 <footer>
   <div class="inner">
-    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; all seven also have native Swift ports.</span>
+    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; seven of the eight also have native Swift ports (Hangar is web only).</span>
     <span>Screenshots are the pages themselves, captured in each of their modes.</span>
   </div>
 </footer>
@@ -188,6 +188,10 @@ const SCENES = [
     desc: 'A natural bridge over a still lake at night under the aurora, with a weathered craft exploring the canyon beneath it.',
     does: [['Fingertip', 'stirs the water'], ['Resting cursor', 'the craft turns its red eye on it'], ['Click', 'tosses a stone, or rouses the craft'], ['Click the sky', 'the aurora surges'], ['Menu', 'rain, with a storm sky and lightning']],
     modes: [['aurora', 'Aurora'], ['moonlit', 'Moonlit'], ['rain', 'Rain']] },
+  { key: 'hangar', title: 'Hangar', kind: 'Walkable techbase', accent: '#6fd36a', swift: false,
+    desc: 'Doom E1M1 remastered in scanned materials on Phobos: a camera walks the base on its own, from the slime hall to a courtyard under a huge Mars. Web only.',
+    does: [['Resting cursor', 'the camera looks toward it'], ['Click the floor', 'it walks there'], ['Click a door, switch or console', 'works it'], ['Menu', 'Emergency Power (red lights), Low Power, a new tour']],
+    modes: [['slime', 'Slime hall'], ['window', 'Mars window'], ['courtyard', 'Courtyard'], ['emergency', 'Emergency Power']] },
 ];
 const shot = (s, m, large) => `assets/shots/${s.key}-${m}${large ? '' : '-s'}.jpg`;
 const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const k of kids) e.append(k); return e; };
@@ -216,6 +220,7 @@ SCENES.forEach((s, i) => {
     el('a', { class: 'btn btn-ghost', href: `${REPO}/tree/main/${s.key}/html`, title: 'The web page: HTML, JavaScript and shaders' }, span(ICON.git), 'Web source'),
   ];
   if (s.swift) links.push(el('a', { class: 'btn btn-ghost', href: `${REPO}/tree/main/${s.key}/swift`, title: 'The native Swift port' }, span(ICON.git), 'Swift port'));
+  else links.push(el('span', { class: 'btn btn-ghost', style: 'opacity:.6;cursor:default', title: 'No native Swift port: web only' }, 'Web only'));
   links.push(el('a', { class: 'btn btn-ghost', href: `${REPO}/blob/main/${s.key}/README.md`, title: 'What it does and how it is built' }, 'Notes'));
   const card = el('article', { class: 'card', style: `--accent:${s.accent}` },
     el('div', { class: 'shot' },

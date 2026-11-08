@@ -1,0 +1,108 @@
+# Hangar asset tools
+
+Offline tools that fetch scanned materials, images and models and turn them into what the page loads
+from `hangar/html/assets/`. Nothing here runs in the browser. Raw downloads go to `hangar/tools/raw/`,
+which is git-ignored; only the processed KTX2 / GLB files and `manifest.json` are committed.
+
+Sources are only ones that need no account (ruling R5): Poly Haven, ambientCG (both CC0) and
+NASA / JPL / USGS (public domain). Sketchfab models are fetched by hand: see `SKETCHFAB-WISHLIST.md`.
+
+## Requirements
+
+- Node 20+ (uses the built-in `fetch`), `unzip`, Python 3 with Pillow.
+- `basisu` from Homebrew: `brew install basis_universal`. The plan named `toktx` (`brew install ktx`),
+  but Homebrew has no KTX-Software formula; `basisu` is the Basis Universal encoder that `toktx` wraps
+  and writes the same KTX2 UASTC files (settings mapped in `prepare-textures.sh`).
+- `npm install` in this folder once (gltf-transform libraries, for `prepare-models.sh`).
+
+## Rebuild everything
+
+```bash
+T=hangar/tools
+# materials: <asset> <tag> <tile metres>; tile = real-world metres one texture repeat covers
+node $T/fetch-polyhaven.mjs metal_plate_02        mat:panel-brown      2
+node $T/fetch-polyhaven.mjs hangar_concrete_floor mat:concrete         2
+node $T/fetch-polyhaven.mjs blue_metal_plate      mat:computer         2
+node $T/fetch-polyhaven.mjs moon_01               mat:regolith         2
+node $T/fetch-polyhaven.mjs painted_concrete_02   mat:concrete-painted 2
+node $T/fetch-polyhaven.mjs concrete_wall_006     mat:concrete-stained 2
+node $T/fetch-polyhaven.mjs cracked_concrete      mat:concrete-cracked 2
+node $T/fetch-polyhaven.mjs rust_coarse_01        mat:rust             2
+node $T/fetch-polyhaven.mjs rubber_tiles          mat:rubber           2
+node $T/fetch-ambientcg.mjs MetalPlates001        mat:steel            2
+node $T/fetch-ambientcg.mjs Metal009              mat:steel-brushed    1
+node $T/fetch-ambientcg.mjs DiamondPlate001       mat:diamond-plate    0.5
+node $T/fetch-ambientcg.mjs PaintedMetal016       mat:hazard           1
+bash $T/prepare-textures.sh
+
+# Mars (USGS Viking colour mosaic, public domain), 8192 x 4096 KTX2
+node $T/fetch-mars.mjs && bash $T/prepare-images.sh
+
+# The real sky and ground (see hangar/README.md, "Sky and ground"). Downloads by hand into raw/:
+#   raw/sky/hipparcos.tdat.gz      https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_hipparcos.tdat.gz
+#   raw/sky/milkyway_2020_8k.exr   https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_8k.exr
+#   raw/lroc/NAC_DTM_APOLLO16_1.TIF and NAC_DTM_APOLLO16_1_M119754107_50CM.IMG from
+#     https://pds.mcp.nasa.gov/data/store/img/lunar_reconnaissance_orbiter/pds4/lroc/lro-l-lroc-5-rdr/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/
+python3 -m venv $T/raw/.venv && $T/raw/.venv/bin/pip install numpy pillow tifffile OpenEXR
+$T/raw/.venv/bin/python $T/prepare-sky-ground.py
+
+# models: --model <asset> <name> <scale to metres>
+node $T/fetch-polyhaven.mjs --model moon_rock_01       boulder-a 1
+node $T/fetch-polyhaven.mjs --model moon_rock_03       boulder-b 1
+bash $T/prepare-models.sh boulder-a boulder-b
+# props (Task 12): 2K textures (Ruling R25: every prop can come within 2 m of the walker), meshes simplified to
+# 0.4% of their extent, so a room full of them stays cheap (small triangles from far away are the cost)
+node $T/fetch-polyhaven.mjs --model old_military_crate          crate        1 2k
+node $T/fetch-polyhaven.mjs --model Barrel_01                   drum-red     1 2k
+node $T/fetch-polyhaven.mjs --model Barrel_02                   drum-blue    1 2k
+node $T/fetch-polyhaven.mjs --model metal_toolbox               toolbox      1 2k
+node $T/fetch-polyhaven.mjs --model metal_tool_chest            tool-chest   1 2k
+node $T/fetch-polyhaven.mjs --model utility_box_01              utility-box  1 2k
+node $T/fetch-polyhaven.mjs --model power_box_01                power-box    1 2k
+node $T/fetch-polyhaven.mjs --model propane_tank                gas-tank     1 2k
+node $T/fetch-polyhaven.mjs --model portable_generator          generator    1 2k
+node $T/fetch-polyhaven.mjs --model metal_jerrycan              jerrycan     1 2k
+node $T/fetch-polyhaven.mjs --model korean_fire_extinguisher_01 extinguisher 1 2k
+SIMPLIFY=0.004 bash $T/prepare-models.sh crate drum-red drum-blue toolbox tool-chest utility-box power-box gas-tank generator jerrycan extinguisher
+
+node --test 'hangar/tests/*.test.mjs'
+```
+
+Downloads are skipped when the raw file already exists, so reruns are cheap.
+
+## What the files are
+
+| Tool | Does |
+|---|---|
+| `fetch-polyhaven.mjs` | Poly Haven API: 2K PNG `Diffuse`, `nor_gl`, `arm` (AO/rough/metal), `Displacement`; or a glTF with `--model` (2K, or the resolution given after the scale). Writes the manifest entry with name, author, `CC0`. |
+| `fetch-ambientcg.mjs` | ambientCG 2K PNG zip, maps renamed to the same layout. For what Poly Haven lacks (brushed steel, plates, grating, diamond plate, hazard paint). |
+| `fetch-mars.mjs` | USGS Viking MDIM2.1 colour mosaic, 1 km/px JPEG (the 232 m GeoTIFF is 12.7 GB). |
+| `pack-maps.py` | Normalises a raw material: 2048², 8-bit, packs `orm` (AO R, roughness G, metalness B), puts grating opacity in the colour alpha. |
+| `prepare-textures.sh` | Stops with basisu's log if an encode fails or writes an empty file. KTX2 UASTC level 3, zstd 19, mipmaps: colour sRGB, normal `-normal_map`, orm and height linear. Stored bottom row first (`-y_flip`) so maps sit on the level's v-up UVs like TextureLoader images. |
+| `prepare-images.sh` | Mars resampled to 8192 x 4096, same KTX2 settings. |
+| `prepare-sky-ground.py` | The star catalogue to `data/stars.bin`; the Milky Way map to KTX2; a 4 km window of the Apollo 16 terrain model to `data/ground.bin`, its normals and its de-shaded photograph to KTX2 (no y flip: the page samples them in the heights' row order). |
+| `ktx2-textures.mjs` + `prepare-models.sh` | glTF textures to KTX2 (basisu), then `gltf-transform optimize --compress meshopt`. |
+| `manifest-lib.mjs` | Shared paths, manifest read/write, downloads. |
+
+## Manifest
+
+`hangar/html/assets/manifest.json`, paths relative to `hangar/html/`:
+
+```json
+{ "materials": { "<tag>": { "tile": 2, "maps": { "color", "normal", "orm", "height" }, "source", "author", "license" } },
+  "models":    { "<name>": { "file", "scale", "source", "author", "license" } },
+  "images":    { "<name>": { "file", "source", "author", "license" } } }
+```
+
+**ambientCG author:** the ambientCG API (`/api/v2/full_json`) has no per-asset author field. ambientCG is
+Lennart Demes's library, and he makes its assets, so `fetch-ambientcg.mjs` credits every one as
+"ambientCG (Lennart Demes)". That is an assumption, not data from the API. CC0 needs no attribution,
+so the credit is a courtesy. Correct it here and in the manifest if an asset turns out to be someone
+else's.
+
+`alpha: true` on a material means its colour map carries opacity in alpha (the grating). Licences are
+`CC0`, `CC-BY-4.0` or `PD`. `hangar/tests/manifest.test.mjs` checks credits, files, sizes (each file
+< 100 MB, all assets < 600 MB), that every `mat:` tag in `e1m1.json` has an entry, and that every tile
+gives at least 1024 px per metre (map width read from each KTX2 header). It also checks that every file is
+real: the KTX2 identifier and a full mip chain, the `glTF` magic and length on models, and a minimum size.
+`hangar/tests/assetjobs.test.mjs` covers the loader's fetch order (priority first) and byte-weighted progress.

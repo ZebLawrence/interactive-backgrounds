@@ -1,3 +1,7 @@
 .build/
 build/
 .DS_Store
+
+# Hangar: raw asset downloads and tool deps (only processed assets under hangar/html/assets/ are committed)
+hangar/tools/raw/
+hangar/tools/node_modules/

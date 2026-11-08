@@ -1,0 +1,313 @@
+{
+  "materials": {
+    "mat:computer": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/computer/color.ktx2",
+        "normal": "assets/materials/computer/normal.ktx2",
+        "orm": "assets/materials/computer/orm.ktx2",
+        "height": "assets/materials/computer/height.ktx2"
+      },
+      "name": "Blue Metal Plate",
+      "source": "https://polyhaven.com/a/blue_metal_plate",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:concrete": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/concrete/color.ktx2",
+        "normal": "assets/materials/concrete/normal.ktx2",
+        "orm": "assets/materials/concrete/orm.ktx2",
+        "height": "assets/materials/concrete/height.ktx2"
+      },
+      "name": "Hangar Concrete Floor",
+      "source": "https://polyhaven.com/a/hangar_concrete_floor",
+      "author": "Dimitrios Savva",
+      "license": "CC0"
+    },
+    "mat:concrete-cracked": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/concrete-cracked/color.ktx2",
+        "normal": "assets/materials/concrete-cracked/normal.ktx2",
+        "orm": "assets/materials/concrete-cracked/orm.ktx2",
+        "height": "assets/materials/concrete-cracked/height.ktx2"
+      },
+      "name": "Cracked Concrete",
+      "source": "https://polyhaven.com/a/cracked_concrete",
+      "author": "Dimitrios Savva",
+      "license": "CC0"
+    },
+    "mat:concrete-painted": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/concrete-painted/color.ktx2",
+        "normal": "assets/materials/concrete-painted/normal.ktx2",
+        "orm": "assets/materials/concrete-painted/orm.ktx2",
+        "height": "assets/materials/concrete-painted/height.ktx2"
+      },
+      "name": "Painted Concrete 02",
+      "source": "https://polyhaven.com/a/painted_concrete_02",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:concrete-stained": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/concrete-stained/color.ktx2",
+        "normal": "assets/materials/concrete-stained/normal.ktx2",
+        "orm": "assets/materials/concrete-stained/orm.ktx2",
+        "height": "assets/materials/concrete-stained/height.ktx2"
+      },
+      "name": "Concrete Wall 006",
+      "source": "https://polyhaven.com/a/concrete_wall_006",
+      "author": "Dario Barresi, Charlotte Baglioni",
+      "license": "CC0"
+    },
+    "mat:diamond-plate": {
+      "tile": 0.5,
+      "maps": {
+        "color": "assets/materials/diamond-plate/color.ktx2",
+        "normal": "assets/materials/diamond-plate/normal.ktx2",
+        "orm": "assets/materials/diamond-plate/orm.ktx2",
+        "height": "assets/materials/diamond-plate/height.ktx2"
+      },
+      "name": "DiamondPlate001",
+      "source": "https://ambientcg.com/a/DiamondPlate001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:hazard": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/hazard/color.ktx2",
+        "normal": "assets/materials/hazard/normal.ktx2",
+        "orm": "assets/materials/hazard/orm.ktx2",
+        "height": "assets/materials/hazard/height.ktx2"
+      },
+      "name": "PaintedMetal016",
+      "source": "https://ambientcg.com/a/PaintedMetal016",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:panel-brown": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/panel-brown/color.ktx2",
+        "normal": "assets/materials/panel-brown/normal.ktx2",
+        "orm": "assets/materials/panel-brown/orm.ktx2",
+        "height": "assets/materials/panel-brown/height.ktx2"
+      },
+      "name": "Metal Plate 02",
+      "source": "https://polyhaven.com/a/metal_plate_02",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:regolith": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/regolith/color.ktx2",
+        "normal": "assets/materials/regolith/normal.ktx2",
+        "orm": "assets/materials/regolith/orm.ktx2",
+        "height": "assets/materials/regolith/height.ktx2"
+      },
+      "name": "Moon 01",
+      "source": "https://polyhaven.com/a/moon_01",
+      "author": "Greg Zaal, Rico Cilliers, Jenelle van Heerden, Dario Barresi",
+      "license": "CC0"
+    },
+    "mat:rubber": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/rubber/color.ktx2",
+        "normal": "assets/materials/rubber/normal.ktx2",
+        "orm": "assets/materials/rubber/orm.ktx2",
+        "height": "assets/materials/rubber/height.ktx2"
+      },
+      "name": "Rubber Tiles",
+      "source": "https://polyhaven.com/a/rubber_tiles",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:rust": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/rust/color.ktx2",
+        "normal": "assets/materials/rust/normal.ktx2",
+        "orm": "assets/materials/rust/orm.ktx2",
+        "height": "assets/materials/rust/height.ktx2"
+      },
+      "name": "Rust Coarse 01",
+      "source": "https://polyhaven.com/a/rust_coarse_01",
+      "author": "Dimitrios Savva, Rico Cilliers",
+      "license": "CC0"
+    },
+    "mat:steel": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/steel/color.ktx2",
+        "normal": "assets/materials/steel/normal.ktx2",
+        "orm": "assets/materials/steel/orm.ktx2",
+        "height": "assets/materials/steel/height.ktx2"
+      },
+      "name": "MetalPlates001",
+      "source": "https://ambientcg.com/a/MetalPlates001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:steel-brushed": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/steel-brushed/color.ktx2",
+        "normal": "assets/materials/steel-brushed/normal.ktx2",
+        "orm": "assets/materials/steel-brushed/orm.ktx2",
+        "height": "assets/materials/steel-brushed/height.ktx2"
+      },
+      "name": "Metal009",
+      "source": "https://ambientcg.com/a/Metal009",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    }
+  },
+  "models": {
+    "boulder-a": {
+      "file": "assets/models/boulder-a.glb",
+      "scale": 1,
+      "name": "Moon Rock 01",
+      "source": "https://polyhaven.com/a/moon_rock_01",
+      "author": "Greg Zaal, Rico Cilliers, Jenelle van Heerden, Dario Barresi",
+      "license": "CC0"
+    },
+    "boulder-b": {
+      "file": "assets/models/boulder-b.glb",
+      "scale": 1,
+      "name": "Moon Rock 03",
+      "source": "https://polyhaven.com/a/moon_rock_03",
+      "author": "Greg Zaal, Rico Cilliers, Jenelle van Heerden",
+      "license": "CC0"
+    },
+    "crate": {
+      "file": "assets/models/crate.glb",
+      "scale": 1,
+      "name": "Old Military Crate",
+      "source": "https://polyhaven.com/a/old_military_crate",
+      "author": "Jack Mava",
+      "license": "CC0"
+    },
+    "drum-blue": {
+      "file": "assets/models/drum-blue.glb",
+      "scale": 1,
+      "name": "Barrel 02",
+      "source": "https://polyhaven.com/a/Barrel_02",
+      "author": "Jorge Camacho",
+      "license": "CC0"
+    },
+    "drum-red": {
+      "file": "assets/models/drum-red.glb",
+      "scale": 1,
+      "name": "Barrel_01",
+      "source": "https://polyhaven.com/a/Barrel_01",
+      "author": "Jorge Camacho",
+      "license": "CC0"
+    },
+    "extinguisher": {
+      "file": "assets/models/extinguisher.glb",
+      "scale": 1,
+      "name": "Korean Fire Extinguisher 01",
+      "source": "https://polyhaven.com/a/korean_fire_extinguisher_01",
+      "author": "UM JOORIN",
+      "license": "CC0"
+    },
+    "gas-tank": {
+      "file": "assets/models/gas-tank.glb",
+      "scale": 1,
+      "name": "Propane Tank",
+      "source": "https://polyhaven.com/a/propane_tank",
+      "author": "Slinc",
+      "license": "CC0"
+    },
+    "generator": {
+      "file": "assets/models/generator.glb",
+      "scale": 1,
+      "name": "Portable Generator",
+      "source": "https://polyhaven.com/a/portable_generator",
+      "author": "James Ray Cock",
+      "license": "CC0"
+    },
+    "jerrycan": {
+      "file": "assets/models/jerrycan.glb",
+      "scale": 1,
+      "name": "Metal Jerrycan",
+      "source": "https://polyhaven.com/a/metal_jerrycan",
+      "author": "Sean Buckley",
+      "license": "CC0"
+    },
+    "power-box": {
+      "file": "assets/models/power-box.glb",
+      "scale": 1,
+      "name": "Power Box 01",
+      "source": "https://polyhaven.com/a/power_box_01",
+      "author": "Rico Cilliers, Yann Kervran",
+      "license": "CC0"
+    },
+    "tool-chest": {
+      "file": "assets/models/tool-chest.glb",
+      "scale": 1,
+      "name": "Metal Tool Chest",
+      "source": "https://polyhaven.com/a/metal_tool_chest",
+      "author": "Yann Kervran, John Hutcheson",
+      "license": "CC0"
+    },
+    "toolbox": {
+      "file": "assets/models/toolbox.glb",
+      "scale": 1,
+      "name": "Metal Toolbox",
+      "source": "https://polyhaven.com/a/metal_toolbox",
+      "author": "Mateusz Sadek",
+      "license": "CC0"
+    },
+    "utility-box": {
+      "file": "assets/models/utility-box.glb",
+      "scale": 1,
+      "name": "Utility Box 01",
+      "source": "https://polyhaven.com/a/utility_box_01",
+      "author": "James Ray Cock",
+      "license": "CC0"
+    }
+  },
+  "images": {
+    "mars": {
+      "file": "assets/images/mars.ktx2",
+      "name": "Mars Viking MDIM2.1 Colorized Global Mosaic (1 km/px release), resampled to 8192 x 4096",
+      "source": "https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m",
+      "download": "https://astrogeology.usgs.gov/ckan/dataset/7131d503-cdc9-45a5-8f83-5126c0fd397e/resource/5ea881c6-01b3-41fa-a7af-42d2131b54f1/download/mars_viking_mdim21_clrmosaic_1km.jpg",
+      "author": "NASA / JPL / USGS Astrogeology Science Center",
+      "license": "PD"
+    },
+    "milkyway": {
+      "file": "assets/images/milkyway.ktx2",
+      "name": "Deep Star Maps 2020: the Milky Way without the Hipparcos and Tycho stars (milkyway_2020_8k.exr), 8192 x 4096",
+      "source": "https://svs.gsfc.nasa.gov/4851",
+      "author": "NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC",
+      "license": "PD"
+    },
+    "ground-albedo": {
+      "file": "assets/images/ground-albedo.ktx2",
+      "clamp": true,
+      "name": "LROC NAC DTM APOLLO16_1 orthophoto M119754107 (0.5 m), a 4096 m window, shading from the terrain model divided out",
+      "source": "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/",
+      "author": "NASA / GSFC / Arizona State University (LROC)",
+      "license": "PD"
+    },
+    "ground-normal": {
+      "file": "assets/images/ground-normal.ktx2",
+      "clamp": true,
+      "linear": true,
+      "name": "LROC NAC DTM APOLLO16_1 (2 m posts), normals of the same 4096 m window",
+      "source": "https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/",
+      "author": "NASA / GSFC / Arizona State University (LROC)",
+      "license": "PD"
+    }
+  }
+}
