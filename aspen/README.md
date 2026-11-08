@@ -101,6 +101,15 @@ so trunks keep the GPU's hidden-surface removal, and skip twigs that can't reach
 works out only the modes that show; and the shadow maps are redrawn every other frame, with the
 side twigs left out of them (they are under a shadow texel).
 
+The clear night's sky is the real one, as on the web: `RealSky.swift` (a copy of
+`assets/sky/RealSky.swift`, the port of `realsky.js`) draws NASA's Milky Way on a sphere and the
+Hipparcos catalogue as points, standing at 39 degrees north and turning at the sidereal rate. The
+app bundles the catalogue (Hangar's `stars.bin`) and the Milky Way transcoded to ASTC
+(`milkyway.astc`, which `build.sh` makes once with `assets/sky/tools/prepare-macos.sh`; it needs
+node and a network connection the first time). Without them it hashes its stars as before. It costs
+about 0.9 ms a frame at 2560x1600 on a clear night (0.2 in Low Power, which draws the brightest
+quarter of the stars) and nothing by day or under cloud. `--hide realsky` leaves it out.
+
 ### Tried here first
 
 Changes tried in the Swift version before the web version, now in both:

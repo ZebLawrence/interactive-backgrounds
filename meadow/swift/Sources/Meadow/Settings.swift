@@ -6,9 +6,12 @@ final class Settings {
 
     /// Render at 30 fps without multisampling, to save battery.
     var lowPower: Bool {
-        get { defaults.bool(forKey: "lowPower") }
-        set { defaults.set(newValue, forKey: "lowPower") }
+        get { lowPowerOverride ?? defaults.bool(forKey: "lowPower") }
+        set { lowPowerOverride = nil; defaults.set(newValue, forKey: "lowPower") }
     }
+
+    /// Set from the command line (`--low-power`) for testing without changing the saved setting.
+    var lowPowerOverride: Bool?
 
     /// Clicking on an empty part of the desktop claps: fireflies nearby flash and bolt.
     var clickToClap: Bool {

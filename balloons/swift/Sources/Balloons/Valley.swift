@@ -95,7 +95,7 @@ final class Valley {
     private var burnerSlots = [(light: V4, color: V4, glint: V4)](repeating: (.zero, .zero, .zero), count: burnerLightCount)
     private let shadowMatrix: simd_float4x4
 
-    private let sky = Sky()
+    let sky = Sky()
     private let mountains = Mountains()
     private let mist = Mist()
     private let ground = Ground()
@@ -399,6 +399,7 @@ final class Valley {
         cursor.update(global: global, frame: screenFrame, dt: dt)
         updateCamera(dt: dt)
         updateBlends(dt: dt, settings: settings)
+        sky.update(dt: dt, night: night, lowPower: settings.lowPower)
         updateGust(dt: dt)
         updateAmbient(dt: dt)
         let fireFor: Float = night > 0.5 ? 5 : 3

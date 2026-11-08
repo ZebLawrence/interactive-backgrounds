@@ -5,3 +5,6 @@ build/
 # Hangar: raw asset downloads and tool deps (only processed assets under hangar/html/assets/ are committed)
 hangar/tools/raw/
 hangar/tools/node_modules/
+
+# The macOS apps' transcoded Milky Way map (assets/sky/tools/prepare-macos.sh makes it)
+assets/sky/build/

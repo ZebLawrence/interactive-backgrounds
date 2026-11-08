@@ -658,6 +658,7 @@ final class Aspen {
 
         // --- Sky and light --------------------------------------------------------------------
         weather.update(dt: dt, settings: settings, out: &light, snowing: snowfall.amount)
+        sky.update(dt: dt, night: light.night, sun: light.sun, lowPower: settings.lowPower)
 
         // --- Snow -----------------------------------------------------------------------------
         let air: (Float, Float, Float) -> V3 = { [unowned self] x, y, z in self.airAt(x, y, z) }
@@ -678,6 +679,9 @@ final class Aspen {
         print(String(format: "puffs %d, trees cascading %d, shed some %d, top sway %.2f m, top speed %.2f m/s", puffs.liveCount, cascading, bare, sway, speed))
         for h in hares { print("hare \(h.debugDescription)") }
         print("grouse \(grouse!.debugDescription)")
+        let gc = sky.real.direction(RealSky.galacticCenter), gp = sky.real.direction(RealSky.galacticPole)
+        print(String(format: "real sky %@: north %.5f, turn %.5f rad, galactic centre (%.4f, %.4f, %.4f), pole (%.4f, %.4f, %.4f), fade %.2f",
+                     sky.real.ready ? "up" : "missing", sky.real.frame.north, sky.real.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, sky.real.fade))
     }
 
     // MARK: - Lights and drawing

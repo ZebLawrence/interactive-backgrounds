@@ -56,12 +56,29 @@ final class Sky {
         return c
     }
 
+    /// The real sky (assets/sky/RealSky.swift): 64 degrees north, under the auroral oval, with north toward
+    /// -z where the curtains stand. North is fixed by the aurora, so the pole stands 64 degrees up in the
+    /// north and the hour is the one that lays the band closest to where the painted one lay. The painted
+    /// band and the hashed stars stand in only if its files are missing.
+    let real = RealSky(latitude: 64, north: -Double.pi / 2, matchBand: simd_normalize(SIMD3<Float>(-0.55, 0.62, 0.56)),
+                       radius: skyRadius, horizon: SIMD2(-0.02, 0.08))
+
+    /// Turns the real sky; the moon washes it out as it did the painted one.
+    func update(dt: Float, moon: Float, lowPower: Bool) {
+        real.fade = 1 - moon * 0.45
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
+    }
+
     func draw(_ ctx: DrawContext) {
         let e = ctx.encoder
         ctx.use("skyVertex", "skyFragment", depthWrite: false)
+        var procedural = V4(real.ready ? 0 : 1, 0, 0, 0)
+        e.setFragmentBytes(&procedural, length: 16, index: 3)
         e.setFragmentTexture(haze, index: 3)
         e.setFragmentSamplerState(GPU.shared.skySampler, index: 3)
         mesh.draw(e)
+        real.draw(e, frame: ctx.frame, samples: ctx.samples)
     }
 }
 
@@ -221,7 +238,7 @@ extension Shaders {
         return tint * star;
     }
 
-    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]],
+    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]], constant float4& S [[buffer(3)]],
                                 texture2d<float> hazeMap [[texture(3)]], sampler hs [[sampler(3)]]) {
         float uTime = F.misc.x, uMoon = F.misc.y;
         float3 d = normalize(in.dir);
@@ -234,17 +251,21 @@ extension Shaders {
         // The aurora lights the whole sky a little.
         col += F.aurora.xyz * 0.05 * (0.4 + 0.6 * exp(-max(h, 0.0) * 3.0));
 
-        float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-        float3 haze = hazeMap.sample(hs, tv(uv)).rgb;
-        float hazeAmt = dot(haze, float3(0.33));
-        if (h > -0.02) {
-            float3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0, uTime)
-                         + starLayer(uv, 760.0, 0.84, 0.8, 5.0, uTime) * (0.7 + 1.5 * hazeAmt)
-                         + starLayer(uv, 1400.0, 0.9, 0.35, 11.0, uTime) * (0.5 + 2.0 * hazeAmt);
-            col += stars * (1.0 - uMoon * 0.35) * smoothstep(-0.02, 0.08, h);
+        // The painted band and the hashed stars stand in only when the real sky's files are missing
+        // (S.x = 1); otherwise RealSky draws the sky and none of this is paid for.
+        if (S.x > 0.001) {
+            float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            float3 haze = hazeMap.sample(hs, tv(uv)).rgb;
+            float hazeAmt = dot(haze, float3(0.33));
+            if (h > -0.02) {
+                float3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0, uTime)
+                             + starLayer(uv, 760.0, 0.84, 0.8, 5.0, uTime) * (0.7 + 1.5 * hazeAmt)
+                             + starLayer(uv, 1400.0, 0.9, 0.35, 11.0, uTime) * (0.5 + 2.0 * hazeAmt);
+                col += stars * (1.0 - uMoon * 0.35) * smoothstep(-0.02, 0.08, h) * S.x;
+            }
+            // Moonlight washes out the faint stars and most of the Milky Way.
+            col += haze * 0.22 * (1.0 - uMoon * 0.6) * S.x;
         }
-        // Moonlight washes out the faint stars and most of the Milky Way.
-        col += haze * 0.22 * (1.0 - uMoon * 0.6);
 
         // The moon's halo, and a hint of the 22-degree ice halo in cold air.
         float cosm = dot(d, F.moonDir.xyz);

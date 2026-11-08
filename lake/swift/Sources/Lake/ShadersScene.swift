@@ -28,7 +28,7 @@ extension Shaders {
         return o;
     }
 
-    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]],
+    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]], constant float4& S [[buffer(1)]],
                                 texture2d<float> hazeMap [[texture(0)]], sampler s [[sampler(0)]]) {
         float time = F.misc.x, night = F.misc.z, rain = F.misc.w;
         float3 sunDir = F.sunDir.xyz, moonDir = F.moonDir.xyz, fogColor = F.fogColor.xyz;
@@ -74,11 +74,15 @@ extension Shaders {
         // Night: a dark vault, the Milky Way, three layers of stars, the moon's halo.
         float3 nightCol = mix(float3(0.035, 0.045, 0.09), float3(0.003, 0.005, 0.016), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
         nightCol += float3(0.02, 0.045, 0.035) * exp(-max(h, 0.0) * 14.0) * 0.6;
-        float3 haze = hazeMap.sample(s, tv(uv)).rgb;
-        float hazeAmt = dot(haze, float3(0.33));
-        float3 stars = starLayer(time, uv, 380.0, 0.75, 1.5, 0.0) + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
-                     + starLayer(time, uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
-        nightCol += haze * 0.3 + stars;
+        // The painted band and the hashed stars stand in only when the real sky's files are missing
+        // (S.x = 1); otherwise RealSky draws the sky and none of this is paid for.
+        if (S.x > 0.001) {
+            float3 haze = hazeMap.sample(s, tv(uv)).rgb;
+            float hazeAmt = dot(haze, float3(0.33));
+            float3 stars = starLayer(time, uv, 380.0, 0.75, 1.5, 0.0) + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                         + starLayer(time, uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
+            nightCol += (haze * 0.3 + stars) * S.x;
+        }
         float cosm = dot(d, moonDir);
         nightCol += float3(0.5, 0.6, 0.85) * (exp((cosm - 1.0) * 90.0) * 0.14 + exp((cosm - 1.0) * 600.0) * 0.35);
 

@@ -95,16 +95,33 @@ final class Sky {
         return c
     }
 
+    /// The real sky (assets/sky/RealSky.swift): Glen Canyon, 37 degrees north, with north toward -z where
+    /// the aurora stands. North is fixed by the aurora, so the hour is chosen instead: the one that stands the
+    /// band highest across the view north, aimed at 24 degrees, inside the strip of sky the frame shows (the
+    /// core stays low in the south behind the viewer, where Utah keeps it). The painted band and the hashed
+    /// stars stand in only if its files are missing.
+    let real = RealSky(latitude: 37, north: -Double.pi / 2, viewAzimuth: -Double.pi / 2, viewAltitude: 24,
+                       radius: skyRadius, horizon: SIMD2(-0.01, 0.06))
+
+    /// Turns the real sky. A bright aurora washes the faint stars and the band out, and the storm's lid of
+    /// cloud takes the sky away.
+    func update(dt: Float, aurora: Float, rain: Float, lowPower: Bool) {
+        real.fade = (1 - 0.45 * clamp(aurora, 0, 1)) * (1 - rain * 0.95)
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
+    }
+
     /// Seen directly and in the water's reflection.
     func draw(_ ctx: DrawContext, moon: Float) {
         guard ctx.shows(.surface) else { return }
         let e = ctx.encoder
         ctx.use("archSkyVertex", "archSkyFragment", depthWrite: false)
-        var m = V4(moon, 0, 0, 0)
+        var m = V4(moon, real.ready ? 0 : 1, 0, 0)
         e.setFragmentBytes(&m, length: 16, index: 3)
         e.setFragmentTexture(haze, index: 3)
         e.setFragmentSamplerState(GPU.shared.skySampler, index: 3)
         mesh.draw(e)
+        real.draw(e, frame: ctx.frame, samples: ctx.samples)
     }
 }
 
@@ -202,13 +219,17 @@ extension Shaders {
         float3 night = mix(float3(0.02, 0.035, 0.07), float3(0.003, 0.005, 0.014), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
         night += float3(0.02, 0.035, 0.03) * exp(-max(h, 0.0) * 12.0) * 0.6;
         night += F.aurora.xyz * 0.5 * exp(-max(h, 0.0) * 3.0);
-        float3 haze = hazeMap.sample(hs, tv(uv)).rgb;
-        float hazeAmt = dot(haze, float3(0.33));
-        float3 stars = archStarLayer(uv, 380.0, 0.75, 1.5, 0.0, uTime) + archStarLayer(uv, 760.0, 0.84, 0.8, 5.0, uTime) * (0.7 + 1.5 * hazeAmt)
-                     + archStarLayer(uv, 1400.0, 0.9, 0.35, 11.0, uTime) * (0.5 + 2.0 * hazeAmt) + archStarLayer(uv, 2600.0, 0.93, 0.15, 23.0, uTime) * (0.3 + 2.5 * hazeAmt);
-        // Under a bright aurora the fainter stars and the Milky Way wash out.
-        float wash = 1.0 - 0.6 * clamp(uAurora, 0.0, 1.0);
-        night += haze * 0.3 * wash + stars * (0.6 + 0.4 * wash);
+        // The painted band and the hashed stars stand in only when the real sky's files are missing
+        // (S.y = 1); otherwise RealSky draws the sky and none of this is paid for.
+        if (S.y > 0.001) {
+            float3 haze = hazeMap.sample(hs, tv(uv)).rgb;
+            float hazeAmt = dot(haze, float3(0.33));
+            float3 stars = archStarLayer(uv, 380.0, 0.75, 1.5, 0.0, uTime) + archStarLayer(uv, 760.0, 0.84, 0.8, 5.0, uTime) * (0.7 + 1.5 * hazeAmt)
+                         + archStarLayer(uv, 1400.0, 0.9, 0.35, 11.0, uTime) * (0.5 + 2.0 * hazeAmt) + archStarLayer(uv, 2600.0, 0.93, 0.15, 23.0, uTime) * (0.3 + 2.5 * hazeAmt);
+            // Under a bright aurora the fainter stars and the Milky Way wash out.
+            float wash = 1.0 - 0.6 * clamp(uAurora, 0.0, 1.0);
+            night += (haze * 0.3 * wash + stars * (0.6 + 0.4 * wash)) * S.y;
+        }
         float cosm = dot(d, F.moonDir.xyz);
         night += float3(0.6, 0.6, 0.75) * (exp((cosm - 1.0) * 90.0) * 0.12 + exp((cosm - 1.0) * 600.0) * 0.3) * uMoonI;
         float3 col = night;

@@ -11,6 +11,13 @@ cp "$(swift build -c release --show-bin-path)/Arch" "$APP/Contents/MacOS/Arch"
 # The moon maps, the reference picture and the owner's Lake Powell photographs, shared with the web version.
 cp ../html/assets/lroc_color_2k.jpg ../html/assets/ldem_3_8bit.jpg ../html/assets/reference.webp \
    ../html/assets/wall.png ../html/assets/wall2.png ../html/assets/wall3.webp ../html/assets/streaks.png "$APP/Contents/Resources/"
+# The real night sky (assets/sky): the Milky Way map transcoded for Apple GPUs, and Hangar's star catalogue.
+# Without them the app keeps its painted sky.
+if ../../assets/sky/tools/prepare-macos.sh; then
+    cp ../../assets/sky/build/milkyway.astc ../../hangar/html/data/stars.bin "$APP/Contents/Resources/"
+else
+    echo "warning: couldn't make the real sky's Milky Way map; the app will paint its own" >&2
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
