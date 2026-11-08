@@ -540,6 +540,31 @@ void main() {
 }
 `;
 
+// The brightness of the Milky Way map's stored value, on the screen, before the exposure divides
+// it. The map holds radiance / 0.2 sRGB-encoded (trawler/tools/prepare-sky.py).
+//
+// Set by measurement. On a moonless night at this gain, looking at Cygnus 54 degrees up: the
+// frame's median pixel is 4 of 255 and its ninetieth percentile 16, against 3.3 and 10.3 for a
+// frame the same size 36 degrees off the galactic plane. Turn the band off and the same frame
+// falls to 0.23, so out here it is the Milky Way, not the airglow, that lights the night sky -
+// which is what a sea with no coast to windward actually looks like. The map's own plane-to-pole
+// ratio of 4.4 survives into the render, and nothing in the band is near clipping.
+const MW_GAIN = 0.075;
+
+/**
+ * The Milky Way sphere's own frame, as a matrix taking its local axes to ICRS. three's
+ * SphereGeometry wraps u round its local +y and puts u = 0 at local (-1, 0, 0); the map puts
+ * right ascension a at u = 0.5 - a / 2pi with north at the top. Equating the two: local +y is the
+ * north celestial pole (ICRS +z), and the local x and z axes are ICRS x and y. So the frame is the
+ * identity with y and z exchanged, and setClock multiplies it by the equatorial-to-world matrix.
+ */
+const MW_FRAME = new THREE.Matrix4().set(
+  1, 0, 0, 0,
+  0, 0, 1, 0,
+  0, 1, 0, 0,
+  0, 0, 0, 1,
+);
+
 // Stars: the Hipparcos catalogue, each at its measured place, V magnitude and B-V colour. The
 // brightness step is 1.5x a magnitude rather than the true 2.512x, so the naked-eye stars stand
 // out while the faint ones still dust the sky (as Hangar's do).
@@ -651,6 +676,7 @@ export class Sky {
     this.dayTime = 0; // 0..1 of the day; set by setClock
     this.cycling = true;
     this.buildDome();
+    this.buildMilkyWay(opts.assetBase);
     this.buildMoon(opts.assetBase);
     if (opts.stars) this.buildStars(opts.stars);
 
@@ -738,6 +764,62 @@ export class Sky {
     this.scene.add(this.stars);
   }
 
+  /**
+   * The Milky Way: NASA's Deep Star Maps 2020, the band with the Hipparcos and Tycho stars taken
+   * back out of it, so it lies under the catalogue stars instead of drawing the bright ones twice.
+   *
+   * The map is equirectangular in equatorial (ICRS) coordinates - RA 0 down the middle with RA
+   * rising to the left, north along the top row - and three's SphereGeometry lays its own uvs out
+   * so that u = 0 is the ICRS direction (-1, 0, 0) and u rises the other way round. Working that
+   * through, a texel at right ascension a sits at u = 0.5 - a / 2pi, and the sphere's local frame
+   * is the ICRS one with y and z swapped. MW_FRAME is that swap; setClock multiplies it by the
+   * same equatorial-to-world matrix the stars and the moon use, so all three turn together.
+   */
+  buildMilkyWay(assetBase) {
+    const base = assetBase ?? new URL('../assets/', import.meta.url).href;
+    this.mwMap = new THREE.TextureLoader().load(base + 'milkyway.webp', () => {
+      if (this.milkyWay) this.milkyWay.visible = true;
+      this.applyExposure();
+    });
+    this.mwMap.colorSpace = THREE.SRGBColorSpace;
+    this.mwMap.anisotropy = 8;
+    this.mwMap.wrapS = THREE.RepeatWrapping;
+    this.mwMat = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: this.mwMap }, uGain: { value: 0 } },
+      depthWrite: false, depthTest: true, transparent: true, blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      vertexShader: /* glsl */ `
+        varying vec2 vUv; varying vec3 vDir;
+        void main() {
+          vUv = uv;
+          vDir = mat3( modelMatrix ) * position;
+          vec4 p = projectionMatrix * vec4( mat3( viewMatrix ) * vDir, 1.0 );
+          p.z = p.w * 0.999995;
+          gl_Position = p;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D uMap; uniform float uGain;
+        varying vec2 vUv; varying vec3 vDir;
+        void main() {
+          // Below the horizon there is sea, not sky - the same cut the stars take.
+          float above = smoothstep( -0.02, 0.03, normalize( vDir ).y );
+          gl_FragColor = vec4( texture2D( uMap, vUv ).rgb * uGain * above, 1.0 );
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    });
+    this.milkyWay = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), this.mwMat);
+    this.milkyWay.frustumCulled = false;
+    this.milkyWay.matrixAutoUpdate = false;
+    this.milkyWay.visible = false;
+    // After the sky dome (900), which is opaque, and with the stars and the moon over it.
+    this.milkyWay.renderOrder = 900.5;
+    this.milkyWay.layers.set(LAYER.DEFAULT);
+    this.milkyWay.layers.enable(LAYER.WORLD);
+    this.milkyWay.layers.enable(LAYER.SKYONLY);
+    this.scene.add(this.milkyWay);
+  }
+
   buildMoon(assetBase) {
     const base = assetBase ?? new URL('../assets/', import.meta.url).href;
     const loader = new THREE.TextureLoader();
@@ -820,6 +902,10 @@ export class Sky {
     G.uDayTime.value = this.dayTime;
 
     if (this.stars) this.stars.matrix.copy(mat);
+    if (this.milkyWay) {
+      this.milkyWay.matrix.copy(mat).multiply(MW_FRAME);
+      this.milkyWay.matrixWorldNeedsUpdate = true;
+    }
     this.applyLights();
   }
 
@@ -989,6 +1075,14 @@ export class Sky {
       this.starMat.uniforms.uStarCull.value = 0.0015 / e;
       this.stars.visible = this.starMat.uniforms.uStarGain.value * e > 0.012;
     }
+    if (this.mwMat) {
+      // The band washes out faster than the stars do: a star is a point and survives a brightening
+      // sky for a while, where the Milky Way is a low-contrast smear over a large solid angle and
+      // is the first thing to go. Hence the same wash raised to a power.
+      const wash = clamp01(1 - smoothstep(0.0012, 0.03, lum));
+      this.mwMat.uniforms.uGain.value = (MW_GAIN * wash * wash) / e;
+      if (this.milkyWay) this.milkyWay.visible = !!this.mwMap?.image && this.mwMat.uniforms.uGain.value * e > 0.0006;
+    }
     if (this.moon) {
       const my = this.moonDir?.y ?? -1;
       // The moon is bright enough to stay visible by day, but it should never bloom at night.
@@ -1014,6 +1108,7 @@ export class Sky {
     this.domeMat.dispose();
     this.scene.remove(this.dome);
     if (this.stars) { this.stars.geometry.dispose(); this.starMat.dispose(); this.scene.remove(this.stars); }
+    if (this.milkyWay) { this.milkyWay.geometry.dispose(); this.mwMat.dispose(); this.mwMap?.dispose(); this.scene.remove(this.milkyWay); }
     if (this.moon) {
       this.moon.geometry.dispose();
       this.moonMat.dispose();

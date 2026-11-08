@@ -114,9 +114,20 @@ the stars, the moon, the instruments, the nav lights, the channel marks — is s
 brightness on the screen and divided by that exposure, because a lamp that is right at noon is a
 white hole at midnight otherwise.
 
-Stars are the Hipparcos catalogue at their measured positions, magnitudes and colours. The moon is
-the Lunar Reconnaissance Orbiter's colour mosaic and its height model, with the real libration and
-phase. Cumulus is a volumetric march; cirrus is a sheet above it; both are lit by the same sun.
+Stars are the Hipparcos catalogue at their measured positions, magnitudes and colours. Behind them
+is NASA's Deep Star Maps 2020 — the real Milky Way, built from Gaia DR2, with the Hipparcos and
+Tycho stars taken back out of it so the bright ones are not drawn twice. It is turned by the same
+equatorial-to-world matrix as the stars and the moon, so the band stands where it really stands: at
+latitude 62 in September it lies up through Cygnus in the west after midnight, and the galactic
+centre never clears the horizon. The moon is the Lunar Reconnaissance Orbiter's colour mosaic and
+its height model, with the real libration and phase. Cumulus is a volumetric march; cirrus is a
+sheet above it; both are lit by the same sun.
+
+How bright the band is, checked rather than chosen: looking at Cygnus 54 degrees up on a moonless
+night, the frame's median pixel is 4 of 255 and its ninetieth percentile 16, against 3.3 and 10.3
+for a frame the same size 36 degrees off the galactic plane; with the band switched off the same
+frame falls to 0.23, which is to say that out here it is the Milky Way and not the airglow that
+lights the night sky. It costs 0.3 ms a frame.
 
 ## The fjord
 
@@ -218,7 +229,8 @@ every surface in the house is within two metres of the viewer.
 ## Credits
 
 Every asset the page loads is listed in `html/assets/manifest.json` with its source, author and
-licence; this table mirrors it. Thanks to Poly Haven and ambientCG for the CC0 scans, to NASA's Scientific
+licence; this table mirrors it. Thanks to Poly Haven and ambientCG for the CC0 scans, to NASA GSFC's
+Scientific Visualization Studio (and ESA/Gaia/DPAC) for the Milky Way, to NASA's Scientific
 Visualization Studio for the CGI Moon Kit, and to ESA's Hipparcos mission (via NASA HEASARC) for the
 stars.
 
@@ -259,6 +271,7 @@ stars.
 | Model | `thermos` | Plastic Thermos | PierreB3D | CC0 | https://polyhaven.com/a/plastic_thermos |
 | Model | `torch` | Vintage Flashlight | Omar M. El-Safy | CC0 | https://polyhaven.com/a/vintage_flashlight |
 | Model | `vhf` | Vintage Radio Transceiver | Mateusz Sadek | CC0 | https://polyhaven.com/a/vintage_radio_transceiver |
+| Image | `milkyway.webp` | Deep Star Maps 2020, the Milky Way without the Hipparcos/Tycho stars, equatorial, resampled to 4096 x 2048 | NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC | PD | https://svs.gsfc.nasa.gov/4851 |
 | Image | `lroc_color_2k.jpg` | CGI Moon Kit, LROC WAC colour mosaic | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
 | Image | `ldem_3_8bit.jpg` | CGI Moon Kit, LOLA displacement map | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
 | Data | `data/stars.bin` | Hipparcos Main Catalogue (ESA 1997), HEASARC copy: positions, V magnitudes, B-V colours | ESA Hipparcos mission; NASA HEASARC | PD | https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/hipparcos.html |

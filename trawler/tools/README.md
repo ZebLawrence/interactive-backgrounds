@@ -56,12 +56,25 @@ for a in seadogs_compass:compass vintage_radio_transceiver:vhf binoculars:binocu
   node $T/fetch.mjs model "${a%%:*}" "${a##*:}"
 done
 python $T/prepare-models.py            # raw/models/* -> html/assets/models/*
+
+# The Milky Way: NASA SVS Deep Star Maps 2020, the starless equatorial map, public domain.
+mkdir -p $T/raw/sky
+curl -L -o $T/raw/sky/milkyway_2020_4k.exr \
+  https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_4k.exr
+python $T/prepare-sky.py               # raw/sky/*.exr -> html/assets/milkyway.webp
 ```
+
+`prepare-sky.py` needs an EXR reader: `pip install OpenEXR`. It prints where it finds the galactic
+centre in the packed image, which is the check that the map's own convention (RA 0 at the centre,
+RA rising to the left, north along the top) is the one the page assumes.
 
 Each `fetch.mjs` run records the asset's name, author, licence and source URL in
 `html/assets/manifest.json`, which is what the README's credits table mirrors and what the page reads
 at load time. The sky's two moon maps and `html/data/stars.bin` are copied from the other scenes in
-this repository rather than refetched; their provenance is in the README.
+this repository rather than refetched; their provenance is in the README. `milkyway.webp` is built
+here, from the same NASA release Hangar uses, at a quarter of Hangar's width: the sky in this scene
+is a strip seen through a window rather than the whole frame, so 4096 x 2048 is enough and it costs
+4 MB instead of 38.
 
 ## What each script does
 
@@ -71,6 +84,7 @@ this repository rather than refetched; their provenance is in the README.
 | `manifest-lib.mjs` | the shared bits: paths, slugs, the manifest read/write, HTTP with retries |
 | `pack.py` | a raw material folder to the three WebP maps the page loads: `color` (sRGB, quality 92), `normal` (lossless — a normal map is a vector field and lossy chroma puts facets in it), `orm` (AO / roughness / metalness packed into R / G / B, quality 95) |
 | `prepare-models.py` | a raw glTF prop to `html/assets/models/<name>/`, with its PNG maps converted to WebP and the glTF's image URIs repointed. The geometry is left exactly as downloaded: these are a handful of objects seen close up, not a forest |
+| `prepare-sky.py` | NASA's starless Milky Way EXR to `html/assets/milkyway.webp`: linear radiance divided by 0.2 and sRGB-encoded, 4096 x 2048, north along the top row (no flip, because a `THREE.Texture` uploads with `flipY` and SphereGeometry puts v = 1 at +y) |
 
 Height maps are deliberately not packed. Hangar's lesson was that parallax on a surface seen at a
 grazing angle smears and shimmers, and that relief the camera gets close to is better built as
@@ -86,6 +100,7 @@ looked at:
 | `trawler.propSizes()` | the bounding box of every scanned prop, in metres, in the pilot house's own frame. A prop whose numbers do not read like the real object is placed or scaled wrong |
 | `trawler.verifyOcean()` | the sea the GPU draws against the sea the hull rides, at random points |
 | `trawler.shaderErrors()` | any shader that failed to compile, by name |
+| `scene.sky.skyMatrix`, `scene.sky.milkyWay.matrix` | the equatorial-to-world matrix and the band's own frame: invert the second and a world direction comes back as a texel of the map, which is how the band's orientation was checked against the galactic centre and the two galactic poles |
 | `trawler.bench(n)` | milliseconds a frame, averaged over n frames |
 | `trawler.look(x, y, z, yaw, pitch, fov)` / `trawler.at(...)` | puts the camera somewhere and renders one frame |
 | `trawler.run(seconds)` | steps the simulation at 1/60 s without waiting for real time |
