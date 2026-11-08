@@ -268,6 +268,9 @@ uniform vec3 uCamPos;
 uniform vec3 uBox;
 uniform float uTime;
 uniform vec3 uWind;
+uniform mat4 uHouseInv;   // world -> boat, so the house's own box can be tested
+uniform vec3 uHouseMid;
+uniform vec3 uHouseHalf;
 varying float vBright;
 void main() {
   // Each drop lives in a box that follows the camera, and simply wraps when it falls out of it.
@@ -279,6 +282,12 @@ void main() {
   vec3 fall = normalize( vec3( uWind.x, -streak.x, uWind.z ) );
   p += fall * streak.y * uv.y;
   vBright = streak.z;
+  // The camera stands inside the house, and nothing in there writes depth in front of a drop:
+  // without this the rain falls through the deckhead, across the console and past the helmsman's
+  // own hands. So the drop is carried back into the boat's frame and any part of it that is inside
+  // the wheelhouse is faded out over the last ten centimetres, which is about a pane's thickness.
+  vec3 q = abs( ( uHouseInv * vec4( p, 1.0 ) ).xyz - uHouseMid ) - uHouseHalf;
+  vBright *= smoothstep( -0.10, 0.02, max( max( q.x, q.y ), q.z ) );
   gl_Position = projectionMatrix * viewMatrix * vec4( p, 1.0 );
 }
 `;
@@ -327,6 +336,9 @@ export class Rain {
         uWind: { value: v3() },
         uColor: { value: v3(0.62, 0.70, 0.78) },
         uOpacity: { value: 0 },
+        uHouseInv: { value: new THREE.Matrix4() },
+        uHouseMid: { value: v3(0, 5.07, 0.18) },
+        uHouseHalf: { value: v3(1.70, 1.07, 1.58) },
       },
       vertexShader: RAIN_VERT,
       fragmentShader: RAIN_FRAG,
@@ -341,10 +353,24 @@ export class Rain {
     scene.add(this.lines);
   }
 
+  /**
+   * The wheelhouse, so the rain can be kept out of it. The group is the boat's own frame; mid and
+   * half are the inside of the house measured in that frame, out to the glass but not past it.
+   */
+  useHouse(group, mid, half) {
+    this.house = group;
+    this.material.uniforms.uHouseMid.value.copy(mid);
+    this.material.uniforms.uHouseHalf.value.copy(half);
+  }
+
   step(dt, camera, rain, wind, u10) {
     const u = this.material.uniforms;
     u.uTime.value = (u.uTime.value + dt) % 600;
     u.uCamPos.value.copy(camera.position);
+    if (this.house) {
+      this.house.updateWorldMatrix(true, false);
+      u.uHouseInv.value.copy(this.house.matrixWorld).invert();
+    }
     // Rain goes nearly sideways in a gale, which is most of what makes a gale look like one.
     u.uWind.value.set(wind.x * u10 * 0.45, 0, wind.y * u10 * 0.45);
     u.uOpacity.value = clamp01(rain) * 0.5;

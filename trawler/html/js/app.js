@@ -423,6 +423,34 @@ function installDebug(app) {
     },
     /** Does the sea the GPU draws match the sea the hull rides? (ocean.verify) */
     verifyOcean(points = 24) { return app.scene.ocean.verify(points); },
+    /**
+     * The bounding box of every scanned prop, in metres, in the pilot house's own frame. A prop
+     * whose numbers do not read like the real object is placed wrong or scaled wrong, and this is
+     * how you find out which rather than squinting at a screenshot.
+     */
+    propSizes() {
+      const house = app.scene.pilot;
+      const inv = house.group.matrixWorld.clone().invert();
+      const out = {};
+      for (const key of Object.keys(house.parts)) {
+        if (!key.startsWith('prop:')) continue;
+        const obj = house.parts[key];
+        obj.updateWorldMatrix(true, true);
+        const b = new THREE.Box3();
+        obj.traverse((m) => {
+          if (!m.isMesh || !m.geometry) return;
+          m.geometry.computeBoundingBox();
+          b.union(m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld.clone().premultiply(inv)));
+        });
+        const size = b.getSize(new THREE.Vector3());
+        out[key.slice(5)] = {
+          size: [+size.x.toFixed(3), +size.y.toFixed(3), +size.z.toFixed(3)],
+          lo: [+b.min.x.toFixed(3), +b.min.y.toFixed(3), +b.min.z.toFixed(3)],
+          hi: [+b.max.x.toFixed(3), +b.max.y.toFixed(3), +b.max.z.toFixed(3)],
+        };
+      }
+      return out;
+    },
     /** Any shader that failed to compile, by name (guidelines section 4). */
     shaderErrors() {
       return app.renderer.info.programs.filter((p) => p.diagnostics).map((p) => ({ name: p.name, d: p.diagnostics }));

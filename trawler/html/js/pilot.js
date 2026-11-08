@@ -8,15 +8,18 @@
 // Body coordinates: +x starboard, +y up, +z aft, y = 0 at the waterline.
 //
 //   4.00  the wheelhouse sole, 4 m above the water
-//   4.86  the console top
+//   4.68  the console top
+//   4.94  the dash top, which carries the sounder and the dials
+//   4.98  the windscreen sill
 //   5.52  the helmsman's eye
-//   6.05  the deckhead
+//   6.02  the windscreen head
+//   6.14  the deckhead
 //
 // The composition, worked out from those numbers rather than by nudging a camera about: the eye is
-// 1.5 m back from the windscreen, whose sill is 0.70 m below it and whose head is 0.48 m above it.
-// Through a 62 degree lens pitched four degrees down, the glass fills the middle two thirds of the
-// frame, the console and its rail take the bottom sixth, and the deckhead and the overhead panel
-// take the top sixth. Three front panes, the middle one wide: the two mullions sit 25 degrees off
+// 1.58 m back from the windscreen, whose sill is 0.54 m below it and whose head is 0.50 m above
+// it. Through a 62 degree lens pitched three degrees down, the glass fills the middle 63% of the
+// frame, the console and its dash take the bottom sixth, and the deckhead and the overhead console
+// take the top fifth. Three front panes, the middle one wide: the two mullions sit 24 degrees off
 // the centreline, well clear of where the bow and the horizon are.
 //
 // Everything is modelled at a texel density of 1024 px per metre or better (materials.js), because
@@ -328,7 +331,7 @@ export class PilotHouse {
     this.add(box(doorW + 0.12, 0.07, 0.09, frameMat, 0.98 - doorW / 2, H.sole + doorH + 0.03, H.back - 0.05));
 
     // The chart table along the port side of the aft bulkhead, with a light over it.
-    const teak = this.mat('mat:teak', { key: 'teak' });
+    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
     const tableW = 1.05, tableD = 0.46;
     this.add(box(tableW, 0.045, tableD, teak, -0.95, 4.74, H.back - 0.28));
     this.add(box(tableW - 0.06, 0.52, 0.03, teak, -0.95, 4.47, H.back - 0.07));
@@ -347,7 +350,7 @@ export class PilotHouse {
 
   buildConsole() {
     const H = HOUSE;
-    const teak = this.mat('mat:teak', { key: 'teak' });
+    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
     const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
     const dark = paint(0x24282b, 0.6, 0.1);
     const w = H.glassHalf * 2 + 0.18;
@@ -386,7 +389,7 @@ export class PilotHouse {
   buildWheel() {
     const H = HOUSE;
     const steel = this.mat('mat:steel-brushed', { key: 'wheelsteel', roughness: 0.3 });
-    const teak = this.mat('mat:teak', { key: 'teak' });
+    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
     const bronze = paint(0x8a6a2e, 0.3, 0.88);
 
     const wheel = new THREE.Group();
@@ -517,11 +520,16 @@ export class PilotHouse {
     const H = HOUSE;
     // Hooks and a shelf along the aft part of the port wall, for the props to hang from.
     const brass = paint(0x9a7a34, 0.3, 0.86);
-    const shelfMat = this.mat('mat:teak', { key: 'teak' });
-    const shelf = this.add(box(0.9, 0.035, 0.22, shelfMat, -H.halfWidth + 0.13, 5.62, 1.15));
+    const shelfMat = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
+    // The shelf runs fore and aft along the wall, not across it: 0.9 m long, 0.24 m deep, with a
+    // fiddle along its outer edge, because anything on an unfenced shelf is on the sole by the
+    // second roll.
+    const shelf = this.add(box(0.24, 0.035, 0.9, shelfMat, -H.halfWidth + 0.12, 5.62, 1.15));
     this.parts.shelf = shelf;
-    for (const z of [0.80, 1.52]) {
-      this.add(bar(v3(-H.halfWidth + 0.02, 5.44, z), v3(-H.halfWidth + 0.09, 5.40, z), 0.009, brass, 8));
+    this.shelfTop = 5.62 + 0.0175;
+    this.add(box(0.022, 0.05, 0.9, shelfMat, -H.halfWidth + 0.23, 5.655, 1.15));
+    for (const [z, y] of [[0.80, 5.44], [1.52, 5.44]]) {
+      this.add(bar(v3(-H.halfWidth + 0.02, y, z), v3(-H.halfWidth + 0.09, y - 0.04, z), 0.009, brass, 8));
     }
     // A coffee mug on the console: it slides when she rolls (update()).
     const mug = new THREE.Group();
@@ -547,21 +555,39 @@ export class PilotHouse {
   // --- props from the manifest --------------------------------------------------------------------
 
   /**
-   * Where each scanned prop goes once it arrives. Positions are in body coordinates; `up` names the
-   * model's own up axis when it is not +y, and `fit` is the height in metres the model should end
-   * up, which is how a model whose units are not metres is made to behave.
+   * Where each scanned prop goes once it arrives. Positions are in body coordinates, in metres.
+   *
+   * Nothing here is scaled. Every one of these props is a Poly Haven scan, and Poly Haven models
+   * are modelled at their real size in metres, which is the unit this scene is in as well: the
+   * pocket compass is 8 cm across because a pocket compass is 8 cm across. An earlier version of
+   * this table normalised each model to a guessed height, which is what you do to models of
+   * unknown provenance, and the result measured out as a 1.7 m clipboard standing through the port
+   * wall and a half-metre fisherman's hat. The sizes are checked by measurement, not by eye:
+   * `trawler.propSizes()` prints the bounding box of every prop in metres, in the house's own
+   * frame, and every one of them has to read like the real object.
+   *
+   * `anchor` says what the position means: 'base' (the default) stands the prop on its own bottom
+   * face, which is what you want for anything standing on the console or the sole; 'centre' puts
+   * its middle there, which is what you want for the things hanging on the port wall.
    */
   static PROPS = {
-    compass: { pos: [-0.90, 4.72, -0.95], rot: [0, 0.2, 0], fit: 0.26 },
-    vhf: { pos: [0.0, 0.055, 0.035], rot: [-0.3, 0, 0], fit: 0.13, parent: 'overhead' },
-    binoculars: { pos: [-1.46, 5.50, 0.92], rot: [0.1, 1.2, 0.5], fit: 0.16 },
-    clock: { pos: [-1.66, 5.66, 1.42], rot: [0, 1.5708, 0], fit: 0.26 },
-    extinguisher: { pos: [1.52, 4.02, 1.34], rot: [0, -0.5, 0], fit: 0.52 },
-    stool: { pos: [0.72, 4.00, 0.62], rot: [0, 0.4, 0], fit: 0.66 },
-    thermos: { pos: [-1.30, 4.71, -0.82], rot: [0, 0.9, 0], fit: 0.26 },
-    clipboard: { pos: [-1.60, 5.20, 1.20], rot: [0, 1.5708, 0.1], fit: 0.33 },
-    torch: { pos: [1.02, 4.72, -0.78], rot: [1.5708, 0, 0.6], fit: 0.22 },
-    hat: { pos: [-1.44, 5.66, 1.15], rot: [0, 0.3, 0], fit: 0.16 },
+    // On the console, where the helmsman's hands are. The set is a valve transceiver 0.62 m across
+    // and 0.43 m tall: that puts its top a hand's breadth above the window sill in the bottom port
+    // corner of the view, which is exactly where a working boat's radio gets in the way.
+    vhf: { pos: [-1.10, 4.68, -0.92], rot: [0, 0.42, 0] },
+    compass: { pos: [-0.60, 4.68, -0.98], rot: [0, 0.35, 0] },
+    torch: { pos: [0.72, 4.68, -0.95], rot: [0, 0.55, 0] },
+    // On the sole.
+    stool: { pos: [0.80, 4.00, 0.62], rot: [0, 0.4, 0] },
+    extinguisher: { pos: [1.44, 4.00, 1.38], rot: [0, -0.6, 0] },
+    // On the teak shelf on the port wall, whose top is at 5.6375.
+    thermos: { pos: [-1.60, 5.6375, 0.88], rot: [0, 0.9, 0] },
+    clipboard: { pos: [-1.575, 5.6375, 1.30], rot: [0, 0.12, 0] },
+    // Hung on the port wall: the clock on the panelling, the glasses and the hat on the two brass
+    // hooks at 5.44. These are placed by their centres.
+    clock: { pos: [-1.690, 5.93, 1.15], rot: [0, 1.5708, 0], anchor: 'centre' },
+    binoculars: { pos: [-1.615, 5.27, 0.80], rot: [1.5708, 0, 0.22], anchor: 'centre' },
+    hat: { pos: [-1.505, 5.34, 1.48], rot: [0.30, 0.3, 0], anchor: 'centre' },
   };
 
   /** Drops a loaded glTF prop into the house. */
@@ -588,14 +614,12 @@ export class PilotHouse {
     obj.rotation.set(spec.rot[0] ?? 0, spec.rot[1] ?? 0, spec.rot[2] ?? 0);
     obj.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(obj);
-    const size = bounds.getSize(new THREE.Vector3());
-    const k = spec.fit ? spec.fit / Math.max(size.y, 1e-4) : (model.userData.scale ?? 1);
-    obj.scale.setScalar(k);
     const centre = bounds.getCenter(new THREE.Vector3());
+    const yRef = spec.anchor === 'centre' ? centre.y : bounds.min.y;
     obj.position.set(
-      spec.pos[0] - centre.x * k,
-      spec.pos[1] - bounds.min.y * k,
-      spec.pos[2] - centre.z * k,
+      spec.pos[0] - centre.x,
+      spec.pos[1] - yRef,
+      spec.pos[2] - centre.z,
     );
     obj.layers.set(LAYER.DEFAULT);
     obj.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.INTERIOR); });
@@ -721,8 +745,12 @@ export class PilotHouse {
   }
 }
 
-/** The atmosphere, for a prop's own loaded material. */
-function patchPropShader(shader) {
+/**
+ * The atmosphere, for a prop's own loaded material. A scanned prop arrives as a plain standard
+ * material that knows nothing about this scene's aerial perspective; this bolts the same read onto
+ * it that every other surface uses. deck.js uses it too, for the props out on the foredeck.
+ */
+export function patchPropShader(shader) {
   shader.uniforms.uSkyLut = G.uSkyLut;
   shader.uniforms.uTransLut = G.uTransLut;
   shader.uniforms.uSunDir = G.uSunDir;

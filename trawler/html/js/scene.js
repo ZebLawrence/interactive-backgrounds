@@ -114,6 +114,12 @@ export class Scene {
     this.deck = new Deck(this.scene, this.materials, this.rng.fork('deck'));
     this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.overhead);
     this.registerPanes();
+    // The rain is told where the wheelhouse is so it does not fall through the deckhead. The box
+    // reaches out to the glass on every face and no further, so a drop a hand's breadth outside
+    // the side window still streaks past.
+    this.rain.useHouse(this.pilot.group,
+      v3(0, (HOUSE.sole + HOUSE.deckhead) / 2, (HOUSE.front + HOUSE.back) / 2),
+      v3(HOUSE.halfWidth - 0.02, (HOUSE.deckhead - HOUSE.sole) / 2, (HOUSE.back - HOUSE.front) / 2));
     // The render origin. The boat covers hundreds of kilometres in a day, which would eventually
     // eat the precision of a 32-bit world position, so the whole scene is drawn about an origin
     // that follows her in 2048 m steps. Every cascade size divides that, so the sea does not
@@ -206,7 +212,9 @@ export class Scene {
     const assets = await loadAssets(this.app.renderer, manifest, progress, {
       // The house first: it is what the viewer is sitting in.
       priority: ['mat:teak', 'mat:paint', 'mat:plywood', 'mat:rubber', 'mat:paint-worn', 'mat:deck',
-        'mat:steel-rust', 'mat:steel-brushed', 'compass', 'vhf', 'stool'],
+        'mat:steel-rust', 'mat:steel-brushed', 'compass', 'vhf', 'stool',
+        // Then the props that are in the view every moment: the ones out on the foredeck.
+        'crate', 'lifebuoy', 'fender', 'jerrycan'],
       onItem: (kind, name, asset) => {
         if (this.disposed) return;
         if (kind === 'material') { this.materials.setAsset(name, asset); this.terrain.setAsset(name, asset); }
@@ -225,7 +233,7 @@ export class Scene {
     this.models ??= new Map();
     this.models.set(name, model);
     this.pilot.addProp(name, model);
-    this.deckProps?.add?.(name, model);
+    this.deck.addProp(name, model);
   }
 
   // --- input -------------------------------------------------------------------------------------

@@ -21,6 +21,7 @@
 import * as THREE from 'three';
 import { G, LAYER } from './shaders.js';
 import { paint, metreUvsBox, metreUvsPlane, scaleUvs } from './materials.js';
+import { patchPropShader } from './pilot.js';
 import { v3, DEG, TAU, lerp, clamp01, srgb } from './util.js';
 
 export const DECK = {
@@ -47,7 +48,7 @@ const PAINT = {
   bulwarkIn: 0x6a3a2c,
   trim: 0x9c3028,
   mast: 0xdfd9c6,
-  gear: 0x3e4b4e,
+  gear: 0x55564e,
 };
 
 function box(w, h, d, material, x = 0, y = 0, z = 0) {
@@ -197,7 +198,7 @@ export class Deck {
 
   buildDecks() {
     // A working deck is grey-brown with the colour walked out of it, not varnished mahogany.
-    const deckMat = this.mat('mat:deck', { key: 'deck', desaturate: 0.82, tint: 0x9a948a, roughness: 0.95 });
+    const deckMat = this.mat('mat:deck', { key: 'deck', desaturate: 0.9, tint: 0xcac2b2, roughness: 0.95, aoIntensity: 0.7 });
     // The deck as a strip between the bulwarks, following the sheer.
     const pos = [], uvs = [], idx = [];
     const N = 44;
@@ -384,9 +385,98 @@ export class Deck {
     this.parts.whistle = whistle;
   }
 
+  // --- scanned props on deck ----------------------------------------------------------------------
+
+  /**
+   * Where the scanned deck props go. These are Poly Haven scans, modelled at their real size in
+   * metres, so none of them is scaled — see the same note on PilotHouse.PROPS.
+   *
+   * What can go where is decided by the sightline, not by taste. The eye is at y 5.52 and looks
+   * out over a sill 0.54 m below it and 1.58 m forward, so the lowest thing visible at a distance
+   * d forward of the eye is at y = 5.52 - 0.342 d. At the fish hatch, six metres out, that is
+   * y 3.6 and the deck is at 2.45: the whole midships deck is under the sill and anything stowed
+   * there would never be seen. Forward of about z = -8.5 the sheer has risen and the sightline has
+   * dropped far enough that the deck comes into view, which is why everything here is right
+   * forward, around the windlass and the foremast, or up on the bulwark capping.
+   *
+   *   onDeck   y is measured up from the deck at that station, sheer(z)
+   *   outboard the prop is on the bulwark that side: x is measured in from deckHalfBeam(z)
+   *   anchor   what the position means: 'base' (default), 'centre', or 'top' for a hanging thing
+   */
+  static PROPS = {
+    // Fish crates stacked by the windlass, one askew on the other, as they always are.
+    crate: [
+      { pos: [1.38, 0.00, -9.74], rot: [0, 0.22, 0], onDeck: true },
+      { pos: [1.44, 0.254, -9.80], rot: [0, -0.18, 0], onDeck: true },
+    ],
+    // Two cans of diesel for the winch, lashed on the port side forward.
+    jerrycan: [
+      { pos: [-1.34, 0.00, -9.28], rot: [0, 0.38, 0], onDeck: true },
+      { pos: [-1.04, 0.00, -9.44], rot: [0, -0.52, 0], onDeck: true },
+    ],
+    // The lifebuoy on the inside of the port bulwark, where it is to hand and out of the view.
+    lifebuoy: [
+      { pos: [0.14, 3.02, -8.10], rot: [0, Math.PI / 2, 0], outboard: -1, anchor: 'centre' },
+    ],
+    // A jacket left hanging on the foremast.
+    lifejacket: [
+      { pos: [0.16, 3.00, -7.55], rot: [0, Math.PI / 2, 0.05], outboard: 1, anchor: 'centre' },
+    ],
+    // Tyre fenders over the side, which is where a boat that comes alongside keeps them.
+    fender: [
+      { pos: [-0.08, 3.02, -7.00], rot: [0, Math.PI / 2, 0], outboard: -1, anchor: 'centre' },
+      { pos: [-0.08, 3.14, -8.60], rot: [0, Math.PI / 2, 0.08], outboard: 1, anchor: 'centre' },
+    ],
+    // The deck working light, hung under the foremast crosstree on its own flex.
+    caged_light: [
+      { pos: [0.26, 5.47, -8.74], rot: [0, 0.22, 0], anchor: 'top' },
+    ],
+  };
+
+  /**
+   * Drops a loaded glTF prop onto the deck, once for each place the table gives it. Called from
+   * scene.js as each file lands, so the deck fills in while the scene is already running.
+   */
+  addProp(name, model) {
+    const places = Deck.PROPS[name];
+    if (!places || !model) return;
+    for (const spec of places) this.placeProp(name, model, spec);
+  }
+
+  placeProp(name, model, spec) {
+    const obj = model.clone(true);
+    obj.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      if (o.material) {
+        o.material = o.material.clone();
+        o.material.fog = true;
+        o.material.onBeforeCompile = (shader) => { patchPropShader(shader); };
+        o.material.needsUpdate = true;
+      }
+    });
+    obj.rotation.set(spec.rot?.[0] ?? 0, spec.rot?.[1] ?? 0, spec.rot?.[2] ?? 0);
+    obj.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(obj);
+    const centre = bounds.getCenter(new THREE.Vector3());
+    const z = spec.pos[2];
+    const x = spec.outboard ? spec.outboard * (deckHalfBeam(z) - spec.pos[0]) : spec.pos[0];
+    const y = spec.onDeck ? sheer(z) + spec.pos[1] : spec.pos[1];
+    const yRef = spec.anchor === 'centre' ? centre.y : spec.anchor === 'top' ? bounds.max.y : bounds.min.y;
+    obj.position.set(x - centre.x, y - yRef, z - centre.z);
+    obj.layers.set(LAYER.DEFAULT);
+    obj.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.WORLD); });
+    this.group.add(obj);
+    (this.props ??= []).push({ name, obj });
+  }
+
   buildForedeckGear() {
     const steel = this.mat('mat:steel-rust', { key: 'gear', tint: 0x7a8285 });
-    const dark = paint(PAINT.gear, 0.78, 0.12);
+    // Flat paint, not a scan: these are small castings, and a 1 m tiled scan on a 0.2 m box shows
+    // one stripe of itself. The colour is a warm grey rather than a blue one, because under a
+    // northern sky the only light a vertical face gets is blue and a blue-grey goes frankly blue.
+    const dark = paint(PAINT.gear, 0.62, 0.22);
     // The anchor windlass right forward.
     const wz = -9.4;
     const wy = sheer(wz);
@@ -428,14 +518,15 @@ export class Deck {
       }
     }
     // A coil of warp on the deck, and the bight of it running to the bitts.
-    const rope = paint(0x8d7f63, 0.9, 0);
+    const rope = paint(0x554c3a, 0.92, 0);
     const coil = new THREE.Group();
     coil.position.set(-1.25, sheer(-7.4) + 0.03, -7.4);
-    for (let i = 0; i < 7; i++) {
-      const r = 0.22 + i * 0.045;
-      const t = new THREE.Mesh(scaleUvs(new THREE.TorusGeometry(r, 0.022, 6, 28), 2.0, 0.14), rope);
+    for (let i = 0; i < 10; i++) {
+      const ring = i % 5, tier = Math.floor(i / 5);
+      const r = 0.38 - ring * 0.064 - tier * 0.03;
+      const t = new THREE.Mesh(scaleUvs(new THREE.TorusGeometry(r, 0.034, 8, 30), 2.0, 0.21), rope);
       t.rotation.x = Math.PI / 2;
-      t.position.y = 0.022 + (i % 2) * 0.006;
+      t.position.set((i % 3 - 1) * 0.010, 0.034 + tier * 0.060, (i % 2) * 0.012);
       coil.add(t);
     }
     this.add(coil);
@@ -443,7 +534,10 @@ export class Deck {
 
   buildAftGear() {
     const steel = this.mat('mat:steel-rust', { key: 'gear', tint: 0x7a8285 });
-    const dark = paint(PAINT.gear, 0.72, 0.3);
+    // Flat paint, not a scan: these are small castings, and a 1 m tiled scan on a 0.2 m box shows
+    // one stripe of itself. The colour is a warm grey rather than a blue one, because under a
+    // northern sky the only light a vertical face gets is blue and a blue-grey goes frankly blue.
+    const dark = paint(PAINT.gear, 0.62, 0.22);
     // The gantry over the stern, which is the silhouette that says "trawler".
     const gz = 8.4;
     const gy = sheer(gz);
