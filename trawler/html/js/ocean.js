@@ -331,8 +331,8 @@ uniform vec3 uCamPos;
  * cells reading a 1024 m cascade whose texels are 4 m across wants level 1: anything finer it
  * could not draw anyway, and sampling it would only alias.
  */
-float cascadeLod( float size ) {
-  return max( 0.0, log2( max( uCell * uFftN / size, 1e-4 ) ) );
+float cascadeLod( float size, float cell ) {
+  return max( 0.0, log2( max( cell * uFftN / size, 1e-4 ) ) );
 }
 
 /** How much of a cascade still means anything at this cell size: 1 resolved, 0 fully averaged. */
@@ -340,11 +340,20 @@ float cascadeWeight( float lod ) {
   return 1.0 - smoothstep( 5.0, 7.0, lod );
 }
 
-vec3 oceanDisplacement( vec2 p ) {
+/**
+ * The displaced position at p, as seen by a patch whose cells are the given size in metres. The cell
+ * size is a parameter rather than just uCell because of the seam: the vertices along a ring's
+ * outer edge are shared with the coarser ring outside it, and if the two sides read the cascades
+ * at different levels of detail they displace that shared vertex to two different places and the
+ * sea opens a hairline crack along the whole ring. The vertex shader therefore ramps the cell size
+ * from this level's to the next one's across the same band it morphs the positions over, so by the
+ * time a vertex reaches the shared edge both sides agree about where it is.
+ */
+vec3 oceanDisplacement( vec2 p, float cell ) {
   vec3 d = vec3( 0.0 );
-  float l0 = cascadeLod( uCascadeSize.x );
-  float l1 = cascadeLod( uCascadeSize.y );
-  float l2 = cascadeLod( uCascadeSize.z );
+  float l0 = cascadeLod( uCascadeSize.x, cell );
+  float l1 = cascadeLod( uCascadeSize.y, cell );
+  float l2 = cascadeLod( uCascadeSize.z, cell );
   d += textureLod( uDisp0, p / uCascadeSize.x, l0 ).xyz * cascadeWeight( l0 );
   d += textureLod( uDisp1, p / uCascadeSize.y, l1 ).xyz * cascadeWeight( l1 );
   d += textureLod( uDisp2, p / uCascadeSize.z, l2 ).xyz * cascadeWeight( l2 );
@@ -372,7 +381,7 @@ void main() {
   vec2 coarse = floor( p / ( 2.0 * uCell ) + 0.5 ) * ( 2.0 * uCell );
   p = mix( p, coarse, morph );
 
-  vec3 d = oceanDisplacement( p );
+  vec3 d = oceanDisplacement( p, uCell * mix( 1.0, 2.0, morph ) );
   vec3 world = vec3( p.x + d.x, d.y, p.y + d.z );
   // Her own wake lifts the water here; the white that goes with it is worked out per pixel in the
   // fragment shader, because a clipmap cell out here is eight metres across and a foam edge

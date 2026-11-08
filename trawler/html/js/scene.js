@@ -25,7 +25,7 @@ import { Glazing, PANE } from './glass.js';
 import { Terrain, LAND } from './terrain.js';
 import { Pilot, buildChart, NAV } from './nav.js';
 import { WakeField, Spray } from './wake.js';
-import { Gulls, Porpoises, Rain } from './wildlife.js';
+import { Gulls, Porpoises, Rain, SeaMarks } from './wildlife.js';
 import { loadManifest, loadAssets } from './assets.js';
 import { buildPost, textureMemory } from './post.js';
 
@@ -106,6 +106,7 @@ export class Scene {
     this.gulls = new Gulls(this.scene, this.rng.fork('gulls'), 9);
     this.porpoises = new Porpoises(this.scene, this.rng.fork('porpoises'), 5);
     this.rain = new Rain(this.scene, this.rng.fork('rain'));
+    this.marks = new SeaMarks(this.scene, this.rng.fork('marks'));
 
     // The house she is seen from, the deck she is seen over, and the glass between.
     this.materials = new Materials();
@@ -214,7 +215,7 @@ export class Scene {
       priority: ['mat:teak', 'mat:paint', 'mat:plywood', 'mat:rubber', 'mat:paint-worn', 'mat:deck',
         'mat:steel-rust', 'mat:steel-brushed', 'compass', 'vhf', 'stool',
         // Then the props that are in the view every moment: the ones out on the foredeck.
-        'crate', 'lifebuoy', 'fender', 'jerrycan'],
+        'crate', 'lifebuoy', 'fender', 'jerrycan', 'seamark', 'buoy'],
       onItem: (kind, name, asset) => {
         if (this.disposed) return;
         if (kind === 'material') { this.materials.setAsset(name, asset); this.terrain.setAsset(name, asset); }
@@ -234,6 +235,7 @@ export class Scene {
     this.models.set(name, model);
     this.pilot.addProp(name, model);
     this.deck.addProp(name, model);
+    this.marks.setModel(name, model);
   }
 
   // --- input -------------------------------------------------------------------------------------
@@ -376,6 +378,7 @@ export class Scene {
     this.porpoises.setInterest(this.resting ? 1 : 0);
     this.porpoises.step(dt, this.boat, this.weather.derived);
     this.rain.step(dt, this.camera, G.uRain.value, G.uWind.value, this.weather.derived.u10);
+    this.marks.step(dt, this.boat, this.depthAt, G.uNight.value, emissiveScale, this.ocean.time);
     this.sky.step(dt, this.camera, { pixelRatio: this.app.pixelRatio });
     this.followShadow();
     this.ocean.step(dt, this.camera, { pixelHeight: this.height * this.app.pixelRatio });
@@ -396,6 +399,7 @@ export class Scene {
     p.z -= dz;
     this.origin.x += dx;
     this.origin.z += dz;
+    this.marks.shift(dx, dz);
     G.uWorldOrigin.value.set(this.origin.x, this.origin.z);
   }
 
@@ -528,6 +532,7 @@ export class Scene {
     this.spray.dispose();
     this.gulls.dispose();
     this.porpoises.dispose();
+    this.marks.dispose();
     this.rain.dispose();
     this.instruments.dispose();
     this.pilot.dispose();

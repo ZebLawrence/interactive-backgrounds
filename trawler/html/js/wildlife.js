@@ -14,10 +14,15 @@
 //
 // **Rain** is the third thing here because it is the same kind of object: a few thousand streaks
 // kept in a box round the camera, recycled as they fall out of it.
+//
+// **Channel marks** are not alive, but they belong with the rest: they are the things out there
+// that are not the boat, the sea or the land, and like the gulls they have to be put somewhere
+// and kept there while she moves.
 
 import * as THREE from 'three';
 import { G, LAYER, ATMOS_READ } from './shaders.js';
 import { paint } from './materials.js';
+import { patchPropShader } from './pilot.js';
 import { v3, clamp, clamp01, lerp, smoothstep, approach, angleDiff, TAU, DEG, Art } from './util.js';
 
 // =============================================================================================
@@ -381,5 +386,153 @@ export class Rain {
     this.lines.geometry.dispose();
     this.material.dispose();
     this.scene.remove(this.lines);
+  }
+}
+
+// =============================================================================================
+// Channel marks
+// =============================================================================================
+
+/**
+ * The moored navigation marks on the edges of the shoals. These are the one thing in a fjord that
+ * says somebody works these waters: without them the islands are scenery, and with them the water
+ * between the islands is a channel that a boat is picking her way along.
+ *
+ * Four of them follow her about. A mark that has fallen more than three kilometres astern is
+ * re-sited on a shoal ahead of her, so there is nearly always one in sight without the scene
+ * having to carry a chart of the whole archipelago. A site is a point where the chart says there
+ * are between five and twenty-two metres — a shoal a boat would want warning of — with water over
+ * thirty metres within a hundred and fifty metres of it, which is the deep side a mark is laid on.
+ *
+ * A mark floats: its height comes from the same long-wave sea the hull rides, and it leans with
+ * the local slope, damped, because a mark on a chain leans less than the water under it. At night
+ * its light flashes — three seconds for the green starboard-hand marks, four for the red port-hand
+ * ones, which is close enough to the real rhythm of a Norwegian lead to feel right.
+ */
+export class SeaMarks {
+  constructor(scene, rng, count = 4) {
+    this.scene = scene;
+    this.rng = rng;
+    this.group = new THREE.Group();
+    this.group.frustumCulled = false;
+    scene.add(this.group);
+    this.models = new Map();
+    this.marks = [];
+    for (let i = 0; i < count; i++) {
+      this.marks.push({
+        obj: null, kind: i % 2 ? 'buoy' : 'seamark', side: i % 2 ? 1 : -1,
+        x: 0, z: 0, sited: false, lamp: null, lean: v3(),
+        period: i % 2 ? 3.0 : 4.0, phase: rng.range(0, 1),
+      });
+    }
+  }
+
+  /** A loaded mark model; both of them are used, half the marks each. */
+  setModel(name, model) {
+    if (name !== 'buoy' && name !== 'seamark') return;
+    this.models.set(name, model);
+    for (const m of this.marks) if (!m.obj && m.kind === name) this.build(m, model);
+  }
+
+  build(mark, model) {
+    const obj = model.clone(true);
+    obj.traverse((o) => {
+      if (!o.isMesh) return;
+      // Nothing out here is close enough for its own shadow to be worth a shadow map pass.
+      o.castShadow = false;
+      o.receiveShadow = false;
+      if (o.material) {
+        o.material = o.material.clone();
+        o.material.fog = true;
+        o.material.onBeforeCompile = (shader) => { patchPropShader(shader); };
+        o.material.needsUpdate = true;
+      }
+    });
+    const bounds = new THREE.Box3().setFromObject(obj);
+    // The light on top: a lens drawn at a brightness on the screen, like the boat's own nav lights,
+    // so it is divided by whatever exposure the camera has adapted to.
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), new THREE.MeshStandardMaterial({
+      color: 0x101010, roughness: 0.3,
+      emissive: mark.side > 0 ? 0x14ff5a : 0xff2a18, emissiveIntensity: 0,
+    }));
+    lamp.position.set(0, bounds.max.y + 0.12, 0);
+    obj.add(lamp);
+    mark.lamp = lamp;
+    mark.obj = obj;
+    obj.visible = false;
+    obj.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.WORLD); });
+    this.group.add(obj);
+  }
+
+  /** The render origin moved: the marks are the only things out here that remember where they are. */
+  shift(dx, dz) {
+    for (const m of this.marks) { m.x -= dx; m.z -= dz; }
+  }
+
+  /**
+   * Looks for somewhere to lay a mark: a shoal ahead of her with deep water beside it. Returns
+   * false if nothing within two kilometres will do, which happens out in open water and simply
+   * means no mark that side.
+   *
+   * The arc is walked outward rather than sampled at random, so the first site that will do is the
+   * nearest one — a mark two kilometres off is four pixels across, and the whole point of them is
+   * that she passes close by. Only about one point in forty along this coast is shoal, so it takes
+   * a couple of hundred tries; each one is a lookup in the chart that is already in memory.
+   */
+  site(mark, boat, depthAt) {
+    const heading = boat.heading;
+    const tries = 240;
+    for (let i = 0; i < tries; i++) {
+      const bearing = heading + this.rng.range(-1.4, 1.4);
+      const range = 280 + (i / tries) * 1900 + this.rng.range(-50, 50);
+      const x = boat.position.x + Math.sin(bearing) * range;
+      const z = boat.position.z - Math.cos(bearing) * range;
+      const d = depthAt(x, z);
+      if (!(d > 4 && d < 30)) continue;
+      // The deep side: a mark is laid where a boat can pass it, not on top of the shoal. Four
+      // bearings round it, and one of them has to have water a boat could pass in.
+      let deep = false;
+      for (let k = 0; k < 4 && !deep; k++) {
+        const a = k * (TAU / 4) + 0.4;
+        deep = depthAt(x + Math.cos(a) * 170, z + Math.sin(a) * 170) > 35;
+      }
+      if (!deep) continue;
+      mark.x = x;
+      mark.z = z;
+      mark.sited = true;
+      return true;
+    }
+    return false;
+  }
+
+  step(dt, boat, depthAt, night, emissiveScale = 1, time = 0) {
+    for (const m of this.marks) {
+      if (!m.obj) continue;
+      const dx = m.x - boat.position.x, dz = m.z - boat.position.z;
+      if (!m.sited || dx * dx + dz * dz > 3000 * 3000) {
+        m.sited = false;
+        this.site(m, boat, depthAt);
+      }
+      m.obj.visible = m.sited;
+      if (!m.sited) continue;
+      const sea = boat.ocean.sample(m.x, m.z);
+      m.obj.position.set(m.x, sea.h, m.z);
+      // A mark on a chain leans, but less than the water does and a beat behind it.
+      m.lean.x = lerp(m.lean.x, Math.atan(sea.sz) * 0.55, 1 - Math.exp(-dt / 0.9));
+      m.lean.z = lerp(m.lean.z, -Math.atan(sea.sx) * 0.55, 1 - Math.exp(-dt / 0.9));
+      m.obj.rotation.set(m.lean.x, 0, m.lean.z);
+      // The flash: a short light and a long dark, the rhythm a lead is marked with.
+      const t = ((time / m.period) + m.phase) % 1;
+      const on = t < 0.16 ? 1 : 0;
+      m.lamp.material.emissiveIntensity = night * on * 1.6 * emissiveScale;
+    }
+  }
+
+  dispose() {
+    for (const m of this.marks) {
+      m.obj?.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      if (m.obj) this.group.remove(m.obj);
+    }
+    this.scene.remove(this.group);
   }
 }

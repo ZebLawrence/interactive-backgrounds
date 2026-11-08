@@ -306,6 +306,11 @@ void main() {
   // The shore: everything the sea reaches is dark, wet and bare, with a weed line above it.
   float tide = smoothstep( 4.5, 0.2, h );
   albedo = mix( albedo, shore * 0.8, tide * 0.85 );
+  // Below the waterline the land is carried down as a flat shelf and the sea is drawn over it, so
+  // none of this is meant to be seen. It is painted as dark sea bed anyway, because the sea is a
+  // clipmap and a clipmap's ring edges are one place a hairline crack can open: a crack over a
+  // sandy shore colour is a bright ribbon across the water, and a crack over this is nothing.
+  albedo = mix( albedo, vec3( 0.012, 0.028, 0.030 ), smoothstep( 0.0, -1.5, h ) );
   float wetBand = smoothstep( 2.2, 0.0, h );
   albedo *= mix( 1.0, 0.45, wetBand * ( 0.5 + 0.5 * uWet ) );
 
