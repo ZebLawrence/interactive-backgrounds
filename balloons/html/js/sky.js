@@ -4,18 +4,27 @@
 import * as THREE from 'three';
 import { TAU, rnd, clamp, lerp, fbm2, v3, Art } from './util.js';
 import { G, Q, NOISE_GLSL, FOG_HEAD } from './shaders.js';
+import { RealSky } from 'realsky';
 
 export const SKY_RADIUS = 7000;
+
+/**
+ * Where the valley is, for the real sky's turn: 35 degrees north, balloon-fiesta country. Night mode had
+ * only hashed stars and no Milky Way, so there is no painted band to keep: BAND_NORMAL is chosen to lay the
+ * band across the sky above the ridges, and which way north lies is solved from it (realsky.js, fitNorth).
+ */
+export const CELESTIAL = { latitude: 35 };
+export const BAND_NORMAL = v3(0.6, 0.66, 0.45).normalize();
 
 export class Sky {
   constructor() {
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uTime: G.uTime, uNight: G.uNight, uSunDir: G.uSunDir, uFogColor: G.uFogColor },
+      uniforms: { uTime: G.uTime, uNight: G.uNight, uSunDir: G.uSunDir, uFogColor: G.uFogColor, uProcedural: { value: 1 } },
       side: THREE.BackSide,
       depthWrite: false,
       vertexShader: `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uNight; uniform vec3 uSunDir, uFogColor;
+        uniform float uTime, uNight, uProcedural; uniform vec3 uSunDir, uFogColor;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
@@ -52,8 +61,12 @@ export class Sky {
 
           // Night: a dark blue vault full of stars.
           vec3 night = mix(vec3(0.05, 0.07, 0.14), vec3(0.008, 0.012, 0.04), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
-          vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-          night += starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0);
+          // The hashed stars stand in until the real sky arrives (realsky.js draws the real stars and the
+          // Milky Way); once it has, uProcedural is 0 and none of this is paid for.
+          if (uProcedural > 0.001) {
+            vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            night += (starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0)) * uProcedural;
+          }
 
           vec3 col = mix(dawn, night, uNight);
           col = mix(col, uFogColor, smoothstep(0.1, -0.01, h));
@@ -63,9 +76,35 @@ export class Sky {
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 64, 40), this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
+
+    // The real sky, turning at the sidereal rate, inside the painted dome. It belongs to the night here:
+    // dawn washes it out long before the sun is up.
+    this.real = new RealSky({
+      latitude: CELESTIAL.latitude, matchBand: BAND_NORMAL, radius: SKY_RADIUS, horizon: [-0.01, 0.1],
+    });
+    this.reveal = 0;
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.real.group);
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); }
+  /** Starts fetching the real Milky Way and star catalogue; the hashed stars stand in until they land. */
+  load(renderer) { return this.real.load(renderer); }
+
+  /** Turns the real sky and cross-fades it in as it arrives; `night` is what brings it up. */
+  update(dt, night) {
+    this.reveal += clamp(this.real.ready - this.reveal, -dt * 0.5, dt * 0.5);
+    this.material.uniforms.uProcedural.value = 1 - this.reveal;
+    this.real.setFade(this.reveal * night);
+    this.real.update(dt);
+  }
+
+  /** Point sprites are in device pixels; Low Power keeps the brightest quarter of the catalogue. */
+  setPixelRatio(ratio, lowPower = false) {
+    this.real.setPixelRatio(ratio);
+    this.real.setStarFraction(lowPower ? 0.25 : 1);
+  }
+
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.real.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------

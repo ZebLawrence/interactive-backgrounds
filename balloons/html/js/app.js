@@ -103,6 +103,8 @@ class App {
     this.renderPass.camera = this.valley.camera;
     this.valley.camera.aspect = this.size.w / this.size.h;
     this.valley.camera.updateProjectionMatrix();
+    // The real sky's point sprites are sized in device pixels, and Low Power thins the catalogue.
+    this.valley.sky.setPixelRatio(this.pixelRatio, !!this.settings.lowPower);
   }
 
   /** Build (or re-seed) the valley for the current window size. */

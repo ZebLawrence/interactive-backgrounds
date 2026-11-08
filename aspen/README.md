@@ -33,7 +33,9 @@ background (`swift/`) and a web page (`html/`).
   and the far grove go to a flat, very light grey and the haze closes in.
 - **Sunlight** (menu, `L`) breaks the cloud: a low winter sun throws long blue trunk shadows
   across the snow, the bark glows and the snow sparkles. **Night** (`N`) is a snowy night, dark
-  blue under the cloud; with Sunlight on as well the sky clears to stars and a moon that lights
+  blue under the cloud; with Sunlight on as well the sky clears to the real stars (the Hipparcos
+  catalogue and NASA's photographic Milky Way, turning at the sidereal rate for 39 degrees north,
+  `assets/sky/realsky.js`) and a moon that lights
   the grove and throws its own shadows. **Snowfall** (`S`) turns the falling snow on and off.
   **Flush the Grouse** (`G`) flushes it from wherever it is roosting. **Click to Flush** turns
   clicks on the snow off, for when the page is a background.
@@ -197,3 +199,12 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
 The only image assets are the moon maps in `html/assets/` (`lroc_color_2k.jpg`, `ldem_3_8bit.jpg`),
 from NASA's Scientific Visualization Studio CGI Moon Kit (https://svs.gsfc.nasa.gov/4720); credit:
 NASA's Scientific Visualization Studio.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.

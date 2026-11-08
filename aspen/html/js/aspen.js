@@ -55,7 +55,9 @@ export class Aspen {
     this.sky = new Sky();
     this.moon = new Moon();
     this.weather = new Weather();
-    this.scene.add(this.sky.mesh, this.moon.group);
+    this.scene.add(this.sky.group, this.moon.group);
+    this.sky.load(app.renderer);
+    this.sky.setPixelRatio(app.pixelRatio ?? 1, !!settings.lowPower);
 
     // --- Ground -----------------------------------------------------------------------------
     this.snowpack = new Snowpack(this.height);
@@ -482,6 +484,7 @@ export class Aspen {
   step(dt, pointer, settings) {
     this.time += dt;
     G.uTime.value = (G.uTime.value + dt) % TIME_WRAP;
+    this.sky.update(dt, G.uNight.value, G.uSun.value);
     const c = this.cursor;
 
     // --- The cursor: speed, rest, attention ---------------------------------------------------

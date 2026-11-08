@@ -274,7 +274,43 @@ moonlight), a reseed, Low Power, Full Screen, and URL flags for testing the mode
   to the scratchpad with the file tool (anchor-replace pairs that report any anchor not found)
   and run that; use the file tools directly for whole new source files.
 
-## 7. Walkable scenes and asset pipelines (from Hangar)
+## 7. The shared real sky (from the Milky Way rework)
+
+- **A painted Milky Way reads as cloud; the real one does not.** Every night scene here started with
+  a band painted onto an equirectangular canvas, and every one of them looked like a smear. The two
+  real files Hangar already prepared (NASA's Deep Star Maps and the Hipparcos catalogue) replace
+  them, and they belong together: the map has the bright stars taken out of it, so on its own it is
+  a bare glow, and the catalogue has no nebulosity, so on its own it is a sky with no Milky Way.
+- **Sample a sky map off geometry, not off the direction.** Computing the equirectangular uv from
+  the view direction in the dome shader puts a derivative jump where the longitude wraps, which
+  picks the smallest mip and draws a blurred seam up the sky. A sphere carrying its own uvs has no
+  such seam and mips properly.
+- **Let the place decide what is in the sky, and check what the frame can see.** Latitude settles
+  more than it looks: the galactic core is at declination -29, so it culminates 24 degrees up at the
+  Utah canyon and never rises at all over the 64-degree boreal clearing. Both of those are right,
+  and neither is negotiable. What *is* choosable is the hour of the night, so pick it for the view:
+  unproject the frame's corners first, because a scene whose sky is a strip between the cliff tops
+  and the top edge wants the band inside that strip, and the band's highest point is usually just
+  out of shot.
+- **Two things point north, and they can disagree.** An aurora stands in the north, which fixes the
+  celestial pole; a painted band's plane wants north somewhere else. Where a scene has an aurora the
+  aurora wins, and the band goes where that leaves it. Where it has none, solving for the azimuth of
+  north that reproduces the painted plane keeps the composition that was reviewed, within a degree
+  or two.
+- **A real catalogue puts the same light in the sky but spreads it over far more stars.** Measured
+  against the painted skies, the mean of a patch of sky came out within a few per cent — but the
+  painted ones had a handful of big, blown-out stars and the real one had none, so it read flat.
+  Let the brightest stars past white and grow them; the bloom pass then does the rest.
+- **Load it behind what is already there.** 38 MB of sky must never hold a background up: keep the
+  painted sky as the stand-in that is up from the first frame, cross-fade when the files land, and
+  keep it for good if they do not. A uniform at 0 lets the shader skip the stand-in's cost entirely.
+- **Verify a slow thing by stepping it, not by watching it.** At 15 degrees an hour nothing about
+  the sky's turn is visible in a screenshot. Step the real `update(dt)` through an hour of scene
+  time and read the numbers back: the rate, that a star due east rises rather than sets, and that a
+  sidereal day brings it back to where it started. A sign error here looks exactly like a correct
+  sky.
+
+## 8. Walkable scenes and asset pipelines (from Hangar)
 
 - **Trace, then validate.** A layout traced from a published plan is only data until it is tested:
   headroom (the physical opening, `min(ceiling) - max(floor)`, at least 2 m under a 1.7 m eye),

@@ -92,8 +92,9 @@ export class Meadow {
     this.mist = new Mist(layout.halfWidth);
     this.rain = new Rain(groundHeight);
     this.lightning = new Lightning();
-    this.scene.add(this.sky.mesh, this.moonSprite.group, this.meteors.mesh, this.horizon.group, this.lightning.mesh,
+    this.scene.add(this.sky.group, this.moonSprite.group, this.meteors.mesh, this.horizon.group, this.lightning.mesh,
       this.ground.mesh, this.grass.group, this.mist.group, this.rain.points);
+    this.sky.load(app.renderer);
     this.swarm = null;
     this.setDensity(settings.density);
     this.applyBlends();
@@ -163,6 +164,7 @@ export class Meadow {
   setPixelScale(px) {
     this.pixelScale = px;
     this.swarm?.setPixelScale(px);
+    this.sky.setPixelRatio(this.app.pixelRatio ?? 1, !!this.app.settings?.lowPower);
   }
 
   /** A clap at a screen point: a ring runs out through the grass and nearby fireflies startle. */
@@ -255,6 +257,7 @@ export class Meadow {
     this.updateBlends(dt, settings);
     this.updateCursorPush(dt);
     this.swarm.update(dt);
+    this.sky.update(dt, this.moon, this.storm);
     this.mist.update(dt, (d) => this.halfWidth(d), G.uWind.value, this.storm);
     this.meteors.update(dt, this.storm);
     this.rain.update(dt, this.storm, G.uWind.value);

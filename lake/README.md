@@ -19,8 +19,9 @@ your fingertip in the water: a macOS desktop background (`swift/`) and a web pag
   dive for half a minute and surface somewhere else; dragonflies patrol the shallows in darts and
   hovers and perch on the reed tops; a breeze veers and freshens over the minutes, running cat's paws
   of fine ripples across the water; mist lies on the far water; the first stars come out overhead.
-- **Night** (menu, `N`): the afterglow goes, the moon rises over the right-hand shore with the Milky
-  Way across the sky, and the moon, the stars and the dark shore all lie on the water, broken by every
+- **Night** (menu, `N`): the afterglow goes, the moon rises over the right-hand shore with the real
+  Milky Way across the sky (NASA's photographic map, and the Hipparcos stars, turning at the sidereal
+  rate for 48 degrees north), and the moon, the stars and the dark shore all lie on the water, broken by every
   ripple.
 - **Rain** (menu, `R`): a low grey ceiling, rain falling through the view, and every drop dimpling the
   surface with its own short-lived ring. The dragonflies shelter in the reeds until it passes.
@@ -137,8 +138,10 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   blades), reed grass, and patches of water lilies: notched, veined pads floating in the lee of the
   reeds with a few white flowers open among them, their stems running down to the bed.
 - `sky.js` paints the sky in one dome shader (dusk afterglow toward where the sun set, altostratus
-  bands lit from below, Venus, the first stars; at night a painted Milky Way, three star layers and the
-  moon's halo; in rain a scrolling grey ceiling), the moon as NASA's Lunar Reconnaissance Orbiter
+  bands lit from below, Venus, the first stars; the moon's halo; in rain a scrolling grey ceiling) and
+  hangs the real night sky inside it (`assets/sky/realsky.js`), in the reflection's layer as well so the
+  band and the stars lie on the water. The painted Milky Way and the hashed star layers remain as the
+  stand-in until those files arrive. The moon is NASA's Lunar Reconnaissance Orbiter
   colour and height maps on a sphere lit in its own shader for a waxing gibbous (the maps live in
   `meadow/html/assets/`, from NASA's Scientific Visualization Studio CGI Moon Kit,
   https://svs.gsfc.nasa.gov/4720; credit: NASA's Scientific Visualization Studio), the far shore as
@@ -147,3 +150,12 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   dissolving into the haze, mist sprites on the far water, and the rain as a wrapping point cloud.
 - Like the other backgrounds it renders at a fixed 30/60 fps, shader time wraps hourly with every
   frequency quantised to that period, and every texture but the moon's is drawn on a canvas at start.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.
