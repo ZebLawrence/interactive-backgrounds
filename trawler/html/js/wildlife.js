@@ -521,10 +521,12 @@ export class SeaMarks {
       m.lean.x = lerp(m.lean.x, Math.atan(sea.sz) * 0.55, 1 - Math.exp(-dt / 0.9));
       m.lean.z = lerp(m.lean.z, -Math.atan(sea.sx) * 0.55, 1 - Math.exp(-dt / 0.9));
       m.obj.rotation.set(m.lean.x, 0, m.lean.z);
-      // The flash: a short light and a long dark, the rhythm a lead is marked with.
+      // The flash: a short light and a long dark, the rhythm a lead is marked with. The lit value
+      // is a brightness on the screen and it stays under white: a mark two kilometres off covers
+      // about a pixel, and a pixel over white is what the bloom turns into a square.
       const t = ((time / m.period) + m.phase) % 1;
       const on = t < 0.16 ? 1 : 0;
-      m.lamp.material.emissiveIntensity = night * on * 1.6 * emissiveScale;
+      m.lamp.material.emissiveIntensity = night * on * 0.8 * emissiveScale;
     }
   }
 

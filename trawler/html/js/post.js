@@ -24,12 +24,27 @@ export const POST = {
 };
 
 /**
- * Zeroes any non-finite pixel before the bloom spreads it over the whole frame and tone mapping
- * turns it black (guidelines section 4). The test reads the float's exponent bits: isnan() can be
- * compiled away under fast math.
+ * The bloom's guard rail. Two jobs, and the scene needs both.
+ *
+ * **Non-finite pixels.** A NaN or an infinity anywhere in the frame is spread over it by the
+ * bloom's blur and then turned black by tone mapping.
+ *
+ * **Pixels that are merely absurd.** This is the one that bit. A bloom pass is a blur over a
+ * mip chain: feed it a single texel a hundred thousand times brighter than white and the coarse
+ * levels turn that one texel into a tile, and the tile comes out of the blur as a hard-edged
+ * coloured square sitting on the horizon. At dawn and dusk the sea was handing it exactly that -
+ * two pixels at fourteen thousand against a white of 0.09 - and the frame grew 66-pixel squares.
+ *
+ * So the guard also ceilings the radiance at a multiple of the camera's own white point. The
+ * multiple has to clear the bloom's own threshold, which runs from 1.45 by day down to 0.35 at
+ * night, or nothing would glow at all; and it has to stay low enough that one clamped pixel cannot
+ * fill a bloom tile. Sixteen times white sits between the two: the sun's disc, its glitter path
+ * and a lamp close aboard all still bloom, and the horizon's pathological texels come out as a
+ * bright dot rather than a square. Clamping rather than zeroing is deliberate - a real highlight
+ * stays a highlight, it just stops being a bomb.
  */
 const GuardShader = {
-  uniforms: { tDiffuse: { value: null } },
+  uniforms: { tDiffuse: { value: null }, uCeiling: { value: 16 } },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 ); }
@@ -37,14 +52,21 @@ const GuardShader = {
   fragmentShader: /* glsl */ `
     precision highp float;
     uniform sampler2D tDiffuse;
+    uniform float uCeiling;
     varying vec2 vUv;
     vec3 finiteOrZero( vec3 c ) {
-      uvec3 e = floatBitsToUint( c ) & 0x7f800000u;
-      bvec3 bad = equal( e, uvec3( 0x7f800000u ) );
-      return vec3( bad.x ? 0.0 : c.x, bad.y ? 0.0 : c.y, bad.z ? 0.0 : c.z );
+      // A NaN fails every comparison, so this catches NaN and both infinities in one test, with
+      // no bit tricks and no isnan() for a driver to compile away under fast math.
+      bvec3 ok = lessThanEqual( abs( c ), vec3( 3.0e38 ) );
+      return vec3( ok.x ? c.x : 0.0, ok.y ? c.y : 0.0, ok.z ? c.z : 0.0 );
     }
     void main() {
-      gl_FragColor = vec4( clamp( finiteOrZero( texture2D( tDiffuse, vUv ).rgb ), 0.0, 32768.0 ), 1.0 );
+      vec3 c = finiteOrZero( texture2D( tDiffuse, vUv ).rgb );
+      // Ceiling the brightest channel and keep the hue: scaling all three together means a clamped
+      // highlight stays the colour it was instead of sliding toward white a channel at a time.
+      float m = max( c.r, max( c.g, c.b ) );
+      c *= m > uCeiling ? uCeiling / m : 1.0;
+      gl_FragColor = vec4( max( c, vec3( 0.0 ) ), 1.0 );
     }
   `,
 };
@@ -79,6 +101,15 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
     target,
     bloom,
     renderPass,
+    /**
+     * The guard's ceiling, in the renderer's own linear units. The camera's exposure is what turns
+     * radiance into screen brightness, so white is 1 / exposure and the ceiling follows it: at noon
+     * it is a radiance of about 10 and on a dark night about 0.017, and in both cases it is 16
+     * times whatever the camera is calling white.
+     */
+    setExposure(exposure) {
+      guard.uniforms.uCeiling.value = 16 / Math.max(exposure, 1e-3);
+    },
     /** Blends the bloom between its day and night settings (night makes the lights glow). */
     setNight(night) {
       const d = POST.bloom, n = POST.bloomNight;

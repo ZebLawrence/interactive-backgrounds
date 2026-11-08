@@ -390,6 +390,7 @@ export class Scene {
     this.ocean.step(dt, this.camera, { pixelHeight: this.height * this.app.pixelRatio });
     this.stepExposure(dt);
     this.post.setNight(G.uNight.value);
+    this.post.setExposure(this.exposure);
   }
 
   /**
