@@ -116,7 +116,10 @@ white hole at midnight otherwise.
 
 Stars are the Hipparcos catalogue at their measured positions, magnitudes and colours. Behind them
 is NASA's Deep Star Maps 2020 — the real Milky Way, built from Gaia DR2, with the Hipparcos and
-Tycho stars taken back out of it so the bright ones are not drawn twice. It is turned by the same
+Tycho stars taken back out of it so the bright ones are not drawn twice. Both come from
+`assets/sky/realsky.js`, the sky every background in this repository shares: the two files live
+inside Hangar and are loaded from that one URL, so a visitor who has opened another of these
+backgrounds already has them and nothing here is a second copy. It is turned by the same
 equatorial-to-world matrix as the stars and the moon, so the band stands where it really stands: at
 latitude 62 in September it lies up through Cygnus in the west after midnight, and the galactic
 centre never clears the horizon. The moon is the Lunar Reconnaissance Orbiter's colour mosaic and
@@ -271,7 +274,11 @@ stars.
 | Model | `thermos` | Plastic Thermos | PierreB3D | CC0 | https://polyhaven.com/a/plastic_thermos |
 | Model | `torch` | Vintage Flashlight | Omar M. El-Safy | CC0 | https://polyhaven.com/a/vintage_flashlight |
 | Model | `vhf` | Vintage Radio Transceiver | Mateusz Sadek | CC0 | https://polyhaven.com/a/vintage_radio_transceiver |
-| Image | `milkyway.webp` | Deep Star Maps 2020, the Milky Way without the Hipparcos/Tycho stars, equatorial, resampled to 4096 x 2048 | NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC | PD | https://svs.gsfc.nasa.gov/4851 |
 | Image | `lroc_color_2k.jpg` | CGI Moon Kit, LROC WAC colour mosaic | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
 | Image | `ldem_3_8bit.jpg` | CGI Moon Kit, LOLA displacement map | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
-| Data | `data/stars.bin` | Hipparcos Main Catalogue (ESA 1997), HEASARC copy: positions, V magnitudes, B-V colours | ESA Hipparcos mission; NASA HEASARC | PD | https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/hipparcos.html |
+
+The night sky's two files are not in this folder: they are the repository's shared copies, loaded
+through `assets/sky/realsky.js` from `hangar/html/`, and Hangar's README credits them.
+
+| Shared | `hangar/html/assets/images/milkyway.ktx2` | Deep Star Maps 2020, the Milky Way without the Hipparcos/Tycho stars, 8192 x 4096 equatorial | NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC | PD | https://svs.gsfc.nasa.gov/4851 |
+| Shared | `hangar/html/data/stars.bin` | Hipparcos Main Catalogue (ESA 1997), HEASARC copy: positions, V magnitudes, B-V colours | ESA Hipparcos mission; NASA HEASARC | PD | https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/hipparcos.html |

@@ -23,6 +23,7 @@
 import * as THREE from 'three';
 import { G, LAYER, ATMOS_COMMON, ATMOS_BAKE, ATMOS_READ, NOISE_GLSL } from './shaders.js';
 import { TAU, DEG, clamp, clamp01, smoothstep, v3 } from './util.js';
+import { loadRealSky } from 'realsky';
 
 export const LATITUDE = 62.0; // deg N: the mid-Norwegian coast
 export const DAY_SECONDS = 24 * 60; // wall seconds for one full day/night cycle
@@ -541,7 +542,10 @@ void main() {
 `;
 
 // The brightness of the Milky Way map's stored value, on the screen, before the exposure divides
-// it. The map holds radiance / 0.2 sRGB-encoded (trawler/tools/prepare-sky.py).
+// it. The map holds radiance / 0.2 sRGB-encoded; it arrives as a KTX2 with an sRGB internal
+// format, so the sampler hands back linear values and this gain is against those. (Reading the
+// same data out of an ordinary 8-bit texture in a raw ShaderMaterial does not decode, which is
+// four times brighter in the mid tones and why this number moved when the file did.)
 //
 // Set by measurement. On a moonless night at this gain, looking at Cygnus 54 degrees up: the
 // frame's median pixel is 4 of 255 and its ninetieth percentile 16, against 3.3 and 10.3 for a
@@ -549,7 +553,7 @@ void main() {
 // falls to 0.23, so out here it is the Milky Way, not the airglow, that lights the night sky -
 // which is what a sea with no coast to windward actually looks like. The map's own plane-to-pole
 // ratio of 4.4 survives into the render, and nothing in the band is near clipping.
-const MW_GAIN = 0.075;
+const MW_GAIN = 0.25;
 
 /**
  * The Milky Way sphere's own frame, as a matrix taking its local axes to ICRS. three's
@@ -604,33 +608,13 @@ void main() {
 }
 `;
 
-/** stars.bin: 10 bytes a star, int16 ICRS x/y/z, uint8 V magnitude, uint8 r/g/b. */
-export function decodeStars(buffer) {
-  const count = Math.floor(buffer.byteLength / 10);
-  const dv = new DataView(buffer);
-  const dir = new Float32Array(count * 3), mag = new Float32Array(count), color = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const o = i * 10;
-    const x = dv.getInt16(o, true), y = dv.getInt16(o + 2, true), z = dv.getInt16(o + 4, true);
-    const l = Math.hypot(x, y, z) || 1;
-    dir[i * 3] = x / l; dir[i * 3 + 1] = y / l; dir[i * 3 + 2] = z / l;
-    mag[i] = dv.getUint8(o + 6) / 16 - 2;
-    for (let c = 0; c < 3; c++) color[i * 3 + c] = dv.getUint8(o + 7 + c) / 255;
-  }
-  return { count, dir, mag, color };
-}
-
-const VERSION = new URL(import.meta.url).searchParams.get('v');
-let starPromise = null;
-
-/** Fetches data/stars.bin once for the page. Never rejects: without it there are no stars. */
-export function loadStars() {
-  starPromise ??= fetch(VERSION ? `./data/stars.bin?v=${VERSION}` : './data/stars.bin')
-    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
-    .then(decodeStars)
-    .catch((err) => { console.warn('Trawler: data/stars.bin unavailable, the night sky will be empty', err); return null; });
-  return starPromise;
-}
+/**
+ * The Hipparcos catalogue and the Milky Way map, from assets/sky/realsky.js: the two files every
+ * background in this repository shares, loaded from the one URL inside Hangar so the browser
+ * caches them once rather than once a scene. Never rejects; whichever of the two is missing comes
+ * back null and that part of the sky is simply absent.
+ */
+export { loadRealSky };
 
 /**
  * Points a directional light along `dir` and gives it an irradiance vector: the colour carries the
@@ -676,7 +660,7 @@ export class Sky {
     this.dayTime = 0; // 0..1 of the day; set by setClock
     this.cycling = true;
     this.buildDome();
-    this.buildMilkyWay(opts.assetBase);
+    this.buildMilkyWay();
     this.buildMoon(opts.assetBase);
     if (opts.stars) this.buildStars(opts.stars);
 
@@ -743,6 +727,22 @@ export class Sky {
     this.scene.add(this.dome);
   }
 
+  /**
+   * The shared sky files, once they land: the catalogue becomes the star points and the map goes
+   * onto the band's sphere. Either may be null, and the scene simply goes without that one.
+   */
+  setRealSky(real) {
+    if (real?.stars) this.buildStars(real.stars);
+    if (real?.map) {
+      this.mwMap = real.map;
+      // The file is encoded bottom row first and uploaded without a flip, which puts north at
+      // v = 1 - the end SphereGeometry puts at +y. See assets/sky/realsky.js.
+      this.mwMat.uniforms.uMap.value = real.map;
+      this.mwMat.needsUpdate = true;
+    }
+    this.applyExposure();
+  }
+
   buildStars(cat) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(cat.dir, 3));
@@ -775,17 +775,10 @@ export class Sky {
    * is the ICRS one with y and z swapped. MW_FRAME is that swap; setClock multiplies it by the
    * same equatorial-to-world matrix the stars and the moon use, so all three turn together.
    */
-  buildMilkyWay(assetBase) {
-    const base = assetBase ?? new URL('../assets/', import.meta.url).href;
-    this.mwMap = new THREE.TextureLoader().load(base + 'milkyway.webp', () => {
-      if (this.milkyWay) this.milkyWay.visible = true;
-      this.applyExposure();
-    });
-    this.mwMap.colorSpace = THREE.SRGBColorSpace;
-    this.mwMap.anisotropy = 8;
-    this.mwMap.wrapS = THREE.RepeatWrapping;
+  buildMilkyWay() {
+    this.mwMap = null;
     this.mwMat = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: this.mwMap }, uGain: { value: 0 } },
+      uniforms: { uMap: { value: null }, uGain: { value: 0 } },
       depthWrite: false, depthTest: true, transparent: true, blending: THREE.AdditiveBlending,
       side: THREE.BackSide,
       vertexShader: /* glsl */ `
@@ -1081,7 +1074,7 @@ export class Sky {
       // is the first thing to go. Hence the same wash raised to a power.
       const wash = clamp01(1 - smoothstep(0.0012, 0.03, lum));
       this.mwMat.uniforms.uGain.value = (MW_GAIN * wash * wash) / e;
-      if (this.milkyWay) this.milkyWay.visible = !!this.mwMap?.image && this.mwMat.uniforms.uGain.value * e > 0.0006;
+      if (this.milkyWay) this.milkyWay.visible = !!this.mwMat.uniforms.uMap.value && this.mwMat.uniforms.uGain.value * e > 0.0006;
     }
     if (this.moon) {
       const my = this.moonDir?.y ?? -1;
@@ -1108,7 +1101,8 @@ export class Sky {
     this.domeMat.dispose();
     this.scene.remove(this.dome);
     if (this.stars) { this.stars.geometry.dispose(); this.starMat.dispose(); this.scene.remove(this.stars); }
-    if (this.milkyWay) { this.milkyWay.geometry.dispose(); this.mwMat.dispose(); this.mwMap?.dispose(); this.scene.remove(this.milkyWay); }
+    // The map itself is shared with every other background on the page and is never disposed.
+    if (this.milkyWay) { this.milkyWay.geometry.dispose(); this.mwMat.dispose(); this.scene.remove(this.milkyWay); }
     if (this.moon) {
       this.moon.geometry.dispose();
       this.moonMat.dispose();

@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { G, LAYER } from './shaders.js';
 import { Rng, DEG, TAU, clamp, clamp01, lerp, smoothstep, approach, approachAngle, v3, TIME_WRAP } from './util.js';
-import { Sky, loadStars } from './sky.js';
+import { Sky, loadRealSky } from './sky.js';
 import { Weather } from './seastate.js';
 import { Ocean } from './ocean.js';
 import { Boat, HULL } from './boat.js';
@@ -130,10 +130,12 @@ export class Scene {
     this.headPitch = 0;
     this.eyePos = v3();
     this.bodyMatrix = new THREE.Matrix4();
-    // The star catalogue arrives after the first frames; the sky adds it when it does.
-    this.ready = loadStars().then((cat) => {
-      if (this.disposed || !cat) return;
-      this.sky.buildStars(cat);
+    // The catalogue and the Milky Way map arrive after the first frames; the sky adds each as it
+    // lands. They are the repository's shared copies, so a visitor who has opened another of these
+    // backgrounds already has them.
+    this.ready = loadRealSky(renderer).then((real) => {
+      if (this.disposed || !real) return;
+      this.sky.setRealSky(real);
       this.sky.applyLights();
     });
     this.loadAssets();
