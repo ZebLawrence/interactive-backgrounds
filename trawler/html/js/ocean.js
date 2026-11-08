@@ -372,13 +372,20 @@ varying vec2 vFlat;      // the undisplaced horizontal position: the maps are in
 varying float vDistance;
 
 void main() {
-  // The patch is built in [-1, 1]; its own snapped centre and scale put it in the world.
+  // The patch is built in [-1, 1]; the clipmap's snapped centre and this level's scale put it in
+  // the world. Every level shares one centre (ocean.js, place) so that a level's outer edge and
+  // the next ring's inner edge are the same points and not merely near each other.
   vec2 p = uPatchCentre + position.xz * uPatchScale;
   // Morph onto the next coarser grid toward the outer edge, which closes the seam with the ring
   // outside: the extra vertices along the shared edge collapse onto their coarse neighbours.
+  //
+  // The snap is taken *relative to the patch centre*, not to the world origin. Against the world
+  // origin it lands on a lattice the coarse ring's vertices are not necessarily on - the centre is
+  // snapped in half-metre steps and a far ring's cells are hundreds of metres - so the two sides
+  // of the shared edge end up at different points and the sea opens along it.
   float edge = max( abs( position.x ), abs( position.z ) );
   float morph = smoothstep( 0.78, 0.97, edge );
-  vec2 coarse = floor( p / ( 2.0 * uCell ) + 0.5 ) * ( 2.0 * uCell );
+  vec2 coarse = uPatchCentre + floor( ( p - uPatchCentre ) / ( 2.0 * uCell ) + 0.5 ) * ( 2.0 * uCell );
   p = mix( p, coarse, morph );
 
   vec3 d = oceanDisplacement( p, uCell * mix( 1.0, 2.0, morph ) );
@@ -433,22 +440,50 @@ varying vec3 vView;
 varying vec2 vFlat;
 varying float vDistance;
 
-/** The three cascades' slopes and foam at this point, each at whatever mip the pixel deserves. */
-void sampleSurface( out vec2 slope, out float fold, out float foam ) {
+/**
+ * The three cascades' slopes and foam at this point, each at the mip the pixel's footprint asks
+ * for - and asked for *explicitly*, which is the whole point of this function.
+ *
+ * Letting the hardware choose the mip from the screen-space derivative of vFlat draws a hairline
+ * across the sea at every clipmap ring boundary. vFlat is the undisplaced position *after* the
+ * vertex morph, and the morph works by collapsing pairs of vertices onto the coarser ring's grid
+ * as they approach the shared edge: along that last row of triangles two neighbouring vertices
+ * hold the same vFlat, the derivative goes to nothing or to twice itself, and the hardware jumps
+ * a mip level for one row of pixels. Measured on open water, the row-to-row jump at the 512 m and
+ * 1024 m ring edges was fifty and nineteen times the surrounding noise. It is the same trap as
+ * the seam up the sky in guidelines section 7, and it has the same answer: do not infer the level
+ * of detail from geometry that is discontinuous, state it.
+ *
+ * The footprint is how many metres of water a pixel covers. Across the view that is distance
+ * times the angle a pixel subtends; along it, on a surface this close to edge-on, it is much
+ * more, so the footprint is widened by the grazing angle. Over-blurring is the safe direction
+ * here: under-blurring is what makes the horizon crawl.
+ */
+void sampleSurface( float footprint, out vec2 slope, out float fold, out float foam ) {
   vec2 u0 = vFlat / uCascadeSize.x, u1 = vFlat / uCascadeSize.y, u2 = vFlat / uCascadeSize.z;
-  vec4 d0 = texture( uDeriv0, u0 );
-  vec4 d1 = texture( uDeriv1, u1 );
-  vec4 d2 = texture( uDeriv2, u2 );
+  float l0 = cascadeLod( uCascadeSize.x, footprint );
+  float l1 = cascadeLod( uCascadeSize.y, footprint );
+  float l2 = cascadeLod( uCascadeSize.z, footprint );
+  vec4 d0 = textureLod( uDeriv0, u0, l0 );
+  vec4 d1 = textureLod( uDeriv1, u1, l1 );
+  vec4 d2 = textureLod( uDeriv2, u2, l2 );
   slope = d0.xy + d1.xy + d2.xy;
   fold = max( max( d0.z, d1.z ), d2.z );
-  foam = max( max( texture( uFoam0, u0 ).r, texture( uFoam1, u1 ).r ), texture( uFoam2, u2 ).r );
+  foam = max( max( textureLod( uFoam0, u0, l0 ).r, textureLod( uFoam1, u1, l1 ).r ),
+              textureLod( uFoam2, u2, l2 ).r );
 }
 
 void main() {
-  vec3 V = normalize( cameraPosition - vWorld );
+  vec3 toEye = cameraPosition - vWorld;
+  float eyeDist = length( toEye );
+  vec3 V = toEye / max( eyeDist, 1e-4 );
+  // How much water one pixel covers: across the view, and then widened for how edge-on the sea is
+  // from here. The floor on the grazing term stops the horizon asking for an infinite footprint.
+  float grazing = clamp( abs( toEye.y ) / max( eyeDist, 1e-4 ), 0.07, 1.0 );
+  float footprint = eyeDist * uPixelAngle * inversesqrt( grazing );
   vec2 slope;
   float fold, foam;
-  sampleSurface( slope, fold, foam );
+  sampleSurface( footprint, slope, fold, foam );
   // Past a few hundred metres a wave is smaller than a pixel, so the surface stops being geometry
   // and becomes a statistic: the slopes average to nothing, the folding is unreadable, and the
   // whitecaps are just the coverage the wind implies. Keeping the maps out there instead reads a
@@ -462,7 +497,6 @@ void main() {
 
   // What the pixel cannot resolve becomes roughness instead of detail. Without this the sun's
   // glitter path turns into a field of crawling white dots at the horizon.
-  float footprint = vDistance * uPixelAngle;
   float mss = 0.0;
   mss += uCascadeMss.x * smoothstep( uCascadeFine.x, uCascadeSize.x * 0.1, footprint );
   mss += uCascadeMss.y * smoothstep( uCascadeFine.y, uCascadeSize.y * 0.1, footprint );
@@ -810,13 +844,26 @@ export class Ocean {
     const d = this.weather.derived;
     const fovRad = (camera.fov * Math.PI) / 180;
     const pixelAngle = fovRad / Math.max(settings?.pixelHeight ?? 1080, 1);
+    // One centre for every level, snapped to the finest level's grid.
+    //
+    // Each level used to snap to twice its *own* cell, which is the textbook arrangement and is
+    // wrong here. A level's outer edge sits at its centre plus its half-width and the next ring's
+    // hole at *its* centre plus the same half-width, so two centres that differ - and snapping to
+    // different grids guarantees they do, by up to three of the finer level's cells - leave the
+    // two edges a metre or two apart. That gap is a crack in the sea, and what shows through it is
+    // the sea bed: the thin dark lines across the water the owner reported, which moved and
+    // flickered because the centres re-snap at different moments as she goes along.
+    //
+    // Sharing a centre makes the shared edges the same points by construction. The cost is that a
+    // coarse ring's vertices now move in half-metre steps rather than in steps of its own cell -
+    // which costs nothing, because this surface is a function of world position: the water is
+    // sampled where the vertex *is*, so moving the vertices does not move the waves.
+    const snap = 2 * this.levels[0].cell;
+    const cx = Math.round(cam.x / snap) * snap;
+    const cz = Math.round(cam.z / snap) * snap;
     for (const lvl of this.levels) {
       const u = lvl.material.uniforms;
-      const snap = 2 * lvl.cell;
-      u.uPatchCentre.value.set(
-        Math.round(cam.x / snap) * snap,
-        Math.round(cam.z / snap) * snap,
-      );
+      u.uPatchCentre.value.set(cx, cz);
       u.uPatchScale.value = lvl.half;
       u.uCamPos.value.copy(cam);
       u.uPixelAngle.value = pixelAngle;
