@@ -238,7 +238,8 @@ export class Gauge {
     this.max = opts.max ?? 100;
     this.group = new THREE.Group();
 
-    const chrome = paint(0xdfe3e6, 0.18, 0.92);
+    // A third of the way to metal, not all of it: see the note on image-based lighting in sky.js.
+    const chrome = paint(0x9aa2aa, 0.18, 0.4);
     const bezel = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, r * 0.10, 12, 40), chrome);
     bezel.position.z = 0.004;
     this.group.add(bezel);
@@ -425,7 +426,7 @@ export class RadioSet {
     this.lcd = lcd;
 
     // Two knobs on the right-hand end: volume and squelch, the pair every set has.
-    const chrome = paint(0xc9ced2, 0.3, 0.8);
+    const chrome = paint(0x9aa2aa, 0.20, 0.38);
     for (let i = 0; i < 2; i++) {
       const k = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(h * 0.17, h * 0.19, 0.016, 18), 0.1, 0.016), chrome);
       k.rotation.x = Math.PI / 2;

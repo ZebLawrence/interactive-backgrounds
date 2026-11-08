@@ -103,8 +103,6 @@ export class Scene {
     this.sky = new Sky(this.scene, renderer, this.rng.fork('sky'), {
       dayTime: settings.startTime ?? 0.28,
     });
-    this.sky.buildEnvironment(renderer);
-    this.sky.updateEnvironment(true);
     this.ocean = new Ocean(this.scene, renderer, this.rng.fork('ocean'), this.weather);
     this.terrain = new Terrain(this.scene, renderer, this.materials ?? null, this.rng.fork('land'));
     this.ocean.useTerrain(this.terrain);
@@ -123,7 +121,7 @@ export class Scene {
     // The house she is seen from, the deck she is seen over, and the glass between.
     this.materials = new Materials();
     this.glazing = new Glazing();
-    this.pilot = new PilotHouse(this.scene, this.materials, this.rng.fork('house'), this.glazing.material);
+    this.pilot = new PilotHouse(this.scene, this.materials, this.rng.fork('house'), this.glazing.material, renderer);
     this.deck = new Deck(this.scene, this.materials, this.rng.fork('deck'));
     this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.instrumentPanel);
     this.registerPanes();

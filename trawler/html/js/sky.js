@@ -744,81 +744,24 @@ export class Sky {
   }
 
   /**
-   * The environment every polished thing in the scene reflects.
+   * A note on image-based lighting, which this scene does not use.
    *
-   * Three's lights give a standard material its diffuse and a highlight from each punctual source,
-   * and that is all. A metal has no diffuse at all - a chromed wheel rim, a gauge bezel, a brass
-   * ring is nothing but reflections - so with no environment it renders black, which is what the
-   * whole of this wheelhouse's chrome did. Varnish has the same problem in milder form: its sheen
-   * is a reflection of the room, and without one it is flat.
+   * The obvious way to make a chromed wheel rim look like chrome is to give the scene an environment
+   * map: a metal has no diffuse term at all, so what it shows is a reflection and nothing else. That
+   * was built here - a small equirectangular picture of sky and sea, filtered through three's PMREM
+   * - and measured, and it does nothing. A bare MeshStandardMaterial sphere with metalness 1 renders
+   * pure black with scene.environment set, with material.envMap set, and at an envMapIntensity of
+   * twenty; the compiled program does differ between a material with an envMap and one without, and
+   * the envMap uniform is present, so three believes it is lit. Reading the PMREM target back gives
+   * zero everywhere. That is on an RTX 3080 Ti through ANGLE and D3D11, not a software rasteriser,
+   * and I did not find the cause.
    *
-   * This is a very small equirectangular picture of the world - sky above the horizon, sea below,
-   * the sun where the sun is - run through three's PMREM filter so roughness reads off the right
-   * mip. Thirty-two by sixteen is plenty: nothing in here is a mirror sharp enough to show more,
-   * and it keeps the filter's cost down to a fraction of a millisecond, which is what lets it be
-   * rebuilt as the day goes round.
+   * So the polished metal in here is tuned for the lighting this renderer does deliver - the sun,
+   * the sky hemisphere and the cabin's own fill - as a bright surface with a low roughness and a
+   * part-metal response: enough metalness to keep a tight highlight, not so much that it loses the
+   * diffuse term it is actually being lit by. materials.js still takes envMapIntensity, so the day
+   * the environment works the metals have somewhere to put it.
    */
-  buildEnvironment(renderer) {
-    this.pmrem = new THREE.PMREMGenerator(renderer);
-    this.pmrem.compileEquirectangularShader();
-    this.envW = 32;
-    this.envH = 16;
-    this.envData = new Float32Array(this.envW * this.envH * 4);
-    this.envSrc = new THREE.DataTexture(this.envData, this.envW, this.envH, THREE.RGBAFormat, THREE.FloatType);
-    this.envSrc.mapping = THREE.EquirectangularReflectionMapping;
-    this.envSrc.minFilter = THREE.LinearFilter;
-    this.envSrc.magFilter = THREE.LinearFilter;
-    this.envSrc.needsUpdate = true;
-    this.envAge = 1e9;
-  }
-
-  /**
-   * Repaints that picture from the sky and the sea as they are now, and refilters it. Called at a
-   * few hertz rather than every frame: at 15 degrees an hour nothing in it changes fast, and the
-   * filter is the one part of this that is not free.
-   */
-  updateEnvironment(force = false) {
-    if (!this.pmrem) return;
-    const W = this.envW, H = this.envH, d = this.envData;
-    const sky = G.uSkyLight.value, sun = G.uSunColor.value;
-    // The sea's own radiance: what the water sends back up, which is what lights a cabin's
-    // underside and is the lower half of everything a chrome fitting reflects.
-    const seaR = sky.x * 0.09 + sun.x * 0.012, seaG = sky.y * 0.12 + sun.y * 0.014, seaB = sky.z * 0.14 + sun.z * 0.012;
-    for (let y = 0; y < H; y++) {
-      // v = 0 at the top of the picture, so the elevation runs +90 down to -90.
-      const el = (0.5 - (y + 0.5) / H) * Math.PI;
-      const up = Math.sin(el);
-      for (let x = 0; x < W; x++) {
-        const az = ((x + 0.5) / W) * TAU - Math.PI;
-        const i = (y * W + x) * 4;
-        let r, g, b;
-        if (up >= 0) {
-          // The sky: brightest at the horizon, deepening overhead, with the sun's own lobe in it.
-          // uSkyLight is an irradiance - what the whole hemisphere lands on a flat face - and
-          // what a reflection wants is a radiance. Over a hemisphere the two differ by pi, and
-          // the sky is brighter near the horizon than overhead, so the gain is that factor with
-          // the horizon lift folded into it. Checked against the sea in the window: a mirror
-          // facing the sky now comes out the same brightness as the sky does.
-          const k = (0.55 + 0.75 * (1 - up)) * 2.6;
-          r = sky.x * k; g = sky.y * k; b = sky.z * k;
-          const dx = Math.cos(el) * Math.cos(az), dy = up, dz = Math.cos(el) * Math.sin(az);
-          const cosT = dx * this.sunDir.x + dy * this.sunDir.y + dz * this.sunDir.z;
-          const lobe = Math.pow(Math.max(cosT, 0), 220) * 40 + Math.pow(Math.max(cosT, 0), 8) * 0.25;
-          r += sun.x * lobe; g += sun.y * lobe; b += sun.z * lobe;
-        } else {
-          const k = (0.5 + 0.9 * (1 + up)) * 2.6;
-          r = seaR * k; g = seaG * k; b = seaB * k;
-        }
-        d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 1;
-      }
-    }
-    this.envSrc.needsUpdate = true;
-    const next = this.pmrem.fromEquirectangular(this.envSrc);
-    this.envTarget?.dispose();
-    this.envTarget = next;
-    this.scene.environment = next.texture;
-    this.envAge = 0;
-  }
 
   buildStars(cat) {
     const g = new THREE.BufferGeometry();
@@ -1123,9 +1066,6 @@ export class Sky {
     u.uInvProj.value.copy(camera.projectionMatrixInverse);
     u.uCamRot.value.setFromMatrix4(camera.matrixWorld);
     if (this.starMat) this.starMat.uniforms.uStarScale.value = 1.3 * (settings?.pixelRatio ?? 1);
-    // The reflected world, a few times a second.
-    this.envAge = (this.envAge ?? 1e9) + dt;
-    if (this.envAge > 0.25) this.updateEnvironment();
   }
 
   /**
@@ -1191,10 +1131,6 @@ export class Sky {
       this.scene.remove(this.moon);
     }
     for (const l of [this.sunLight, this.moonLight, this.ambient, this.fill]) this.scene.remove(l);
-    this.envTarget?.dispose();
-    this.envSrc?.dispose();
-    this.pmrem?.dispose();
-    this.scene.environment = null;
     this.scene.remove(this.sunLight.target);
   }
 }

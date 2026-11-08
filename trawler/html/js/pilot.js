@@ -62,10 +62,10 @@ export const HOUSE = {
   lockerTop: 4.34, // where the louvred lockers under the dash begin
   // The overhead fascia: a cherry panel hung under the deckhead above the window head, raked down
   // toward the helmsman, carrying the gauges and the sets.
-  overheadY: 6.03,
+  overheadY: 5.98,
   overheadZ: -1.19,
   overheadRake: 34,
-  overheadHeight: 0.255,
+  overheadHeight: 0.235,
   // The side desks: a chart table to port and a desk with a screen to starboard.
   deskTop: 4.86,
   deskInboard: 1.14,
@@ -77,6 +77,17 @@ export const HOUSE = {
   wheelR: 0.325,
   wheelTilt: 13,
 };
+
+/**
+ * Polished stainless: the wheel, the rails, the pulls, the drink-holder rings. Two numbers here
+ * are the result of being wrong twice. It is part-metal rather than fully metallic, because a full
+ * metal has no diffuse at all and this renderer is giving it no environment to reflect (see the
+ * note in sky.js) - at metalness 1 every chromed fitting in the wheelhouse rendered black. And its
+ * albedo is a mid grey rather than near-white, because under the cabin's fill a near-white one
+ * blew to flat paper: the wheel came out as a cut-out. Mid grey with a low roughness lands the rim
+ * around 150 of 255 with its highlights near 230, which is what a polished rim looks like.
+ */
+const PILOT_CHROME = () => paint(0x8e979f, 0.20, 0.42);
 
 /** A box with its UVs in metres, so every material tiles at the size the manifest says. */
 function box(w, h, d, material, x = 0, y = 0, z = 0) {
@@ -130,7 +141,7 @@ function teakAndHollyTexture() {
     for (let i = 0; i < 12; i++) {
       const x = i * plank;
       const base = 118 + Math.sin(i * 2.7) * 9;
-      ctx.fillStyle = `rgb(${base + 28}, ${base - 16}, ${base - 54})`;
+      ctx.fillStyle = `rgb(${base + 20}, ${base - 4}, ${base - 46})`;
       ctx.fillRect(x, 0, plank, h);
       // Grain: long fine streaks, darker and lighter, running the length of the plank.
       for (let k = 0; k < 90; k++) {
@@ -159,8 +170,9 @@ export class PilotHouse {
    * @param {Materials} materials
    * @param {import('./util.js').Rng} rng
    */
-  constructor(scene, materials, rng, glassMaterial = null) {
+  constructor(scene, materials, rng, glassMaterial = null, renderer = null) {
     this.scene = scene;
+    this.renderer = renderer;
     this.materials = materials;
     this.rng = rng;
     this.glassMaterial = glassMaterial;
@@ -431,7 +443,7 @@ export class PilotHouse {
     mesh.renderOrder = 820;
     this.group.add(mesh);
     this.panes.push({ mesh, kind: 'DOOR', width: gw, height: gh });
-    this.add(bar(v3(dx + 0.30, H.sole + 1.00, dz - 0.06), v3(dx + 0.30, H.sole + 1.18, dz - 0.06), 0.013, paint(0xc8ccd0, 0.28, 0.85), 10));
+    this.add(bar(v3(dx + 0.30, H.sole + 1.00, dz - 0.06), v3(dx + 0.30, H.sole + 1.18, dz - 0.06), 0.013, PILOT_CHROME(), 10));
   }
 
   // --- the dash --------------------------------------------------------------------------------
@@ -466,7 +478,7 @@ export class PilotHouse {
         this.add(bar(
           v3(x - s * dw * 0.38, H.sole + 0.06 + lockH * 0.74, H.dashBack - 0.064),
           v3(x - s * dw * 0.38, H.sole + 0.06 + lockH * 0.86, H.dashBack - 0.064),
-          0.009, paint(0xcdd1d5, 0.26, 0.88), 10));
+          0.009, PILOT_CHROME(), 10));
       }
     }
     // The plinth they stand on, set back so the sole runs under it.
@@ -525,8 +537,40 @@ export class PilotHouse {
     this.parts.quadrant = quad;
     this.parts.levers = [lever];
 
+    // A chart light on a gooseneck, clamped to the inboard end of the surround: the lamp you
+    // bend down over a chart at night and the one thing on this dash that moves.
+    const chromeM = PILOT_CHROME();
+    const lampBase = this.add(box(0.06, 0.018, 0.06, chromeM, -1.26, H.dashTop + 0.030, H.dashFront + 0.20));
+    const neck = [];
+    for (let i = 0; i <= 10; i++) {
+      const u = i / 10;
+      neck.push(v3(-1.26 + u * 0.10, H.dashTop + 0.04 + Math.sin(u * 1.5) * 0.17, H.dashFront + 0.20 + u * 0.12));
+    }
+    this.add(new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(neck), 22, 0.007, 7, false), chromeM));
+    const shade = this.add(new THREE.Mesh(
+      scaleUvs(new THREE.CylinderGeometry(0.042, 0.022, 0.055, 18, 1, true), 0.26, 0.055),
+      paint(0x1d2023, 0.5, 0.3, { side: THREE.DoubleSide })));
+    shade.position.set(-1.155, H.dashTop + 0.20, H.dashFront + 0.325);
+    shade.rotation.set(1.05, 0, 0.25);
+    const bulb = this.add(new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8),
+      new THREE.MeshStandardMaterial({ color: 0xf6efe0, emissive: 0xffd9a0, emissiveIntensity: 0, roughness: 0.4 })));
+    bulb.position.set(-1.147, H.dashTop + 0.178, H.dashFront + 0.345);
+    this.parts.chartLamp = bulb;
+
+    // A pair of drink holders cut into the top to starboard, which every boat of this kind has.
+    for (const x of [1.14, 1.26]) {
+      const ring = this.add(new THREE.Mesh(new THREE.TorusGeometry(0.040, 0.005, 8, 24), chromeM));
+      ring.position.set(x, H.dashTop + 0.023, H.dashBack - 0.19);
+      ring.rotation.x = Math.PI / 2;
+      const well = this.add(new THREE.Mesh(
+        scaleUvs(new THREE.CylinderGeometry(0.038, 0.034, 0.05, 20, 1, true), 0.24, 0.05),
+        paint(0x15171a, 0.62, 0.1, { side: THREE.DoubleSide })));
+      well.position.set(x, H.dashTop - 0.004, H.dashBack - 0.19);
+    }
+
     // The chrome grab rail along the aft edge: the thing you hold when she rolls.
-    const chrome = paint(0xcdd1d5, 0.24, 0.9);
+    const chrome = PILOT_CHROME();
     const railY = H.dashTop + 0.115, railZ = H.dashBack - 0.045;
     this.add(bar(v3(-wHalf + 0.10, railY, railZ), v3(wHalf - 0.10, railY, railZ), 0.015, chrome, 14));
     for (const x of [-wHalf + 0.12, -0.46, 0.46, wHalf - 0.12]) {
@@ -541,9 +585,13 @@ export class PilotHouse {
     // Polished stainless: almost no roughness and reflecting more of the environment than one,
     // because a wheel rim has no diffuse at all and everything you see in it is the room and the
     // sea. At roughness 0.16 and unit reflection it came out gunmetal.
-    const chrome = this.mat('mat:steel-brushed', {
-      key: 'wheelchrome', color: 0xf0f3f5, roughness: 0.07, metalness: 1, envMapIntensity: 2.1,
-    });
+    // Polished stainless. Two things it is deliberately not. It is not the brushed-metal scan:
+    // on a metal the colour map multiplies the *reflectance*, so a dark brushed texture does not
+    // make steel look brushed, it makes it black, which is what the wheel was. And it is not fully
+    // metallic, because a full metal has no diffuse term and this renderer is giving it nothing to
+    // reflect (see the note in sky.js). A third of the way to metal keeps the highlight tight and
+    // keeps the body of the rim lit by the room.
+    const chrome = PILOT_CHROME();
     const cherry = this.cherry;
 
     // The pedestal: a cherry column with a chrome collar, standing on the sole.
@@ -683,7 +731,7 @@ export class PilotHouse {
       const door = louvreDoor(w * 0.92, lockH * 0.98, cherry);
       door.position.set(cx, H.sole + 0.10 + lockH / 2, H.deskFront + 0.02);
       this.group.add(door);
-      const chrome = paint(0xcdd1d5, 0.26, 0.88);
+      const chrome = PILOT_CHROME();
       for (let i = 0; i < 3; i++) {
         const dh = (d - 0.10) / 3;
         const z = H.deskFront + 0.30 + i * dh + dh / 2;
@@ -728,7 +776,7 @@ export class PilotHouse {
   buildSeats() {
     const H = HOUSE;
     const hide = this.mat('mat:leather-cream', { key: 'hide', tint: 0xe6ddcb, roughness: 0.52 });
-    const chrome = paint(0xcdd1d5, 0.24, 0.9);
+    const chrome = PILOT_CHROME();
     this.parts.seats = [];
     for (const s of [-1, 1]) {
       const seat = new THREE.Group();
@@ -764,9 +812,9 @@ export class PilotHouse {
     const brass = paint(0x9a7a34, 0.3, 0.86);
 
     // A grab rail under the overhead fascia, which is what you hold standing up into a sea.
-    this.add(bar(v3(-1.30, H.deckhead - 0.14, -0.74), v3(1.30, H.deckhead - 0.14, -0.74), 0.016, paint(0xcdd1d5, 0.24, 0.9), 14));
+    this.add(bar(v3(-1.30, H.deckhead - 0.14, -0.74), v3(1.30, H.deckhead - 0.14, -0.74), 0.016, PILOT_CHROME(), 14));
     for (const x of [-1.28, 0, 1.28]) {
-      this.add(bar(v3(x, H.deckhead - 0.14, -0.74), v3(x, H.deckhead - 0.02, -0.80), 0.012, paint(0xcdd1d5, 0.24, 0.9), 10));
+      this.add(bar(v3(x, H.deckhead - 0.14, -0.74), v3(x, H.deckhead - 0.02, -0.80), 0.012, PILOT_CHROME(), 10));
     }
 
     // A brass clock and a barometer on the aft bulkhead, the pair every wheelhouse has.
@@ -916,6 +964,9 @@ export class PilotHouse {
       lens.material.emissiveIntensity = this.lampLevel * (red ? 0.45 : 0.75) * screen;
     }
     // The tell-tales in the switch banks and the sets' displays, all screen brightnesses.
+    if (this.parts.chartLamp) {
+      this.parts.chartLamp.material.emissiveIntensity = this.lampLevel * 0.7 * screen;
+    }
     const panelLit = Math.max(0.15, this.lampLevel);
     for (const b of this.banks) b.setLamps(panelLit, screen);
     for (const s of this.sets) s.setLit(Math.max(0.35, this.lampLevel), screen);

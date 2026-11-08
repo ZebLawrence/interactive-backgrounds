@@ -156,6 +156,7 @@ export function paint(color, roughness = 0.45, metalness = 0.05, opts = {}) {
   const m = new THREE.MeshStandardMaterial({
     color: typeof color === 'number' ? color : srgb(color[0], color[1], color[2]),
     roughness, metalness, side: opts.side ?? THREE.FrontSide,
+    envMapIntensity: opts.envMapIntensity ?? 1,
     transparent: opts.transparent ?? false, opacity: opts.opacity ?? 1,
     emissive: opts.emissive ?? 0x000000, emissiveIntensity: opts.emissiveIntensity ?? 1,
   });
