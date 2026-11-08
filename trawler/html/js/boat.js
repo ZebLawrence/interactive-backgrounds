@@ -7,8 +7,14 @@
 // and the pressure on it is integrated. Heave, pitch and roll fall out of that, and so does the
 // difference between a long swell (she follows it) and a short sea (she punches through it).
 //
-// Body axes: +x to starboard, +y up, +z aft, origin at the waterline amidships. The camera looks
-// down -z, so the boat's forward is the camera's forward with no yaw offset.
+// Body axes: +x to starboard, +y up, +z aft, origin at the waterline amidships.
+//
+// `heading` is a true compass bearing: zero is north, and it increases to starboard the way every
+// chart and every compass does. The world has x to the east and z to the south, so a bearing B
+// points along (sin B, 0, -cos B); the body-to-world rotation is therefore built from -heading,
+// and a positive yaw *rate* about the body's up axis turns her to port and so takes the bearing
+// down. Getting that backwards is invisible in open water and sends the autopilot round the wrong
+// side of every island, which is exactly what it did the first time.
 //
 // The numbers to check it against:
 //   roll period      about 6.5 s, from the metacentric height a loaded trawler carries
@@ -84,8 +90,11 @@ export const HULL = {
   // How hard a following sea shoves the stern round. Tuned so that running before a gale she
   // yaws a few degrees either side and needs the wheel, which is what broaching feels like.
   broachTorque: 1.9e6,
-  // The wheelhouse eye, in body coordinates.
-  eye: { x: 0, y: 5.62, z: 0.55 },
+  // The wheelhouse eye, in body coordinates. Worked out from the window rather than guessed: at
+  // 1.58 m back from the glass, with the sill 0.74 m below the eye and the head 0.50 m above it,
+  // a 62 degree lens pitched three degrees down puts the glass across the middle 63% of the frame,
+  // the console's forward edge exactly on the sill, and the brass rail along the bottom.
+  eye: { x: 0, y: 5.52, z: 0.18 },
 };
 
 /**
@@ -237,11 +246,11 @@ export class Boat {
   integrate(h, settling) {
     const hull = this.hull;
     const P = this.props;
-    const cy = Math.cos(this.heading), sy = Math.sin(this.heading);
+    const cy = Math.cos(-this.heading), sy = Math.sin(-this.heading);
     const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
 
-    // Body to world, R = Ry(heading) Rx(pitch) Rz(roll), written out so the hot loop over
+    // Body to world, R = Ry(-heading) Rx(pitch) Rz(roll), written out so the hot loop over
     // twenty-seven columns does not go through a matrix class. Forward is -z, starboard +x, up +y.
     const m00 = cy * cr + sy * sp * sr, m02 = sy * cp;
     const m10 = cp * sr, m11 = cp * cr, m12 = -sp;
@@ -351,7 +360,8 @@ export class Boat {
     yawTorque += tYaw;
     yawTorque -= hull.yawDamp * this.rate.z;
     this.rate.z += (yawTorque / iYaw) * h;
-    this.heading += this.rate.z * h;
+    // A positive yaw rate about the body's up axis turns her to port, so the bearing comes down.
+    this.heading -= this.rate.z * h;
     if (this.heading > Math.PI) this.heading -= TAU;
     if (this.heading < -Math.PI) this.heading += TAU;
 
@@ -378,13 +388,15 @@ export class Boat {
   headSeaFactor(fwdX, fwdZ) {
     const w = this.ocean.weather;
     if (!w) return 0.5;
-    const wx = Math.cos(w.windDir), wz = Math.sin(w.windDir);
+    // A missing wind direction would be NaN here and NaN everywhere a step later.
+    const dir = Number.isFinite(w.windDir) ? w.windDir : 0;
+    const wx = Math.cos(dir), wz = Math.sin(dir);
     return clamp01(0.5 - 0.5 * (fwdX * wx + fwdZ * wz));
   }
 
-  /** Rebuilds the body-to-world rotation: R = Ry(heading) Rx(pitch) Rz(roll). */
+  /** Rebuilds the body-to-world rotation: R = Ry(-heading) Rx(pitch) Rz(roll). */
   updateMatrix() {
-    const cy = Math.cos(this.heading), sy = Math.sin(this.heading);
+    const cy = Math.cos(-this.heading), sy = Math.sin(-this.heading);
     const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const R = this.R;

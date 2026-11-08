@@ -608,7 +608,9 @@ export function loadStars() {
  */
 function setLight(light, dir, irradiance, cutoff) {
   const m = Math.max(irradiance.x, irradiance.y, irradiance.z);
-  light.position.copy(dir).multiplyScalar(600);
+  // The sun's own position is set by the scene each frame so its shadow box can follow the boat;
+  // here only the colour and the strength are wanted.
+  if (!light.userData.placedByScene) light.position.copy(dir).multiplyScalar(600);
   light.intensity = m;
   light.visible = m > cutoff;
   if (m > 1e-8) light.color.setRGB(irradiance.x / m, irradiance.y / m, irradiance.z / m);
@@ -649,13 +651,26 @@ export class Sky {
 
     // The two lights. The sun's shadow map is fitted to the boat in scene.js.
     this.sunLight = new THREE.DirectionalLight(0xffffff, 0);
+    this.sunLight.userData.placedByScene = true;
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
-    this.sunLight.shadow.bias = -0.0006;
-    this.sunLight.shadow.normalBias = 0.05;
+    this.sunLight.shadow.bias = -0.0005;
+    this.sunLight.shadow.normalBias = 0.04;
+    // The shadow only ever has to cover the boat: she is the only thing in this scene that casts
+    // one anybody can see. A 34 m box round her at 2048 is 1.7 cm a texel, which is enough for a
+    // stay's shadow across the deck.
+    const cam = this.sunLight.shadow.camera;
+    cam.left = -19; cam.right = 19; cam.top = 19; cam.bottom = -19;
+    cam.near = 1; cam.far = 220;
+    cam.updateProjectionMatrix();
     this.moonLight = new THREE.DirectionalLight(0xdbe6ff, 0);
     this.ambient = new THREE.HemisphereLight(0x6f8fbf, 0x16222a, 0);
-    for (const l of [this.sunLight, this.moonLight, this.ambient]) {
+    // A little flat fill on top of the hemisphere. Inside the wheelhouse there is no sun and no
+    // sky above you, only what comes in through the glass and bounces around a painted room; with
+    // the hemisphere light alone the deckhead and the window brow go to black, which is not what
+    // a real wheelhouse looks like even against a bright sea.
+    this.fill = new THREE.AmbientLight(0xffffff, 0);
+    for (const l of [this.sunLight, this.moonLight, this.ambient, this.fill]) {
       l.layers.enableAll();
       scene.add(l);
     }
@@ -840,6 +855,9 @@ export class Sky {
     // Three r155+ lights are physical: a hemisphere light of intensity 1 gives about albedo/pi, so
     // the sky's irradiance has to be multiplied up to read as the light it really is.
     setHemi(this.ambient, skyIrr, 3.0);
+    const fillM = Math.max(skyIrr.x, skyIrr.y, skyIrr.z);
+    this.fill.intensity = Math.max(fillM * 0.9, 0.0008);
+    if (fillM > 1e-8) this.fill.color.setRGB(skyIrr.x / fillM, skyIrr.y / fillM, skyIrr.z / fillM);
 
     // The moon's disc: where it sits, which way it faces, and which limb its sun lights.
     if (this.moon) {
@@ -996,7 +1014,7 @@ export class Sky {
       this.moonBumpMap.dispose();
       this.scene.remove(this.moon);
     }
-    for (const l of [this.sunLight, this.moonLight, this.ambient]) this.scene.remove(l);
+    for (const l of [this.sunLight, this.moonLight, this.ambient, this.fill]) this.scene.remove(l);
     this.scene.remove(this.sunLight.target);
   }
 }

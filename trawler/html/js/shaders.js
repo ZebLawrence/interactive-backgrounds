@@ -199,8 +199,11 @@ vec3 skyRadiance( vec3 dir ) {
   float cm = dot( dir, uMoonDir );
   float airMass = 1.0 / max( dir.y * 0.98 + 0.02, 0.02 );
   L += uMoonColor * phaseRayleigh( cm ) * ( 1.0 - exp( -airMass * 0.14 ) ) * 9.0;
-  // Airglow: a faint green-grey, strongest a few degrees up, where the line of sight is longest.
-  L += vec3( 0.00022, 0.00032, 0.00040 ) * ( 1.0 - exp( -airMass * 0.1 ) ) * 3.0;
+  // Airglow and starlight: the floor a moonless sky never goes below. The figure has to agree
+  // with the one sky.js adds to its irradiance (a radiance of about E/pi), or the camera's
+  // adaptation, which can reach a thousand on a dark night, turns a "faint" glow into a white
+  // screen. A few parts in a million of the daytime sky is what it really is.
+  L += vec3( 0.0000030, 0.0000042, 0.0000060 ) * ( 1.0 - exp( -airMass * 0.1 ) ) * 3.0;
   return L;
 }
 

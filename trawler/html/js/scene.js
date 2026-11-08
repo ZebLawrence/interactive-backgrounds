@@ -17,6 +17,16 @@ import { Weather } from './seastate.js';
 import { Ocean } from './ocean.js';
 import { Boat, HULL } from './boat.js';
 import { ORIGIN_STEP } from './oceanspec.js';
+import { Materials } from './materials.js';
+import { PilotHouse, HOUSE } from './pilot.js';
+import { Instruments } from './instruments.js';
+import { Deck } from './deck.js';
+import { Glazing, PANE } from './glass.js';
+import { Terrain, LAND } from './terrain.js';
+import { Pilot, buildChart, NAV } from './nav.js';
+import { WakeField, Spray } from './wake.js';
+import { Gulls, Porpoises, Rain } from './wildlife.js';
+import { loadManifest, loadAssets } from './assets.js';
 import { buildPost, textureMemory } from './post.js';
 
 // Where the eye sits in the pilot house, in the boat's own frame: the wheelhouse deck is 4 m above
@@ -24,7 +34,14 @@ import { buildPost, textureMemory } from './post.js';
 export const EYE = HULL.eye;
 export const FOV = 62;
 // How far the cursor can swing the gaze. 115 degrees reaches the side windows and the aft bulkhead.
-export const GAZE = { yaw: 115 * DEG, pitch: 28 * DEG, tau: 0.42 };
+export const GAZE = {
+  yaw: 115 * DEG,
+  pitch: 28 * DEG,
+  tau: 0.42,
+  // Where the gaze sits with the cursor in the middle of the window: three degrees down, which
+  // puts the horizon above centre and the bow in the lower third.
+  rest: -3 * DEG,
+};
 // A helmsman does not ride the boat like a camera bolted to the deck. He keeps his head most of the
 // way level and his legs take the rest, and what is left lags the hull by a fraction of a second.
 // Without this the view is unwatchable in anything above a calm; with too much of it the boat stops
@@ -66,7 +83,7 @@ export class Scene {
     this.scene.add(this.camera);
 
     // The gaze: where the cursor is asking the head to look, and where it has got to.
-    this.gaze = { yaw: 0, pitch: -0.03, targetYaw: 0, targetPitch: -0.03 };
+    this.gaze = { yaw: 0, pitch: GAZE.rest, targetYaw: 0, targetPitch: GAZE.rest };
     // Base heading of the body (the boat's yaw once boat.js exists).
     this.heading = 0;
     this.pointerHeld = { x: -10000, y: -10000, inside: false, still: 0, moved: false };
@@ -77,7 +94,26 @@ export class Scene {
       dayTime: settings.startTime ?? 0.28,
     });
     this.ocean = new Ocean(this.scene, renderer, this.rng.fork('ocean'), this.weather);
+    this.terrain = new Terrain(this.scene, renderer, this.materials ?? null, this.rng.fork('land'));
+    this.ocean.useTerrain(this.terrain);
     this.boat = new Boat(this.ocean, this.rng.fork('boat'));
+    this.findSeaRoom();
+    this.autopilot = new Pilot(this.rng.fork('pilot'));
+    this.refreshChart();
+    this.wake = new WakeField(renderer);
+    this.spray = new Spray(this.scene, this.rng.fork('spray'));
+    this.ocean.useWake(this.wake);
+    this.gulls = new Gulls(this.scene, this.rng.fork('gulls'), 9);
+    this.porpoises = new Porpoises(this.scene, this.rng.fork('porpoises'), 5);
+    this.rain = new Rain(this.scene, this.rng.fork('rain'));
+
+    // The house she is seen from, the deck she is seen over, and the glass between.
+    this.materials = new Materials();
+    this.glazing = new Glazing();
+    this.pilot = new PilotHouse(this.scene, this.materials, this.rng.fork('house'), this.glazing.material);
+    this.deck = new Deck(this.scene, this.materials, this.rng.fork('deck'));
+    this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.overhead);
+    this.registerPanes();
     // The render origin. The boat covers hundreds of kilometres in a day, which would eventually
     // eat the precision of a 32-bit world position, so the whole scene is drawn about an origin
     // that follows her in 2048 m steps. Every cascade size divides that, so the sea does not
@@ -93,6 +129,7 @@ export class Scene {
       this.sky.buildStars(cat);
       this.sky.applyLights();
     });
+    this.loadAssets();
 
     this.post = buildPost(renderer, this.scene, this.camera, w, h, app.pixelRatio, settings.lowPower);
     this.exposure = targetExposure(G.uSkyLight.value.y, G.uSunColor.value.y);
@@ -108,11 +145,87 @@ export class Scene {
     this.sky.setExposure(this.exposure);
   }
 
+  /**
+   * Keeps the sun's shadow box on the boat. Everything that casts a shadow here is on her, so the
+   * box only has to be as big as she is; the renderer's shadow map is refreshed by hand once a
+   * frame rather than on every render call, because a frame is several passes and re-rendering
+   * the map for each of them is pure waste (guidelines section 3).
+   */
+  followShadow() {
+    const l = this.sky.sunLight;
+    if (!l.visible) { this.renderer.shadowMap.needsUpdate = false; return; }
+    const p = this.boat.position;
+    l.target.position.set(p.x, p.y + 3, p.z);
+    l.target.updateMatrixWorld();
+    l.position.set(p.x + this.sky.sunDir.x * 120, p.y + this.sky.sunDir.y * 120 + 3, p.z + this.sky.sunDir.z * 120);
+    l.updateMatrixWorld();
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
   /** Eases the exposure toward what the sky asks for. `snap` jumps straight there (a mode change). */
   stepExposure(dt, snap = false) {
     const want = targetExposure(G.uSkyLight.value.y, G.uSunColor.value.y);
     this.exposure = snap ? want : approach(this.exposure, want, EXPOSURE.tau, dt);
     this.applyExposure();
+  }
+
+  /**
+   * Tells the glazing the size and kind of every pane the house built, so the rain and the wipers
+   * land in the right place on each one.
+   */
+  registerPanes() {
+    const H = HOUSE;
+    const frontH = H.head - H.sill;
+    const widths = [
+      H.glassHalf - H.mullion - H.mullionWidth / 2,
+      (H.mullion - H.mullionWidth / 2) * 2,
+      H.glassHalf - H.mullion - H.mullionWidth / 2,
+    ];
+    const kinds = [PANE.FRONT_SIDE, PANE.FRONT_CENTRE, PANE.FRONT_SIDE];
+    this.pilot.panes.forEach((mesh, i) => {
+      if (i < 3) this.glazing.register(mesh, kinds[i], widths[i], frontH);
+      else if (i < 7) this.glazing.register(mesh, PANE.SIDE, 0.96, H.sideHead - H.sideSill);
+      else this.glazing.register(mesh, PANE.DOOR, 0.54, 0.52);
+    });
+  }
+
+  /**
+   * Fetches the scanned materials and the props. The house is already standing in plain colours;
+   * each scan swaps itself in as it lands, so nothing waits for the whole set.
+   */
+  async loadAssets() {
+    const bar = document.getElementById('loadbar');
+    const progress = (f) => {
+      if (!bar) return;
+      bar.style.transform = `scaleX(${f})`;
+      bar.setAttribute('aria-valuenow', String(Math.round(f * 100)));
+    };
+    const { manifest, failures } = await loadManifest();
+    if (this.disposed) return;
+    this.materials.setManifest(manifest);
+    const assets = await loadAssets(this.app.renderer, manifest, progress, {
+      // The house first: it is what the viewer is sitting in.
+      priority: ['mat:teak', 'mat:paint', 'mat:plywood', 'mat:rubber', 'mat:paint-worn', 'mat:deck',
+        'mat:steel-rust', 'mat:steel-brushed', 'compass', 'vhf', 'stool'],
+      onItem: (kind, name, asset) => {
+        if (this.disposed) return;
+        if (kind === 'material') { this.materials.setAsset(name, asset); this.terrain.setAsset(name, asset); }
+        else this.applyModel(name, asset);
+      },
+    });
+    progress(1);
+    bar?.classList.add('done');
+    this.assets = assets;
+    const bad = [...failures, ...assets.failures];
+    if (bad.length) console.warn(`Trawler: ${bad.length} asset file(s) missing, using stand-ins:`, bad.join(', '));
+  }
+
+  /** A loaded prop goes wherever the house or the deck wants it. */
+  applyModel(name, model) {
+    this.models ??= new Map();
+    this.models.set(name, model);
+    this.pilot.addProp(name, model);
+    this.deckProps?.add?.(name, model);
   }
 
   // --- input -------------------------------------------------------------------------------------
@@ -133,11 +246,12 @@ export class Scene {
       const nx = clamp((pointer.x / this.width) * 2 - 1, -1, 1);
       const ny = clamp((pointer.y / this.height) * 2 - 1, -1, 1);
       const ease = (v) => Math.sign(v) * Math.pow(Math.abs(v), 1.45);
-      this.gaze.targetYaw = -ease(nx) * GAZE.yaw;
-      this.gaze.targetPitch = ease(ny) * GAZE.pitch;
+      // Cursor to the right looks to starboard, which is a rising bearing.
+      this.gaze.targetYaw = ease(nx) * GAZE.yaw;
+      this.gaze.targetPitch = GAZE.rest + ease(ny) * GAZE.pitch;
     } else {
       this.gaze.targetYaw *= Math.exp(-dt / 2.5);
-      this.gaze.targetPitch = approach(this.gaze.targetPitch, -0.03, 2.5, dt);
+      this.gaze.targetPitch = approach(this.gaze.targetPitch, GAZE.rest, 2.5, dt);
     }
     this.gaze.yaw = approachAngle(this.gaze.yaw, this.gaze.targetYaw, GAZE.tau, dt);
     this.gaze.pitch = approach(this.gaze.pitch, this.gaze.targetPitch, GAZE.tau, dt);
@@ -146,9 +260,56 @@ export class Scene {
   /** True when the cursor travelled and then held still: the "resting cursor" verb. */
   get resting() { return this.pointerHeld.inside && this.pointerHeld.moved && this.pointerHeld.still > 0.8; }
 
-  /** A click at a screen point. */
+  /**
+   * A click. First it asks the pilot house whether anything in it was hit — a lever, a switch, a
+   * screen — and works that; if nothing was, the click goes out through the window and she alters
+   * course for whatever was pointed at. The ray is built through the camera's real rotation, so
+   * the hit stays under the cursor however far the gaze has swung (guidelines section 3).
+   */
   click(point) {
     this.lastClick = { ...point, at: this.time };
+    const ndc = new THREE.Vector2(
+      (point.x / this.width) * 2 - 1,
+      (point.y / this.height) * 2 - 1,
+    );
+    this.raycaster ??= new THREE.Raycaster();
+    this.raycaster.layers.set(LAYER.DEFAULT);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.pilot.pick(this.raycaster);
+    if (hit) { this.workControl(hit); return; }
+    // Out through the glass: the bearing of whatever she was pointed at.
+    const d = this.raycaster.ray.direction;
+    const bearing = Math.atan2(d.x, -d.z);
+    this.autopilot.steerCourse(bearing, 110);
+    this.wheelOrder = bearing;
+  }
+
+  /** What each thing in the house does when it is worked. */
+  workControl(hit) {
+    switch (hit) {
+      case 'throttle':
+        this.throttleNotch = ((this.throttleNotch ?? 2) + 1) % 4;
+        this.autopilot.throttleBias = [0.12, 0.42, 0.68, 0.95][this.throttleNotch];
+        this.boat.orderThrottle(this.autopilot.throttleBias);
+        break;
+      case 'lamp':
+        this.lampMode = ((this.lampMode ?? 0) + 1) % 3;
+        this.redLight = this.lampMode === 2;
+        this.lampsOff = this.lampMode === 0;
+        break;
+      case 'horn':
+        this.hornAt = this.time;
+        this.gulls.startle();
+        break;
+      case 'radar':
+        this.instruments.nextRange();
+        break;
+      case 'wipers':
+        this.wipersForced = !this.wipersForced;
+        break;
+      default:
+        break;
+    }
   }
 
   // --- the frame ---------------------------------------------------------------------------------
@@ -161,11 +322,54 @@ export class Scene {
     this.camera.updateMatrixWorld();
     this.weather.step(dt);
     this.pushWeather();
+    // She steers herself unless the cursor has just told her otherwise.
+    this.autopilot.step(dt, this.boat, {
+      sea: this.weather.derived.sea,
+      windDir: this.weather.windDir,
+    }, this.depthAt);
     this.boat.step(dt);
     this.maintainOrigin();
+    if (this.terrain.step(dt, this.camera, settings)) this.refreshChart();
     this.heading = this.boat.heading;
     this.stepHead(dt);
+    const d = this.weather.derived;
+    // Everything that glows is specified as a brightness on the screen rather than a radiance,
+    // so it is divided by the exposure the camera has adapted to.
+    const emissiveScale = 1 / Math.max(this.exposure, 1e-3);
+    this.pilot.update(dt, this.boat, { redLight: this.redLight, lampsOff: this.lampsOff, emissiveScale });
+    this.instruments.step(dt, this.boat, this.depthAt, this.origin, G.uNight.value, emissiveScale);
+    this.deck.update(dt, this.boat, { emissiveScale });
+    // What a white surface out there is actually reflecting. Anything drawn with a fixed colour
+    // rather than a reflectance — the spray, the rain, the glow of the instruments on the glass —
+    // has to be multiplied by this, or it stays at its daytime brightness while the camera opens
+    // up a thousandfold for the night and goes white.
+    this.lit ??= v3();
+    this.lit.copy(G.uSkyLight.value)
+      .addScaledVector(G.uSunColor.value, Math.max(this.sky.sunDir.y, 0))
+      .addScaledVector(G.uMoonColor.value, Math.max(this.sky.moonDir.y, 0))
+      .multiplyScalar(0.3183);
+    this.cabinLight ??= v3();
+    this.cabinLight.set(0.040, 0.031, 0.018).multiplyScalar(emissiveScale);
+    this.glazing.update(dt, {
+      rain: G.uRain.value,
+      spray: d.spray + (this.boat.bowDry ? 0.1 : 0),
+      speedKnots: this.boat.speedKnots,
+      night: G.uNight.value,
+      cabin: this.cabinLight,
+    });
+    // Spray and rain are water: they show whatever light is falling on them and nothing else.
+    this.spray.material.uniforms.uColor.value.set(this.lit.x * 1.5, this.lit.y * 1.55, this.lit.z * 1.6);
+    this.rain.material.uniforms.uColor.value.set(this.lit.x * 1.1, this.lit.y * 1.2, this.lit.z * 1.35);
+    this.wake.step(dt, this.boat);
+    this.ocean.wakeTexture = this.wake.texture;
+    this.spray.step(dt, this.boat, this.weather.derived, G.uWind.value, this.app.pixelRatio);
+    this.gulls.step(dt, this.boat, this.weather.derived);
+    // The second cursor verb: a cursor that travelled and then came to rest brings them over.
+    this.porpoises.setInterest(this.resting ? 1 : 0);
+    this.porpoises.step(dt, this.boat, this.weather.derived);
+    this.rain.step(dt, this.camera, G.uRain.value, G.uWind.value, this.weather.derived.u10);
     this.sky.step(dt, this.camera, { pixelRatio: this.app.pixelRatio });
+    this.followShadow();
     this.ocean.step(dt, this.camera, { pixelHeight: this.height * this.app.pixelRatio });
     this.stepExposure(dt);
     this.post.setNight(G.uNight.value);
@@ -185,6 +389,47 @@ export class Scene {
     this.origin.x += dx;
     this.origin.z += dz;
     G.uWorldOrigin.value.set(this.origin.x, this.origin.z);
+  }
+
+  /**
+   * Puts her somewhere with water under her. The archipelago is generated, so wherever the seed
+   * lands her she might be on a hilltop; this bakes the chart, then walks outward from the
+   * starting point until it finds somewhere with thirty metres under the keel and sea room all
+   * round, which is what a boat picking her way out of a sound would have.
+   */
+  findSeaRoom() {
+    this.terrain.follow({ x: 0, z: 0 });
+    const rng = this.rng.fork('start');
+    const clear = (x, z) => {
+      if (this.terrain.depthAt(x, z) < 30) return false;
+      for (let a = 0; a < 8; a++) {
+        const th = (a / 8) * TAU;
+        for (const r of [250, 600, 1100]) {
+          if (this.terrain.depthAt(x + Math.cos(th) * r, z + Math.sin(th) * r) < 12) return false;
+        }
+      }
+      return true;
+    };
+    for (let i = 0; i < 400; i++) {
+      const r = 200 + i * 28;
+      const a = rng.range(0, TAU);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (clear(x, z)) {
+        this.boat.position.x = x;
+        this.boat.position.z = z;
+        this.terrain.follow(this.boat.position);
+        return;
+      }
+    }
+    // Nothing found: stay where she is rather than putting her ashore somewhere definite.
+  }
+
+  /** The sea bed under a point, as the autopilot and the hull see it. */
+  depthAt = (x, z) => this.terrain.depthAt(x, z);
+
+  /** Hands the autopilot a fresh chart centred on the boat. A few milliseconds, done rarely. */
+  refreshChart() {
+    this.autopilot?.setChart(buildChart(this.depthAt, this.boat.position.x, this.boat.position.z));
   }
 
   /** Where she really is, in the world the land is generated in. */
@@ -207,9 +452,10 @@ export class Scene {
   placeCamera() {
     if (this.freeCamera) return; // a debug look() is holding the camera
     this.camera.position.set(this.eyePos.x, this.eyePos.y, this.eyePos.z);
+    // three's camera looks down its own -z, so a yaw of -B points it along the bearing B.
     this.camera.rotation.set(
       this.headPitch + this.gaze.pitch,
-      this.boat.heading + this.gaze.yaw,
+      -(this.boat.heading + this.gaze.yaw),
       this.headRoll,
     );
   }
@@ -269,6 +515,17 @@ export class Scene {
   dispose() {
     this.disposed = true;
     G.uWorldOrigin.value.set(0, 0);
+    this.terrain.dispose();
+    this.wake.dispose();
+    this.spray.dispose();
+    this.gulls.dispose();
+    this.porpoises.dispose();
+    this.rain.dispose();
+    this.instruments.dispose();
+    this.pilot.dispose();
+    this.deck.dispose();
+    this.glazing.dispose();
+    this.materials.dispose();
     this.ocean.dispose();
     this.sky.dispose();
     this.post.dispose();

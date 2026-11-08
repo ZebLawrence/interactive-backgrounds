@@ -24,6 +24,8 @@
 import * as THREE from 'three';
 import { G, LAYER, ATMOS_READ, NOISE_GLSL, BRDF_GLSL } from './shaders.js';
 import { CLOUD_GLSL } from './sky.js';
+import { LAND_READ } from './terrain.js';
+import { WAKE_GLSL } from './wake.js';
 import { CASCADES, FFT_N, buildSea, longWaveComponents, coxMunkSlopeVariance } from './oceanspec.js';
 import { butterflyData, log2i } from './fft.js';
 import { clamp01, lerp, v3, srgbVec } from './util.js';
@@ -352,7 +354,9 @@ vec3 oceanDisplacement( vec2 p ) {
 
 const OCEAN_VERT = /* glsl */ `
 ${OCEAN_COMMON}
+${WAKE_GLSL}
 uniform float uEarthR;
+uniform float uTime;
 varying vec3 vWorld;
 varying vec3 vView;
 varying vec2 vFlat;      // the undisplaced horizontal position: the maps are indexed by it
@@ -370,6 +374,10 @@ void main() {
 
   vec3 d = oceanDisplacement( p );
   vec3 world = vec3( p.x + d.x, d.y, p.y + d.z );
+  // Her own wake lifts the water here; the white that goes with it is worked out per pixel in the
+  // fragment shader, because a clipmap cell out here is eight metres across and a foam edge
+  // interpolated across one comes out as a staircase.
+  world.y += kelvinWake( world.xz, uTime ).x;
   vFlat = p;
   float horiz = length( world.xz - uCamPos.xz );
   // A curved earth: the sea falls away as the square of the distance, which is what puts the
@@ -390,6 +398,8 @@ const OCEAN_FRAG = /* glsl */ `
 layout( location = 0 ) out highp vec4 pc_fragColor;
 #define gl_FragColor pc_fragColor
 ${ATMOS_READ}
+${LAND_READ}
+${WAKE_GLSL}
 ${NOISE_GLSL}
 ${BRDF_GLSL}
 ${CLOUD_GLSL}
@@ -405,8 +415,9 @@ uniform float uUnresolvedMss;
 uniform float uFoamAmount;
 uniform float uWhitecap;
 uniform float uSpray;
-uniform float uTime;
 uniform float uWindSpeed;
+uniform float uSea;
+uniform float uTime;
 uniform float uEarthR;
 varying vec3 vWorld;
 varying vec3 vView;
@@ -493,7 +504,13 @@ void main() {
   // is the whole of the sea's own colour. The downwelling irradiance is the sky plus the sun (and
   // the moon) on a horizontal surface, so the sea darkens honestly as the sun goes down.
   vec3 E = uSkyLight + uSunColor * max( uSunDir.y, 0.0 ) + uMoonColor * max( uMoonDir.y, 0.0 );
-  vec3 upwelling = uSeaDeep * E * 0.31830989;
+  // How deep it is here. Over a shelf some of the light comes back off the bottom, which is why
+  // the water inshore is green and the water in the fairway is slate blue.
+  float bed = landHeightAt( vWorld.xz );
+  float depth = max( -bed, 0.0 );
+  float shelf = 1.0 - smoothstep( 1.0, 16.0 , depth );
+  vec3 body = mix( uSeaDeep, uSeaShallow, shelf * 0.85 );
+  vec3 upwelling = body * E * 0.31830989;
   // The classic backlit crest: where the sun is beyond a wave, light comes through its shoulder.
   float through = pow( clamp( dot( normalize( vec3( uSunDir.x, 0.0, uSunDir.z ) ), -V ) * 0.5 + 0.5, 0.0, 1.0 ), 3.0 );
   float crest = clamp( ( N.y - 0.92 ) * -6.0 + max( -slope.y, 0.0 ) * 1.4, 0.0, 1.0 );
@@ -504,6 +521,24 @@ void main() {
   // --- foam -------------------------------------------------------------------------------------
   float coverage = clamp( foam * uFoamAmount + fold * 0.22, 0.0, 1.0 );
   coverage *= smoothstep( 0.0, 0.10, uWhitecap + 0.004 );
+  // Her own wake does not need a wind to be white: the trail she has laid down and the white
+  // along the arms of the Kelvin wedge, both worked out here rather than at the vertices.
+  float wake = max( kelvinWake( vWorld.xz, uTime ).y, wakeFoam( vWorld.xz ) );
+  coverage = max( coverage, clamp( wake * 0.85 * ( 1.0 - farOff * 0.8 ), 0.0, 1.0 ) );
+  // Surf. In shoal water a wave feels the bottom, steepens and breaks, so there is white along
+  // every rock whatever the sea is doing offshore. The band travels in at the shallow-water
+  // celerity, sqrt(g h), which is what makes it look like it is running at the shore.
+  if ( depth < 24.0 ) {
+    float shoal = smoothstep( 22.0, 1.5, depth );
+    float celerity = sqrt( 9.81 * max( depth, 0.4 ) );
+    float phase = ( depth * 0.22 - uTime * celerity * 0.1 );
+    float band = 0.5 + 0.5 * sin( phase * 6.2831853 );
+    float surf = shoal * ( 0.35 + 0.65 * pow( band, 3.0 ) ) * ( 0.55 + 0.45 * uSea );
+    surf *= 0.55 + 0.45 * vnoise( vFlat * 0.35 + uTime * 0.05 );
+    // Right at the rock it is all white water.
+    surf = max( surf, smoothstep( 2.4, 0.1, depth ) );
+    coverage = max( coverage, clamp( surf, 0.0, 1.0 ) );
+  }
   // Foam is not paint: it is a layer of bubbles, bright, rough and a little see-through. The grain
   // is high-frequency noise, so it has to fade out before a pixel covers more than one bubble.
   float grainFade = 1.0 - smoothstep( 25.0, 180.0, vDistance );
@@ -710,6 +745,15 @@ export class Ocean {
         uSpray: { value: 0 },
         uTime: { value: 0 },
         uWindSpeed: G.uWindSpeed,
+        uSea: G.uSea,
+        uWakeTex: { value: null },
+        uWakeFrame: { value: new THREE.Vector4(0, 0, 1, 1) },
+        uWakeBoat: { value: new THREE.Vector4(0, 0, 0, 1) },
+        uWakeDrive: { value: new THREE.Vector2(0, 0) },
+        uLandNear: { value: null },
+        uLandFar: { value: null },
+        uLandNearFrame: { value: new THREE.Vector4(0, 0, 1, 1) },
+        uLandFarFrame: { value: new THREE.Vector4(0, 0, 1, 1) },
       },
       vertexShader: OCEAN_VERT,
       fragmentShader: OCEAN_FRAG,
@@ -773,6 +817,7 @@ export class Ocean {
       u.uWhitecap.value = d.whitecap;
       u.uSpray.value = d.spray;
       u.uTime.value = this.time % 3600;
+      u.uWakeTex.value = this.wakeTexture ?? u.uWakeTex.value;
     }
   }
 
@@ -836,6 +881,26 @@ void main() { outColor = texelFetch( uSrc, ivec2( gl_FragCoord.xy ), 0 ); }`,
       count++;
     }
     return { worstError: worst, meanError: sum / count, rmsHeight: rms, components: all.length, time: this.time };
+  }
+
+  /** Hands the sea her wake: the trail texture and where she is in it. */
+  useWake(wake) {
+    for (const m of this.materials) {
+      m.uniforms.uWakeTex.value = wake.texture;
+      m.uniforms.uWakeFrame.value = wake.frame;
+      m.uniforms.uWakeBoat.value = wake.boat;
+      m.uniforms.uWakeDrive.value = wake.drive;
+    }
+  }
+
+  /** Hands the sea the land's baked height fields, so it knows how deep it is everywhere. */
+  useTerrain(terrain) {
+    for (const m of this.materials) {
+      m.uniforms.uLandNear.value = terrain.nearTarget.texture;
+      m.uniforms.uLandFar.value = terrain.farTarget.texture;
+      m.uniforms.uLandNearFrame.value = terrain.nearFrame;
+      m.uniforms.uLandFarFrame.value = terrain.farFrame;
+    }
   }
 
   /** The sea's state in one line, for the ?perf overlay. */

@@ -124,7 +124,8 @@ test('she makes her service speed and takes a while about it', () => {
   // Two hundred tonnes does not accelerate quickly: it should take the best part of a minute.
   assert.ok(timeTo90 > 20 && timeTo90 < 180, `took ${timeTo90} s to reach 7.8 kn`);
   // And she must be going where she is pointing, not crabbing sideways.
-  const fwdX = -Math.sin(b.heading), fwdZ = -Math.cos(b.heading);
+  // A bearing B points along (sin B, -cos B).
+  const fwdX = Math.sin(b.heading), fwdZ = -Math.cos(b.heading);
   const along = b.velocity.x * fwdX + b.velocity.z * fwdZ;
   const sideways = b.velocity.x * fwdZ - b.velocity.z * fwdX;
   assert.ok(Math.abs(sideways) < 0.05 * Math.abs(along), `crabbing: ${sideways.toFixed(3)} m/s sideways`);
@@ -145,8 +146,8 @@ test('she turns in a few boat lengths', () => {
 });
 
 test('the sea moves her, and a gale moves her a great deal more', () => {
-  // The sea runs along +x. Heading 0 points her along -z, so the sea is on the beam (the worst
-  // case for rolling); heading -90 degrees points her into it (the worst case for pitching).
+  // The sea runs along +x. Heading 0 (north, along -z) puts the sea on the beam, the worst case
+  // for rolling; heading 90 (east, along +x) points her into it, the worst case for pitching.
   const measure = (sea, heading = 0) => {
     const ocean = realSea(sea);
     const b = new Boat(ocean, new Rng(2));
@@ -169,7 +170,7 @@ test('the sea moves her, and a gale moves her a great deal more', () => {
   };
   const calm = measure(0.04);
   const gale = measure(0.95);
-  const galeHead = measure(0.95, -Math.PI / 2);
+  const galeHead = measure(0.95, Math.PI / 2);
   // Calm: she breathes. Anything over about five degrees in a flat calm is wrong.
   assert.ok(calm.roll < 6, `calm roll ${calm.roll.toFixed(1)} deg (Hs ${calm.hs.toFixed(2)} m)`);
   assert.ok(calm.heave < 1.2, `calm heave ${calm.heave.toFixed(2)} m`);

@@ -1,0 +1,359 @@
+// Trawler — What else is out there. A background that only has weather in it is a screensaver;
+// what makes a sea feel like a sea is that things are living in it and getting on with their own
+// business while you watch (guidelines section 1: "they just sit there" is a bug).
+//
+// **Gulls** follow a working boat because a working boat means food. They hang off her quarter in
+// the lift the wheelhouse throws up, peel off, beat back up and settle again, and they scatter
+// when the whistle goes. Their wings are built from the real bend of a gull's wing — an arm that
+// stays nearly straight and a hand that folds — rather than two flapping triangles, and they beat
+// at about three a second, gliding between.
+//
+// **Porpoises** ride the pressure wave in front of a moving hull. They come up in twos and threes,
+// blow, and go down again on a cycle of twenty seconds or so, and they will stay with a boat for
+// half an hour. They come over when the cursor comes to rest — the owner's second cursor verb.
+//
+// **Rain** is the third thing here because it is the same kind of object: a few thousand streaks
+// kept in a box round the camera, recycled as they fall out of it.
+
+import * as THREE from 'three';
+import { G, LAYER, ATMOS_READ } from './shaders.js';
+import { paint } from './materials.js';
+import { v3, clamp, clamp01, lerp, smoothstep, approach, angleDiff, TAU, DEG, Art } from './util.js';
+
+// =============================================================================================
+// Gulls
+// =============================================================================================
+
+/**
+ * A herring gull, from the side: body, head, tail and two wings of two segments each. The wing's
+ * shape is the point — an arm that holds its line and a hand that sweeps back and folds — because
+ * that is what makes a bird read as a bird at two hundred metres.
+ */
+function gullGeometry() {
+  const white = paint(0xf2f3f0, 0.72, 0);
+  const grey = paint(0x9aa3ab, 0.75, 0);
+  const dark = paint(0x23272b, 0.7, 0);
+  const yellow = paint(0xe8b43a, 0.5, 0);
+
+  const g = new THREE.Group();
+  // Body: a tapered spindle, nose forward along -z.
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.075, 14, 10), white);
+  body.scale.set(1, 0.92, 2.6);
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.048, 12, 9), white);
+  head.position.set(0, 0.035, -0.17);
+  g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.07, 8), yellow);
+  beak.rotation.x = -Math.PI / 2;
+  beak.position.set(0, 0.028, -0.24);
+  g.add(beak);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.008, 0.13), white);
+  tail.position.set(0, 0.005, 0.22);
+  g.add(tail);
+
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const arm = new THREE.Group();
+    arm.position.set(s * 0.055, 0.03, -0.02);
+    // The arm: broad at the shoulder, straight.
+    const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.009, 0.115), grey);
+    armMesh.position.set(s * 0.105, 0, 0.01);
+    arm.add(armMesh);
+    const hand = new THREE.Group();
+    hand.position.set(s * 0.21, 0, 0.01);
+    // The hand: narrower, swept back, with black tips.
+    const handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.007, 0.085), grey);
+    handMesh.position.set(s * 0.115, 0, 0.022);
+    hand.add(handMesh);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.0075, 0.07), dark);
+    tip.position.set(s * 0.215, 0, 0.03);
+    hand.add(tip);
+    arm.add(hand);
+    g.add(arm);
+    wings.push({ arm, hand, side: s });
+  }
+  return { group: g, wings, materials: [white, grey, dark, yellow] };
+}
+
+export class Gulls {
+  constructor(scene, rng, count = 9) {
+    this.scene = scene;
+    this.rng = rng;
+    this.group = new THREE.Group();
+    this.group.frustumCulled = false;
+    scene.add(this.group);
+    this.birds = [];
+    this.materials = null;
+    for (let i = 0; i < count; i++) {
+      const built = gullGeometry();
+      this.materials ??= built.materials;
+      built.group.layers.set(LAYER.DEFAULT);
+      built.group.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.WORLD); });
+      this.group.add(built.group);
+      this.birds.push({
+        obj: built.group,
+        wings: built.wings,
+        pos: v3(),
+        vel: v3(),
+        phase: rng.range(0, TAU),
+        beat: rng.range(2.6, 3.4),
+        glide: rng.range(0, 1),
+        slot: rng.range(0, TAU),
+        radius: rng.range(14, 34),
+        height: rng.range(5, 17),
+        startled: 0,
+        placed: false,
+      });
+    }
+  }
+
+  /** The whistle, or anything else that puts them up. */
+  startle() { for (const b of this.birds) b.startled = 1; }
+
+  step(dt, boat, weather) {
+    const t = boat.ocean.time;
+    for (const b of this.birds) {
+      // Where she would like to be: a slot in a loose circuit off the boat's quarter, which is
+      // where the lift off the wheelhouse is and where anything thrown over goes.
+      b.slot += dt * (0.18 + 0.06 * Math.sin(t * 0.21 + b.phase));
+      b.startled = Math.max(0, b.startled - dt * 0.5);
+      const r = b.radius * (1 + b.startled * 1.8);
+      const h = b.height * (1 + b.startled * 2.2);
+      const want = v3(
+        boat.position.x + Math.cos(b.slot) * r - Math.sin(boat.heading) * 12,
+        boat.position.y + h + Math.sin(t * 0.5 + b.phase) * 1.6,
+        boat.position.z + Math.sin(b.slot) * r + Math.cos(boat.heading) * 12,
+      );
+      if (!b.placed) { b.pos.copy(want); b.placed = true; }
+      // She flies toward it with a limited turn and a limited climb, which is what makes the
+      // track a bird's rather than a bee's.
+      const to = want.clone().sub(b.pos);
+      const dist = to.length();
+      if (dist > 1e-3) to.multiplyScalar(1 / dist);
+      const cruise = lerp(8.5, 15, b.startled) + weather.u10 * 0.25;
+      b.vel.lerp(to.multiplyScalar(cruise), 1 - Math.exp(-dt / 1.4));
+      b.pos.addScaledVector(b.vel, dt);
+
+      const speed = b.vel.length();
+      b.obj.position.copy(b.pos);
+      // Point her along her own track, and bank into the turn.
+      const heading = Math.atan2(b.vel.x, -b.vel.z);
+      const climb = Math.asin(clamp(b.vel.y / Math.max(speed, 1e-3), -1, 1));
+      const turn = angleDiff(b.lastHeading ?? heading, heading) / Math.max(dt, 1e-3);
+      b.lastHeading = heading;
+      b.bank = approach(b.bank ?? 0, clamp(-turn * 0.5, -0.9, 0.9), 0.25, dt);
+      b.obj.rotation.set(-climb, -heading, b.bank, 'YXZ');
+
+      // Wings: a beat when she needs lift (climbing, startled, slow), a glide when she does not.
+      const wantBeat = clamp01(b.startled + clamp01(climb * 2.5) + clamp01((9 - speed) / 4));
+      b.glide = approach(b.glide, 1 - wantBeat, 0.6, dt);
+      b.phase += dt * b.beat * TAU * (1 - b.glide * 0.75);
+      const flap = Math.sin(b.phase) * (1 - b.glide) * 0.85;
+      for (const w of b.wings) {
+        // The arm leads and the hand follows a beat behind: that lag is the whole look of it.
+        w.arm.rotation.z = -w.side * (flap * 0.75 + 0.06 - b.glide * 0.04);
+        w.hand.rotation.z = -w.side * (Math.sin(b.phase - 0.9) * (1 - b.glide) * 0.55 - 0.12);
+        w.hand.rotation.y = w.side * (0.18 + b.glide * 0.22);
+      }
+    }
+  }
+
+  dispose() {
+    this.group.traverse((o) => o.geometry?.dispose?.());
+    for (const m of this.materials ?? []) m.dispose();
+    this.scene.remove(this.group);
+  }
+}
+
+// =============================================================================================
+// Porpoises
+// =============================================================================================
+
+/** A harbour porpoise: a blunt spindle with a small triangular fin and a tail. */
+function porpoiseGeometry() {
+  const skin = paint(0x2f3a40, 0.46, 0);
+  const pale = paint(0xb9c0c2, 0.5, 0);
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.21, 16, 12), skin);
+  body.scale.set(1, 1.0, 3.6);
+  g.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.195, 16, 12), pale);
+  belly.scale.set(0.96, 0.6, 3.3);
+  belly.position.y = -0.085;
+  g.add(belly);
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.17, 3), skin);
+  fin.rotation.x = -0.25;
+  fin.position.set(0, 0.2, 0.02);
+  fin.scale.set(1, 1, 0.42);
+  g.add(fin);
+  const tail = new THREE.Group();
+  tail.position.set(0, 0, 0.66);
+  const fluke = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.022, 0.16), skin);
+  fluke.position.set(0, 0, 0.1);
+  tail.add(fluke);
+  g.add(tail);
+  return { group: g, tail, materials: [skin, pale] };
+}
+
+export class Porpoises {
+  constructor(scene, rng, count = 5) {
+    this.scene = scene;
+    this.rng = rng;
+    this.group = new THREE.Group();
+    this.group.frustumCulled = false;
+    scene.add(this.group);
+    this.pods = [];
+    this.interest = 0;
+    this.materials = null;
+    for (let i = 0; i < count; i++) {
+      const built = porpoiseGeometry();
+      this.materials ??= built.materials;
+      built.group.visible = false;
+      built.group.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.WORLD); });
+      this.group.add(built.group);
+      this.pods.push({
+        obj: built.group, tail: built.tail,
+        lane: rng.range(-1, 1), along: rng.range(-4, 3),
+        cycle: rng.range(0, 1), period: rng.range(11, 22),
+        phase: rng.range(0, TAU),
+      });
+    }
+  }
+
+  /** The resting cursor brings them over; they lose interest again when it moves. */
+  setInterest(x) { this.want = clamp01(x); }
+
+  step(dt, boat, weather) {
+    // They ride the bow wave of a boat that is actually moving, and they go off when she stops.
+    const moving = clamp01((boat.speedKnots - 2.2) / 3);
+    this.interest = approach(this.interest, Math.min(this.want ?? 0, moving), 6, dt);
+    const show = this.interest > 0.03;
+    for (const p of this.pods) {
+      p.obj.visible = show;
+      if (!show) continue;
+      p.cycle += dt / p.period;
+      const c = p.cycle % 1;
+      // The dive: up, blow, over and down, and a long while under.
+      const surface = Math.max(0, Math.sin(Math.PI * clamp01(c / 0.28)));
+      const side = p.lane * (2.4 + 1.1 * Math.sin(p.phase + boat.ocean.time * 0.3));
+      const along = -9.5 + p.along + Math.sin(p.phase * 1.7 + boat.ocean.time * 0.21) * 1.4;
+      const world = boat.toWorld(side, 0, along);
+      const sea = boat.ocean.sample(world.x, world.z);
+      // The arc out of the water: at the top of it she is nearly clear.
+      const rise = surface * 0.62 * this.interest;
+      p.obj.position.set(world.x, sea.h - 0.30 + rise, world.z);
+      const heading = boat.heading;
+      const pitch = Math.cos(Math.PI * clamp01(c / 0.28)) * surface * 0.55;
+      p.obj.rotation.set(pitch, -heading, side * -0.05, 'YXZ');
+      p.obj.scale.setScalar(lerp(0.75, 1.05, clamp01(this.interest)));
+      // The fluke drives her: up and down, faster when she is going up.
+      p.tail.rotation.x = Math.sin(boat.ocean.time * 6.5 + p.phase) * (0.25 + 0.35 * surface);
+    }
+  }
+
+  dispose() {
+    this.group.traverse((o) => o.geometry?.dispose?.());
+    for (const m of this.materials ?? []) m.dispose();
+    this.scene.remove(this.group);
+  }
+}
+
+// =============================================================================================
+// Rain
+// =============================================================================================
+
+const RAIN_VERT = /* glsl */ `
+attribute vec3 streak;      // fall speed, length, brightness
+uniform vec3 uCamPos;
+uniform vec3 uBox;
+uniform float uTime;
+uniform vec3 uWind;
+varying float vBright;
+void main() {
+  // Each drop lives in a box that follows the camera, and simply wraps when it falls out of it.
+  vec3 p = position;
+  p.y -= uTime * streak.x;
+  p += uWind * uTime;
+  p = mod( p - uCamPos + uBox * 0.5, uBox ) + uCamPos - uBox * 0.5;
+  // The streak is drawn as a line segment: two vertices a drop-length apart along the fall.
+  vec3 fall = normalize( vec3( uWind.x, -streak.x, uWind.z ) );
+  p += fall * streak.y * uv.y;
+  vBright = streak.z;
+  gl_Position = projectionMatrix * viewMatrix * vec4( p, 1.0 );
+}
+`;
+
+const RAIN_FRAG = /* glsl */ `
+uniform vec3 uColor;
+uniform float uOpacity;
+varying float vBright;
+void main() {
+  gl_FragColor = vec4( uColor, vBright * uOpacity );
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}
+`;
+
+export class Rain {
+  constructor(scene, rng, count = 4200) {
+    this.scene = scene;
+    this.box = v3(70, 36, 70);
+    const pos = new Float32Array(count * 2 * 3);
+    const uv = new Float32Array(count * 2 * 2);
+    const streak = new Float32Array(count * 2 * 3);
+    for (let i = 0; i < count; i++) {
+      const x = rng.range(0, this.box.x), y = rng.range(0, this.box.y), z = rng.range(0, this.box.z);
+      const fall = rng.range(7, 11);
+      const len = rng.range(0.6, 1.9);
+      const bright = rng.range(0.25, 0.8);
+      for (let v = 0; v < 2; v++) {
+        const k = (i * 2 + v) * 3;
+        pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
+        streak[k] = fall; streak[k + 1] = len; streak[k + 2] = bright;
+        uv[(i * 2 + v) * 2] = 0;
+        uv[(i * 2 + v) * 2 + 1] = v;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('streak', new THREE.BufferAttribute(streak, 3));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uCamPos: { value: v3() },
+        uBox: { value: this.box },
+        uTime: { value: 0 },
+        uWind: { value: v3() },
+        uColor: { value: v3(0.62, 0.70, 0.78) },
+        uOpacity: { value: 0 },
+      },
+      vertexShader: RAIN_VERT,
+      fragmentShader: RAIN_FRAG,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.lines = new THREE.LineSegments(g, this.material);
+    this.lines.frustumCulled = false;
+    this.lines.renderOrder = 830;
+    this.lines.layers.set(LAYER.DEFAULT);
+    this.lines.layers.enable(LAYER.WORLD);
+    scene.add(this.lines);
+  }
+
+  step(dt, camera, rain, wind, u10) {
+    const u = this.material.uniforms;
+    u.uTime.value = (u.uTime.value + dt) % 600;
+    u.uCamPos.value.copy(camera.position);
+    // Rain goes nearly sideways in a gale, which is most of what makes a gale look like one.
+    u.uWind.value.set(wind.x * u10 * 0.45, 0, wind.y * u10 * 0.45);
+    u.uOpacity.value = clamp01(rain) * 0.5;
+    this.lines.visible = u.uOpacity.value > 0.004;
+  }
+
+  dispose() {
+    this.lines.geometry.dispose();
+    this.material.dispose();
+    this.scene.remove(this.lines);
+  }
+}
