@@ -18,5 +18,11 @@ static web page.
 The web pages are served by GitHub Pages straight from this repository (no build step):
 `https://zeblawrence.github.io/interactive-backgrounds/<background>/html/`.
 
+Every background with a night sky (all but Fishbowl) shares one real sky, `assets/sky/realsky.js`:
+NASA's photographic Milky Way and the Hipparcos catalogue of 118,218 stars, standing at each
+scene's own latitude and turning about the celestial pole once a sidereal day, 15 degrees an hour,
+the way the sky really turns over an evening. It is progressive — each scene keeps its own painted
+sky until the files land, and keeps it for good if they never do.
+
 Building a new one? Read [guidelines.md](guidelines.md) first: the quality bar, the conventions, and the
 traps the existing backgrounds fell into.

@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { TAU, rnd, randInt, clamp, lerp, smoothstep, fbm2, v3, unit, Art } from './util.js';
 import { G, Q, NOISE_GLSL, FOG_HEAD, LAYER } from './shaders.js';
+import { RealSky } from 'realsky';
 
 export const SKY_RADIUS = 7000;
 
@@ -13,7 +14,14 @@ export const SKY_RADIUS = 7000;
 // dust lanes and the great rift (the same approach as Firefly Meadow's sky).
 // ---------------------------------------------------------------------------------------------
 
-const MILKY_WAY_NORMAL = v3(0.75, 0.6, 0.19).normalize();
+export const MILKY_WAY_NORMAL = v3(0.75, 0.6, 0.19).normalize();
+
+/**
+ * Where the lake is, for the real sky's turn: a northern lake at 48 degrees north, loon country. Which way
+ * north lies is solved for, so the real band crosses the sky where MILKY_WAY_NORMAL had the painted one
+ * (assets/sky/realsky.js, fitNorth).
+ */
+export const CELESTIAL = { latitude: 48 };
 
 function milkyWayCanvas(w = 1536, h = 768) {
   const N = MILKY_WAY_NORMAL;
@@ -67,12 +75,12 @@ export class Sky {
     this.hazeTexture = Art.texture(milkyWayCanvas(), { srgb: false });
     this.hazeTexture.wrapS = THREE.RepeatWrapping;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uTime: G.uTime, uNight: G.uNight, uRain: G.uRain, uSunDir: G.uSunDir, uMoonDir: G.uMoonDir, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture } },
+      uniforms: { uTime: G.uTime, uNight: G.uNight, uRain: G.uRain, uSunDir: G.uSunDir, uMoonDir: G.uMoonDir, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture }, uProcedural: { value: 1 } },
       side: THREE.BackSide,
       depthWrite: false,
       vertexShader: `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uNight, uRain; uniform vec3 uSunDir, uMoonDir, uFogColor; uniform sampler2D uHaze;
+        uniform float uTime, uNight, uRain, uProcedural; uniform vec3 uSunDir, uMoonDir, uFogColor; uniform sampler2D uHaze;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
@@ -132,11 +140,15 @@ export class Sky {
           // Night: a dark vault, the Milky Way, three layers of stars, the moon's halo.
           vec3 night = mix(vec3(0.035, 0.045, 0.09), vec3(0.003, 0.005, 0.016), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
           night += vec3(0.02, 0.045, 0.035) * exp(-max(h, 0.0) * 14.0) * 0.6;
-          vec3 haze = texture2D(uHaze, uv).rgb;
-          float hazeAmt = dot(haze, vec3(0.33));
-          vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
-                     + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
-          night += haze * 0.3 + stars;
+          // The painted band and the hashed stars stand in until the real sky arrives (realsky.js draws
+          // that one); once it has, uProcedural is 0 and none of this is paid for.
+          if (uProcedural > 0.001) {
+            vec3 haze = texture2D(uHaze, uv).rgb;
+            float hazeAmt = dot(haze, vec3(0.33));
+            vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                       + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
+            night += (haze * 0.3 + stars) * uProcedural;
+          }
           float cosm = dot(d, uMoonDir);
           night += vec3(0.5, 0.6, 0.85) * (exp((cosm - 1.0) * 90.0) * 0.14 + exp((cosm - 1.0) * 600.0) * 0.35);
 
@@ -156,9 +168,39 @@ export class Sky {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
     this.mesh.layers.enable(LAYER.ABOVE);
+
+    // The real sky, turning at the sidereal rate, inside the painted dome. Both of its parts go in the
+    // reflection's layer as well, so the Milky Way and the stars lie on the water the way the painted ones did.
+    this.real = new RealSky({
+      latitude: CELESTIAL.latitude, matchBand: MILKY_WAY_NORMAL, radius: SKY_RADIUS, horizon: [-0.01, 0.1],
+    });
+    for (const o of [this.real.map, this.real.stars]) o.layers.enable(LAYER.ABOVE);
+    this.reveal = 0;
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.real.group);
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); }
+  /** Starts fetching the real Milky Way and star catalogue; the painted sky stands in until they land. */
+  load(renderer) { return this.real.load(renderer); }
+
+  /**
+   * Turns the real sky and cross-fades it in as it arrives. It belongs to the night: it comes up with
+   * `night` and the rain's cloud ceiling takes it away.
+   */
+  update(dt, night, rain) {
+    this.reveal += clamp(this.real.ready - this.reveal, -dt * 0.5, dt * 0.5);
+    this.material.uniforms.uProcedural.value = 1 - this.reveal;
+    this.real.setFade(this.reveal * night * (1 - rain * 0.95));
+    this.real.update(dt);
+  }
+
+  /** Point sprites are in device pixels; Low Power keeps the brightest quarter of the catalogue. */
+  setPixelRatio(ratio, lowPower = false) {
+    this.real.setPixelRatio(ratio);
+    this.real.setStarFraction(lowPower ? 0.25 : 1);
+  }
+
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); this.real.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------

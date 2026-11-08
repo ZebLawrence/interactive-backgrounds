@@ -33,6 +33,11 @@ background (`swift/`) and a web page (`html/`).
   clearing, preens, or shakes out its feathers; gust fronts roll across the clearing now and then
   and shake the trees; snow comes and goes in heavier and lighter spells and slowly loads the
   trees again; a shooting star crosses now and then.
+- **Sky**: the real one — NASA's photographic Milky Way and the Hipparcos catalogue, turning about
+  the celestial pole once a sidereal day. The clearing sits at 64 degrees north, under the auroral
+  oval, so the pole stands 64 degrees up in the north where the curtains are and the sky wheels almost
+  overhead; the galactic core, at declination -29, never rises that far north, so what crosses the sky
+  is the outer arms, which is what the sub-arctic really shows (`assets/sky/realsky.js`).
 - **Aurora Substorm** (menu, `A`) breaks the aurora up now. **Rustle a Vole** (`H`) sets an owl
   hunting somewhere in the clearing. **Snowfall** (`S`) and **Moonlight** (`M`) turn the snow and
   the moon on and off: without the moon the clearing is darker and the aurora and stars stand out.
@@ -173,3 +178,12 @@ breaking up.
 The only image assets are the moon maps in `html/assets/` (`lroc_color_2k.jpg`, `ldem_3_8bit.jpg`),
 from NASA's Scientific Visualization Studio CGI Moon Kit (https://svs.gsfc.nasa.gov/4720); credit:
 NASA's Scientific Visualization Studio.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.

@@ -107,6 +107,8 @@ class App {
     this.renderPass.scene = this.grove.scene;
     this.renderPass.camera = this.grove.camera;
     this.grove.resize(this.size.w, this.size.h);
+    // The real sky's point sprites are sized in device pixels, and Low Power thins the catalogue.
+    this.grove.sky.setPixelRatio(this.pixelRatio, !!this.settings.lowPower);
   }
 
   /** Build (or re-seed) the grove for the current window size. */

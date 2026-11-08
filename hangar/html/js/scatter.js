@@ -20,7 +20,7 @@
 //
 // The walker treats the props as walls: propObstacles(placements).distance(x, z) is the distance to the
 // nearest footprint (negative inside one) and blockNav(graph, obstacles) drops the nav nodes and edges they
-// stand on, so a click can never send the camera through a crate.
+// stand on, so a click can never send the camera through a drum.
 //
 // planPipes(level, rng): pipe runs along walls above head height with brackets (Ruling R15).
 // planDecals(level, rng): grime along wall bases, darkened room corners and leak streaks down the walls.
@@ -46,23 +46,16 @@ const TRIES = 40;
 const NO_PROPS = ['slime', 'walkway', 'door', 'lift', 'window', 'corridor', 'sky'];
 const ORDER = { corner: 0, wall: 1, cluster: 2, free: 3 };
 
-// Props from the manifest (Poly Haven, CC0) and built in props.js (reel, scrap, junction box). Footprints are
-// the models' measured bounding boxes (w along the model's x, d along its z, its front).
+// Props from the manifest (Poly Haven, CC0: the power box and the two drums) and built in props.js (reel,
+// scrap, junction box). Footprints are the models' measured bounding boxes (w along the model's x, d along its
+// z, its front).
 export const CATALOGUE = [
-  { name: 'gas-tank', footprint: [0.34, 0.34], rule: 'corner', perRoom: [0, 1], round: true },
   { name: 'scrap', footprint: [0.62, 0.5], rule: 'corner', perRoom: [0, 1], flush: true }, // a plate leans on the wall
-  { name: 'extinguisher', footprint: [0.28, 0.37], rule: 'wall', perRoom: [0, 1] },
-  { name: 'utility-box', footprint: [0.52, 0.44], rule: 'wall', perRoom: [0, 1] },
-  { name: 'tool-chest', footprint: [0.69, 0.41], rule: 'wall', perRoom: [0, 1] },
-  { name: 'jerrycan', footprint: [0.35, 0.18], rule: 'wall', perRoom: [0, 2] },
   { name: 'power-box', footprint: [0.35, 0.1], rule: 'wall', perRoom: [0, 1], mount: 1.15 }, // the panel without its door
   { name: 'junction-box', footprint: [0.34, 0.14], rule: 'wall', perRoom: [1, 2], mount: 1.45 },
-  { name: 'crate', footprint: [0.83, 0.54], rule: 'cluster', perRoom: [0, 1], vary: true },
   { name: 'drum-red', footprint: [0.57, 0.57], rule: 'cluster', perRoom: [0, 1], round: true, vary: true },
   { name: 'drum-blue', footprint: [0.49, 0.49], rule: 'cluster', perRoom: [0, 1], round: true, vary: true },
-  { name: 'generator', footprint: [0.82, 0.57], rule: 'free', perRoom: [0, 1] },
   { name: 'cable-reel', footprint: [0.72, 0.46], rule: 'free', perRoom: [0, 1] },
-  { name: 'toolbox', footprint: [0.4, 0.28], rule: 'free', perRoom: [0, 1] },
 ];
 
 // ---------------------------------------------------------------------------------------------

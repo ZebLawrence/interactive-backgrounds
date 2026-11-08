@@ -85,7 +85,8 @@ out. No such data exists for Phobos (its best images are about 7 m a pixel), so 
 Each tour turns the square to a new angle round the base. The Phobos grooves, the far ridges, the
 curve of the horizon and the flat pad round the base stay as before. The tiled regolith scan adds only
 the fine grain near the camera, fading to half strength by 60 m so it never repeats visibly.
-`tools/prepare-sky-ground.py` makes all of these files.
+`tools/prepare-sky-ground.py` makes all of these files. The boulders strewn round the base are built in
+code, two new shapes each tour: fractured blocks wearing the same regolith scan.
 
 ## Credits
 
@@ -111,19 +112,9 @@ Hipparcos mission (via NASA HEASARC) for the stars. How the files were fetched a
 | Material | `mat:rust` | Rust Coarse 01 | Dimitrios Savva, Rico Cilliers | CC0 | https://polyhaven.com/a/rust_coarse_01 |
 | Material | `mat:steel` | MetalPlates001 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/MetalPlates001 |
 | Material | `mat:steel-brushed` | Metal009 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/Metal009 |
-| Model | `boulder-a` | Moon Rock 01 | Greg Zaal, Rico Cilliers, Jenelle van Heerden, Dario Barresi | CC0 | https://polyhaven.com/a/moon_rock_01 |
-| Model | `boulder-b` | Moon Rock 03 | Greg Zaal, Rico Cilliers, Jenelle van Heerden | CC0 | https://polyhaven.com/a/moon_rock_03 |
-| Model | `crate` | Old Military Crate | Jack Mava | CC0 | https://polyhaven.com/a/old_military_crate |
 | Model | `drum-blue` | Barrel 02 | Jorge Camacho | CC0 | https://polyhaven.com/a/Barrel_02 |
 | Model | `drum-red` | Barrel_01 | Jorge Camacho | CC0 | https://polyhaven.com/a/Barrel_01 |
-| Model | `extinguisher` | Korean Fire Extinguisher 01 | UM JOORIN | CC0 | https://polyhaven.com/a/korean_fire_extinguisher_01 |
-| Model | `gas-tank` | Propane Tank | Slinc | CC0 | https://polyhaven.com/a/propane_tank |
-| Model | `generator` | Portable Generator | James Ray Cock | CC0 | https://polyhaven.com/a/portable_generator |
-| Model | `jerrycan` | Metal Jerrycan | Sean Buckley | CC0 | https://polyhaven.com/a/metal_jerrycan |
 | Model | `power-box` | Power Box 01 | Rico Cilliers, Yann Kervran | CC0 | https://polyhaven.com/a/power_box_01 |
-| Model | `tool-chest` | Metal Tool Chest | Yann Kervran, John Hutcheson | CC0 | https://polyhaven.com/a/metal_tool_chest |
-| Model | `toolbox` | Metal Toolbox | Mateusz Sadek | CC0 | https://polyhaven.com/a/metal_toolbox |
-| Model | `utility-box` | Utility Box 01 | James Ray Cock | CC0 | https://polyhaven.com/a/utility_box_01 |
 | Image | `mars` | Mars Viking MDIM2.1 Colorized Global Mosaic (1 km/px release), resampled to 8192 x 4096 | NASA / JPL / USGS Astrogeology Science Center | PD | https://astrogeology.usgs.gov/search/map/mars_viking_colorized_global_mosaic_232m |
 | Image | `milkyway` | Deep Star Maps 2020, Milky Way without the Hipparcos/Tycho stars, 8192 x 4096 | NASA/Goddard Space Flight Center Scientific Visualization Studio; Gaia DR2: ESA/Gaia/DPAC | PD | https://svs.gsfc.nasa.gov/4851 |
 | Image | `ground-albedo` | LROC NAC DTM APOLLO16_1, orthophoto M119754107 at 0.5 m, a 4096 m window, shading divided out | NASA / GSFC / Arizona State University | PD | https://pds.lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO16_1/ |

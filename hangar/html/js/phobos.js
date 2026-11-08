@@ -468,8 +468,8 @@ export function makeTerrain(level, rng, marsFlat = [0, 1], realGround = null) {
 }
 
 /**
- * Boulders for this seed: [{ x, y, z, size, yaw, tiltX, tiltZ, model, near }]: model 'a' (the 18k-triangle
- * scan, big near rocks), 'b' (the 6k one, other near rocks) or 'lo' (a 320-triangle stand-in, far rocks). Sizes on a power
+ * Boulders for this seed: [{ x, y, z, size, yaw, tiltX, tiltZ, model, near }]: model 'a' (the finer of the two
+ * code-built shapes, some big near rocks), 'b' (the other near rocks) or 'lo' (a stand-in lump, far rocks). Sizes on a power
  * law (most knee-high, a few the height of a person, the odd house-sized one far out); every one is sunk by
  * a fifth of its size so it sits in the ground. `near` ones lie inside the sun's shadow box `box`
  * ({ x0, z0, x1, z1 }); the rest get projected shadows.

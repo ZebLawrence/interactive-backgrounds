@@ -96,7 +96,9 @@ export class Valley {
     this.mist = new Mist(groundHeight);
     this.ground = new Ground();
     this.grass = new Grass({ halfWidth: (d) => this.halfWidth(d), groundHeight });
-    this.scene.add(this.sky.mesh, this.mountains.group, this.ground.mesh, this.grass.mesh, this.mist.group);
+    this.scene.add(this.sky.group, this.mountains.group, this.ground.mesh, this.grass.mesh, this.mist.group);
+    this.sky.load(app.renderer);
+    this.sky.setPixelRatio(app.pixelRatio ?? 1, !!settings.lowPower);
     this.balloons = [];
     this.setDensity(settings.density);
     // Starting at night, the fleet begins low over the field, lit for the glow, then flies on.
@@ -376,6 +378,7 @@ export class Valley {
     this.cursor.update(pointer, pointer.inside, dt);
     this.updateCamera(dt);
     this.updateBlends(dt, settings);
+    this.sky.update(dt, this.night);
     this.updateGust(dt);
     this.updateAmbient(dt);
     this.burnQueue = this.burnQueue.filter((q) => { if (q.at <= this.clock) { q.b.fire(this.night > 0.5 ? 5 : 3); return false; } return true; });

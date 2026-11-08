@@ -14,7 +14,9 @@ reacts to your cursor: a macOS desktop background (`swift/`) and a web page (`ht
 - **Left alone**, the valley flies itself: envelopes slowly cool and sink, pilots fire their burners
   when they get low or just now and then, and gusts of wind come and go across the valley, pushing
   the balloons, leaning them, and bending the grass.
-- **Night Glow** (menu, `N`): the fiesta's night show. The fleet flies on under a starry sky,
+- **Night Glow** (menu, `N`): the fiesta's night show. The fleet flies on under the real night sky
+  (NASA's photographic Milky Way and the Hipparcos catalogue, turning at the sidereal rate for
+  35 degrees north, `assets/sky/realsky.js`),
   starting low over the field, and each burn lights an envelope up like a lantern; **All Burn**
   (`A`) lights the lot in a ragged wave.
 - **Every balloon is different**: a quilted envelope of 24 gores painted with its own pattern
@@ -109,3 +111,12 @@ URL override the saved setting for testing.
   the vertex shader.
 - Like the other backgrounds it renders at a fixed 30/60 fps, shader time wraps hourly with every
   frequency quantised to that period, and there are no assets: every texture is drawn on a canvas.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.

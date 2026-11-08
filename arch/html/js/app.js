@@ -112,6 +112,8 @@ class App {
     this.renderPass.scene = this.canyon.scene;
     this.renderPass.camera = this.canyon.camera;
     this.canyon.resize(this.size.w, this.size.h);
+    // The real sky's point sprites are sized in device pixels, and Low Power thins the catalogue.
+    this.canyon.sky.setPixelRatio(this.pixelRatio, !!this.settings.lowPower);
   }
 
   /** Build (or re-seed) the scene for the current window size. */

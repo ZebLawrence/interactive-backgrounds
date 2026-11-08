@@ -3,7 +3,7 @@
 # textures as KTX2 UASTC, geometry meshopt-compressed.
 #
 #   bash hangar/tools/prepare-models.sh [name ...]       (no names = all of them)
-#   SIMPLIFY=0.002 bash hangar/tools/prepare-models.sh generator   simplify harder (error as a fraction of the
+#   SIMPLIFY=0.002 bash hangar/tools/prepare-models.sh drum-red    simplify harder (error as a fraction of the
 #                                                                  mesh's extent; gltf-transform's default 0.0001)
 #
 # The plan's one-liner was
