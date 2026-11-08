@@ -314,6 +314,11 @@ export class Scene {
       case 'radar':
         this.instruments.nextRange();
         break;
+      case 'wheel':
+        // She has the wheel again: whatever course she was handed is let go now.
+        this.autopilot.releaseCourse();
+        this.wheelOrder = null;
+        break;
       case 'wipers':
         this.wipersForced = !this.wipersForced;
         break;
@@ -366,6 +371,7 @@ export class Scene {
       speedKnots: this.boat.speedKnots,
       night: G.uNight.value,
       cabin: this.cabinLight,
+      wipers: this.wipersForced ?? false,
     });
     // Spray and rain are water: they show whatever light is falling on them and nothing else.
     this.spray.material.uniforms.uColor.value.set(this.lit.x * 1.5, this.lit.y * 1.55, this.lit.z * 1.6);

@@ -288,6 +288,17 @@ export class Pilot {
   }
 
   /**
+   * Gives her back her own passage: whatever course the owner handed her is let go now rather
+   * than when it runs out, and she goes back to the route she was on. This is what clicking the
+   * wheel does.
+   */
+  releaseCourse() {
+    this.courseOverride = null;
+    this.overrideUntil = 0;
+    if (this.state === 'altering') this.state = 'passage';
+  }
+
+  /**
    * One step. `boat` needs heading, position, rate.z, speedKnots and the order methods; `weather`
    * is the derived weather; `depthAt` is the chart function for the close-in safety check.
    */

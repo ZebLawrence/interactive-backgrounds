@@ -182,7 +182,14 @@ void main() {
 
   // What the glass itself adds, which by day is as close to nothing as it can be: a grazing sheen
   // and a green edge tint. The view out is the point (Hangar's lesson about reflective panes).
-  vec3 sheen = skyRadiance( normalize( reflect( -V, N ) ) ) * fres * 0.45;
+  // Where the pane is edge-on - the sliver of glass that runs behind a mullion, say - the Fresnel
+  // term goes to one and the reflected ray points steeply down into the water. The sky table has
+  // nothing below the horizon, so reading it there returns the bottom row and paints a saturated
+  // green band down the whole edge of the window. A pane reflecting downward is showing the sea,
+  // which is dark: the ray is clamped to the horizon and the sheen fades out under it.
+  vec3 R = normalize( reflect( -V, N ) );
+  float above = smoothstep( -0.03, 0.05, R.y );
+  vec3 sheen = skyRadiance( vec3( R.x, max( R.y, 0.0 ), R.z ) ) * fres * 0.45 * ( 0.12 + 0.88 * above );
   vec3 cabin = uCabinLight * ( 0.10 + 0.5 * fres ) * uNight;
   // A drop is bright against a dark sea and dark against a bright sky, because it is a lens.
   vec3 lit = skyRadiance( normalize( vec3( V.x, abs( V.y ) + 0.25, V.z ) ) );
@@ -267,8 +274,10 @@ export class Glazing {
     u.uFlow.value = clamp01((state.speedKnots - 2.5) / 5);
     u.uCabinLight.value.copy(state.cabin);
 
-    // The wipers run while it rains, and park when it stops: one more sweep, then still.
-    const wantWipers = rain > 0.12;
+    // The wipers run while it rains, and park when it stops: one more sweep, then still. The
+    // switch on the overhead panel starts them whatever the weather, the way you do when the
+    // screen has gone salty and you want a look at what is ahead.
+    const wantWipers = rain > 0.12 || !!state.wipers;
     if (wantWipers) this.wipersOn = true;
     if (this.wipersOn) {
       this.wiperPhase = (this.wiperPhase < 0 ? 0 : this.wiperPhase) + dt / 2.4;

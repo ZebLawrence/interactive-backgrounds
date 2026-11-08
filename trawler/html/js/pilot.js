@@ -472,7 +472,11 @@ export class PilotHouse {
     this.parts.switches = [];
     for (let i = 0; i < 8; i++) {
       const x = -0.58 + i * 0.166;
-      shelf.add(box(0.05, 0.04, 0.045, paint(0x1b1f22, 0.6, 0.1), x, -0.135, 0.012));
+      const body = box(0.05, 0.04, 0.045, paint(0x1b1f22, 0.6, 0.1), x, -0.135, 0.012);
+      shelf.add(body);
+      // The first switch of the row is the wipers: the one thing on this panel worth working by
+      // hand, since everything else on it is already following the weather.
+      if (i === 0) this.parts.wiperSwitch = body;
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.0105, 10, 8),
         new THREE.MeshStandardMaterial({
           color: 0x401008, emissive: [0xff3020, 0x40ff60, 0xffc040][i % 3], emissiveIntensity: 0.2, roughness: 0.4,
@@ -642,6 +646,7 @@ export class PilotHouse {
     for (const l of this.parts.domeLamps ?? []) add(l.lens, 'lamp');
     add(this.parts.overhead, 'horn');
     add(this.parts.dash, 'radar');
+    add(this.parts.wiperSwitch, 'wipers');
   }
 
   /**

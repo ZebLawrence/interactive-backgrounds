@@ -1,0 +1,264 @@
+# Trawler
+
+The view out of a fishing boat's pilot house, somewhere in the fjords (`trawler/html/`). Spec:
+`docs/superpowers/specs/2026-11-08-trawler-design.md`.
+
+## What it is
+
+You are standing at the wheel of a 22 m wooden trawler, eye 5.5 m above the water, looking forward
+over her own foredeck through three raked panes of glass. She is under way at six or seven knots and
+she is navigating herself: she picks a passage through the islands, holds it, alters for shoaling
+water, loiters a while in a sound and goes on. The sea runs from a glassy calm to a full gale and
+back over the course of an hour, the boat rides it as a boat of her tonnage and stability really
+would, and the sun and the moon go round at latitude 62 on a day that takes twenty-four minutes.
+
+Live: `https://zeblawrence.github.io/interactive-backgrounds/trawler/html/` (serve the repo root with
+`python3 -m http.server 8000` and open `/trawler/html/` to run it locally). The sea, the sky and the
+house are there immediately; the scanned materials and props stream in behind them.
+
+## The cursor
+
+- **Move the mouse** and the gaze swings round the pilot house: 115 degrees each way reaches the side
+  windows and the aft bulkhead, 28 degrees up and down reaches the deckhead and the console. The head
+  turns on a spring and leans with the roll; with the cursor in the middle of the window she looks
+  three degrees down, which is where a helmsman's eye sits.
+- **Click out through the glass** and she alters course to the bearing you clicked, holds it for
+  about two minutes, and then goes back to her own passage. **Click the wheel** and she has it back
+  at once.
+- **Let the cursor come to rest** and the porpoises come over to ride her bow wave. They lose
+  interest when it moves again, and they will not come at all when she is barely making way.
+- **Click a control** and it works: the throttle quadrant steps through four notches (dead slow to
+  full), the deckhead lamp cycles white, red and out, the first switch on the overhead panel starts
+  the wipers whatever the weather, the dash steps the radar's range, and the horn on the overhead
+  console scatters the gulls.
+
+## Menu and URL flags
+
+Top-right button (it fades when idle):
+
+| Item | Key | What it does |
+|---|---|---|
+| Drifting weather | `0` | the sea state wanders on its own, with fronts going through |
+| Calm / Moderate / Rough / Storm | `1`–`4` | holds a sea state |
+| Full day and night | | the clock runs: a day every twenty-four minutes |
+| Dawn / Midday / Dusk / Night | `N` for night | holds the clock |
+| Rain | `R` | rain on the glass and in the air, and the wipers go |
+| Red night lighting | `L` | the wheelhouse goes to red, which is what you steer by at night |
+| Low Power (30 fps) | | 30 fps, the drawing buffer capped near 1920 x 1080 (still 4x MSAA), no ambient occlusion, fewer shadow casters |
+| New Waters | | a new seed: another archipelago, another boat's worth of dressing, another passage |
+| Full Screen | | |
+
+Flags: `?seed=N`, `?calm` / `?moderate` / `?rough` / `?storm`, `?sea=0..1`, `?dawn` / `?noon` /
+`?dusk` / `?night`, `?time=0..1`, `?rain` / `?norain`, `?red`, `?lowpower`, `?perf` (frame timing,
+draw calls, texture memory). The settings are remembered in `localStorage`.
+
+Default mode renders at the window size x `devicePixelRatio` (capped at 2) with 4x MSAA, ambient
+occlusion and bloom. A frame-rate governor holds 60 fps, or a steady 30 when 60 cannot be held; it
+never lowers the resolution. At 1400 x 900 a frame costs about 6 ms on a modest discrete GPU and
+about 9.5 ms at 6.1 megapixels; Low Power exists for a 4K panel that cannot hold either.
+
+## The sea
+
+The sea is a spectrum, not a sum of sine waves. A directional JONSWAP spectrum for the wind speed
+and fetch of the moment is spread over direction by Mitsuyasu's cos^2s law (normalised properly, via
+a Lanczos log-gamma, because an unnormalised spreading function gives a slope variance several times
+too large and the sun glitter goes to tinsel), and the result is inverse-transformed on the GPU every
+frame in three cascades — 2048 m for the swell, 256 m for the wind sea, 32 m for the chop — each a
+256 x 256 Stockham FFT with a precomputed butterfly table, writing displacement and slope into a
+multiple-render-target pair. The three bands are split by wavenumber so every wave is counted once
+and none is counted twice.
+
+Three checks keep it honest, and all of them are in `tests/`:
+
+- the mean square slope matches Cox and Munk's measurements of sun glitter on a real sea
+  (0.003 + 0.00512 U10) within a few per cent across the wind range;
+- the significant wave height matches the spectrum's own fourth root of its zeroth moment;
+- the surface the hull rides and the surface the GPU draws are the same surface. The hull is driven
+  by a CPU sum of the longest components; `trawler.verifyOcean()` reads the GPU displacement back
+  and compares the two at random points. Worst error: **0.49 mm on a 0.32 m RMS sea.**
+
+The sea is drawn as a geometry clipmap centred on the camera, out to the curved horizon
+(`y -= d²/2R`, which puts it 8.4 km off a 5.6 m eye and lets an island rise over it). Rings morph
+onto their coarser neighbour's grid at the shared edge — and, less obviously, ramp the level of
+detail they read the cascades at over the same band, because two rings reading the same vertex at two
+different levels put it in two different places and open a hairline crack along the whole ring.
+
+Her wake is the real Kelvin pattern: transverse crests at 2 pi V²/g and divergent crests along the
+arms of a wedge 19.47 degrees either side of her track, whatever her speed, over a world-space foam
+trail that she lays down behind her and that stays where she laid it. In shoal water the waves feel
+the bottom and break, at the shallow-water celerity sqrt(gh), which is what puts white along every
+rock whatever the sea is doing offshore.
+
+## The boat
+
+A six-degree-of-freedom rigid body, not an animation curve. Twenty-seven pressure columns over nine
+stations of a real hull form (22.4 x 6.6 m, 2.8 m draught, 200 tonnes, KG 2.84 m) are asked every
+frame how deep they are under the sea surface at that very point; the buoyancy, the added mass, the
+Froude–Krylov excitation of the wave's own pressure gradient, the quadratic roll damping of her
+bilge keels and the lift of her rudder do the rest. Her metacentric height comes out of the form
+(GM = KB + BM − KG), and `tests/boat.test.mjs` pulls her over and lets go: her roll period and her
+decay are what a boat of her beam and stability has.
+
+She navigates with an A* search over a chart of depth and clearance baked from the terrain, string-
+pulled and smoothed, and a cross-track PID holds her on it. She will not stand into water she cannot
+float in; shoaling under her overrides everything else she is doing.
+
+## The sky
+
+Real sun and moon positions for latitude 62, and real atmosphere: Bruneton's single-scattering model,
+with transmittance baked once into a 64 x 64 table and the sky itself into a 192 x 108 table every
+frame, shared by the sky, the sea and the land so that all three are in the same air. Aerial
+perspective comes from the same tables. The camera adapts its exposure the way an eye does, over
+three orders of magnitude between a bright noon and a moonless night, and everything that glows —
+the stars, the moon, the instruments, the nav lights, the channel marks — is specified as a
+brightness on the screen and divided by that exposure, because a lamp that is right at noon is a
+white hole at midnight otherwise.
+
+Stars are the Hipparcos catalogue at their measured positions, magnitudes and colours. The moon is
+the Lunar Reconnaissance Orbiter's colour mosaic and its height model, with the real libration and
+phase. Cumulus is a volumetric march; cirrus is a sheet above it; both are lit by the same sun.
+
+## The fjord
+
+The land is a height function written once in GLSL and baked into three textures: a near field
+(4 km at 4 m posts) for everything you can see detail in, a far field (48 km at 47 m) for the ranges
+beyond it, and a coarse chart (32 km at 125 m) read back to the CPU for the navigation. Ridges,
+sounds, skerries and the snowline all come out of the same function, so the chart the boat navigates
+by and the land you see are the same land. It is drawn as a second geometry clipmap, with rock,
+cliff, scree, heath, shore and snow blended by height, slope and aspect.
+
+Four channel marks follow her about, moored on shoals — four to thirty metres of water with deep
+water within a hundred and seventy — and re-sited ahead of her when one falls three kilometres
+astern. They float on the same sea the hull rides and their lights flash at night.
+
+## The pilot house
+
+### No premade interior exists
+
+The brief asked for a premade detailed boat interior rather than building one from scratch. There
+isn't one that can be used here. Poly Haven has no wheelhouse or boat interior of any kind. Sketchfab
+has several good ones, but they need an account to download, and the ones that are free are CC BY-SA
+or have no clear licence; the marketplaces (TurboSquid, CGTrader, Unreal/Unity) are paid and their
+licences do not allow redistribution in a public repository. Only sources that need no account are
+used here, and everything shipped is CC0.
+
+So the shell of the house is built in code — which is the right answer anyway, because the window
+openings *are* the composition and they have to be placed to the centimetre — and it is furnished
+with CC0 scans: the compass, the radio, the binoculars, the clock, the clipboard, the thermos, the
+torch, the hat, the stool and the extinguisher are all photogrammetry. `tools/SKETCHFAB-WISHLIST.md`
+lists the richer CC-BY interiors and fittings the owner can download by hand and drop in.
+
+### The composition, worked out from numbers
+
+```
+ 4.00  the wheelhouse sole
+ 4.68  the console top
+ 4.94  the dash top: the sounder, the tacho and the clinometer
+ 4.98  the windscreen sill
+ 5.52  the helmsman's eye
+ 6.02  the windscreen head
+ 6.14  the deckhead
+```
+
+The eye is 1.58 m back from the glass, whose sill is 0.54 m below it and whose head 0.50 m above.
+Through a 62 degree lens pitched three degrees down the glass fills the middle 63% of the frame, the
+console and its dash take the bottom sixth and the deckhead and the overhead console the top fifth.
+Three front panes with the middle one wide: the two mullions sit 24 degrees off the centreline, well
+clear of where the bow and the horizon are. The radar and the plotter hang overhead on a raked panel,
+which is where a trawler really has them and which puts them in the part of the frame that would
+otherwise be bare deckhead.
+
+The glass is its own layer: rain beading and running (climbing, above about five knots, because the
+airflow beats gravity), salt drying on from the spray and washing off in the rain, misting from the
+warm wheelhouse on a cold night, two wipers on the outer panes and a spinning clear-view screen in
+the middle.
+
+Every scanned prop is at its real size. These are Poly Haven models, which are modelled in metres,
+and the scene is in metres, so none of them is scaled — they are placed. `trawler.propSizes()` prints
+the bounding box of every one in metres in the house's own frame, which is how you check that the
+pocket compass is 8 cm across and the fisherman's hat is 35 cm, rather than squinting at a
+screenshot.
+
+## Modules
+
+`html/js/`, about 9,500 lines, no build step:
+
+| Module | What it is |
+|---|---|
+| `mathutil.js`, `util.js` | pure maths and the three-dependent helpers; `mathutil` imports nothing, so node can test the boat and the navigation |
+| `shaders.js` | the shared uniforms, the atmosphere read, noise, shadows, BRDF, the fog override |
+| `oceanspec.js`, `fft.js` | the wave spectrum and the Stockham transform, both pure and both tested |
+| `ocean.js` | the cascades, the simulation passes and the sea's clipmap and shading |
+| `seastate.js` | the weather: an Ornstein–Uhlenbeck wander with fronts going through |
+| `boat.js`, `nav.js` | the rigid body and the pressure columns; the chart, the A* and the autopilot |
+| `wake.js` | the Kelvin pattern, the world-space foam trail and the spray |
+| `sky.js` | the atmosphere tables, sun and moon, stars, clouds |
+| `terrain.js` | the height function, the three bakes and the land's clipmap |
+| `pilot.js`, `glass.js`, `instruments.js`, `deck.js` | the house, the glazing, the screens and the boat you see out of the window |
+| `materials.js`, `assets.js` | the manifest-driven material set and the loader |
+| `wildlife.js` | gulls, porpoises, rain and the channel marks |
+| `post.js`, `governor.js`, `scene.js`, `app.js` | bloom and AO, the frame-rate governor, the scene and the shell |
+
+Tests: `node --test 'trawler/tests/*.test.mjs'` — 37 of them, covering the spectrum, the transform,
+the hull, the navigation and the shader sources.
+
+## Asset pipeline
+
+`tools/` holds offline scripts (nothing runs in the browser); `tools/README.md` has the full rebuild
+recipe. In short: Poly Haven and ambientCG (CC0) downloads are packed into colour / normal / ORM maps
+at 1024 px per metre and encoded as WebP, and props are optimised to glTF. Outputs and
+`html/assets/manifest.json` (source, author and licence of every file) are committed; raw downloads
+are git-ignored. Only sources that need no account are used.
+
+WebP rather than KTX2: the KTX2 route needs Binomial's `basisu` encoder, and running the downloaded
+WASM build was not possible here. WebP at 1024² is sharper than UASTC at the same size, needs no
+toolchain, and still gives 1024 px per metre at a 1 m tile — which is the number that matters, since
+every surface in the house is within two metres of the viewer.
+
+## Credits
+
+Every asset the page loads is listed in `html/assets/manifest.json` with its source, author and
+licence; this table mirrors it. Thanks to Poly Haven and ambientCG for the CC0 scans, to NASA's Scientific
+Visualization Studio for the CGI Moon Kit, and to ESA's Hipparcos mission (via NASA HEASARC) for the
+stars.
+
+| Kind | Key | Asset | Author | Licence | Source |
+|---|---|---|---|---|---|
+| Material | `mat:deck` | Wood Floor Deck | Dimitrios Savva | CC0 | https://polyhaven.com/a/wood_floor_deck |
+| Material | `mat:enamel` | Painted Plaster Wall | Amal Kumar | CC0 | https://polyhaven.com/a/painted_plaster_wall |
+| Material | `mat:heath` | Forest Ground 06 | Charlotte Baglioni | CC0 | https://polyhaven.com/a/forest_ground_06 |
+| Material | `mat:leather` | Brown Leather | Rob Tuytel | CC0 | https://polyhaven.com/a/brown_leather |
+| Material | `mat:paint` | Painted Metal Shutter | Dario Barresi, Rico Cilliers, Charlotte Baglioni | CC0 | https://polyhaven.com/a/painted_metal_shutter |
+| Material | `mat:paint-worn` | Rusty Painted Metal | Amal Kumar | CC0 | https://polyhaven.com/a/rusty_painted_metal |
+| Material | `mat:plywood` | Plywood | Rob Tuytel | CC0 | https://polyhaven.com/a/plywood |
+| Material | `mat:rock` | Dark Rock | Amal Kumar | CC0 | https://polyhaven.com/a/dark_rock |
+| Material | `mat:rock-cliff` | Cliff Side | James Ray Cock, Jenelle van Heerden, Dario Barresi | CC0 | https://polyhaven.com/a/cliff_side |
+| Material | `mat:rubber` | Rubber Tiles | Amal Kumar | CC0 | https://polyhaven.com/a/rubber_tiles |
+| Material | `mat:scree` | Brown Mud Rocks 01 | Rob Tuytel | CC0 | https://polyhaven.com/a/brown_mud_rocks_01 |
+| Material | `mat:shore` | Coast Land Rocks 01 | Rob Tuytel, Rico Cilliers | CC0 | https://polyhaven.com/a/coast_land_rocks_01 |
+| Material | `mat:snow` | Snow006 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/Snow006 |
+| Material | `mat:steel` | MetalPlates001 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/MetalPlates001 |
+| Material | `mat:steel-brushed` | Metal009 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/Metal009 |
+| Material | `mat:steel-rust` | Rusty Metal 03 | Amal Kumar | CC0 | https://polyhaven.com/a/rusty_metal_03 |
+| Material | `mat:teak` | Teak Veneer | Jenelle van Heerden | CC0 | https://polyhaven.com/a/teak_veneer |
+| Model | `binoculars` | Binoculars | Derek Wight | CC0 | https://polyhaven.com/a/binoculars |
+| Model | `buoy` | Ocean Buoy | Mateusz Sadek | CC0 | https://polyhaven.com/a/ocean_buoy |
+| Model | `caged_light` | Caged Hanging Light | Ulan Cabanilla | CC0 | https://polyhaven.com/a/caged_hanging_light |
+| Model | `clipboard` | Clipboard | ProgrammerOnCoffee | CC0 | https://polyhaven.com/a/clipboard |
+| Model | `clock` | Wall Clock | PierreB3D | CC0 | https://polyhaven.com/a/wall_clock |
+| Model | `compass` | Seadogs Compass | Benny Weimer | CC0 | https://polyhaven.com/a/seadogs_compass |
+| Model | `crate` | Plastic Crate 02 | Fabi_G | CC0 | https://polyhaven.com/a/plastic_crate_02 |
+| Model | `extinguisher` | Korean Fire Extinguisher 01 | UM JOORIN | CC0 | https://polyhaven.com/a/korean_fire_extinguisher_01 |
+| Model | `fender` | Old Tyre | MP | CC0 | https://polyhaven.com/a/old_tyre |
+| Model | `hat` | Fishermans Hat | PierreB3D | CC0 | https://polyhaven.com/a/fishermans_hat |
+| Model | `jerrycan` | Metal Jerrycan | Sean Buckley | CC0 | https://polyhaven.com/a/metal_jerrycan |
+| Model | `lifebuoy` | Lifebuoy | Hank Kaamura | CC0 | https://polyhaven.com/a/lifebuoy |
+| Model | `lifejacket` | Life Jacket | PierreB3D | CC0 | https://polyhaven.com/a/life_jacket |
+| Model | `seamark` | Lateral Sea Marker | James Ray Cock, Kuutti Siitonen | CC0 | https://polyhaven.com/a/lateral_sea_marker |
+| Model | `stool` | Metal Stool 02 | Ulan Cabanilla | CC0 | https://polyhaven.com/a/metal_stool_02 |
+| Model | `thermos` | Plastic Thermos | PierreB3D | CC0 | https://polyhaven.com/a/plastic_thermos |
+| Model | `torch` | Vintage Flashlight | Omar M. El-Safy | CC0 | https://polyhaven.com/a/vintage_flashlight |
+| Model | `vhf` | Vintage Radio Transceiver | Mateusz Sadek | CC0 | https://polyhaven.com/a/vintage_radio_transceiver |
+| Image | `lroc_color_2k.jpg` | CGI Moon Kit, LROC WAC colour mosaic | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
+| Image | `ldem_3_8bit.jpg` | CGI Moon Kit, LOLA displacement map | NASA's Scientific Visualization Studio | PD | https://svs.gsfc.nasa.gov/4720 |
+| Data | `data/stars.bin` | Hipparcos Main Catalogue (ESA 1997), HEASARC copy: positions, V magnitudes, B-V colours | ESA Hipparcos mission; NASA HEASARC | PD | https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/hipparcos.html |

@@ -548,6 +548,7 @@ attribute float mag;
 attribute vec3 starColor;
 uniform float uStarScale;
 uniform float uStarGain;
+uniform float uStarCull;   // the gain below which a star is not worth a point, in gain's own units
 varying vec3 vStar;
 void main() {
   vec3 w = mat3( modelMatrix ) * position;
@@ -559,7 +560,11 @@ void main() {
   gl_PointSize = uStarScale * ( 1.5 + 2.4 * big );
   vec4 p = projectionMatrix * vec4( mat3( viewMatrix ) * w, 1.0 );
   p.z = p.w * 0.999995;
-  gl_Position = b < 0.0015 ? vec4( 2.0, 2.0, 2.0, 1.0 ) : p;
+  // A star is dropped when it would not be seen. The threshold has to be in the same units as b,
+  // and b is divided by the camera's exposure (every emissive thing in this scene is), so a fixed
+  // number here would throw away the whole sky the moment the camera adapts to a dark night: at an
+  // exposure of 957 the brightest star in the catalogue comes out at 0.0014. The CPU scales it.
+  gl_Position = b < uStarCull ? vec4( 2.0, 2.0, 2.0, 1.0 ) : p;
 }
 `;
 
@@ -719,7 +724,7 @@ export class Sky {
     g.setAttribute('starColor', new THREE.BufferAttribute(cat.color, 3));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 2);
     this.starMat = new THREE.ShaderMaterial({
-      uniforms: { uStarScale: { value: 1.6 }, uStarGain: { value: 1 } },
+      uniforms: { uStarScale: { value: 1.6 }, uStarGain: { value: 1 }, uStarCull: { value: 0.0015 } },
       vertexShader: STAR_VERT, fragmentShader: STAR_FRAG,
       blending: THREE.AdditiveBlending, depthWrite: false, depthTest: true, transparent: true,
     });
@@ -980,6 +985,8 @@ export class Sky {
     if (this.starMat) {
       const wash = clamp01(1 - smoothstep(0.0012, 0.03, lum));
       this.starMat.uniforms.uStarGain.value = (wash * 1.35) / e;
+      // Both of these are brightnesses on the screen, so both are divided by the exposure.
+      this.starMat.uniforms.uStarCull.value = 0.0015 / e;
       this.stars.visible = this.starMat.uniforms.uStarGain.value * e > 0.012;
     }
     if (this.moon) {
