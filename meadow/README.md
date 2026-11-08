@@ -16,8 +16,12 @@ desktop background (`swift/`) and a web page (`html/`).
   glow, the synchronous firefly's shared pulse, Photuris's pair of glows high over the meadow, and
   dim blue ghosts creeping low in the grass. Lanterns ease in and out over several seconds; only a
   fright or a clap switches one abruptly. Their light falls on the grass and flowers around them.
-- **Sky**: stars of every colour and size, a Milky Way with a glowing core, cool outer arms and
-  dark dust lanes threaded through it, a gibbous moon with a halo, shooting stars now and then,
+- **Sky**: the real one. The stars are the Hipparcos catalogue, each where it really is and as
+  bright and as coloured as it really is, and the Milky Way is NASA's photographic map of it, with
+  the galactic bulge, the arms and the real dust lanes. It turns about the celestial pole once a
+  sidereal day, 15 degrees an hour, as the sky does over a meadow at 41 degrees north, so over an
+  evening the band leans across and the stars rise in the east. A gibbous moon with a halo,
+  shooting stars now and then,
   mist drifting over the grass, and a tree line of spruce, broadleaf and bare winter trees
   silhouetted on the horizon before everything fades to black. The moon is the real one: NASA's
   Lunar Reconnaissance Orbiter colour and height maps wrapped on a sphere and lit by its own sun.
@@ -91,9 +95,12 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   uses Kuramoto phase coupling with its neighbours, strengthened when gathered, so bursts of flashing
   sweep across the meadow and lock together around the cursor. The 32 brightest fireflies are sent to
   the grass and ground shaders as point lights in their own colours, so blue ghosts cast blue light.
-- `sky.js` paints the Milky Way once onto an equirectangular canvas (core, arms, dust lanes, nebula
-  tints) and renders the sky in a fragment shader (gradient, that haze map, three hashed star
-  layers with colour temperature and twinkle, the moon's halo, storm cloud), the moon as a textured
+- `sky.js` renders the sky in a fragment shader (gradient, airglow, the moon's halo, storm cloud)
+  and hangs the real sky inside it (`assets/sky/realsky.js`: the photographic Milky Way on a sphere
+  and the catalogue as additive points, in a frame that turns at the sidereal rate). It still paints
+  its old Milky Way onto a canvas and hashes its old stars, but only as the stand-in that is up from
+  the first frame until those two files arrive, and as the fallback if they never do; `uProcedural`
+  cross-fades them out and the shader then skips them entirely. The moon is a textured
   sphere with a directional light for its phase, meteors as a streak
   quad on the sky sphere, and the tree line and hills as alpha-tested silhouettes in the fog. The
   tree line is drawn in metres (trunks, drooping branches with needle tufts, forking limbs, leaf
@@ -106,3 +113,12 @@ Three.js loaded from a CDN), so there's no build step: serve the folder with any
   are the moon maps in `html/assets/` (`lroc_color_2k.jpg`, `ldem_3_8bit.jpg`), from NASA's
   Scientific Visualization Studio CGI Moon Kit (https://svs.gsfc.nasa.gov/4720); credit: NASA's
   Scientific Visualization Studio.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.

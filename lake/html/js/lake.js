@@ -192,7 +192,9 @@ export class Lake {
     this.lilies = new Lilies({ halfWidth: (d) => this.halfWidth(d) });
     /** Everywhere a dragonfly may land: reed tops and lily pads. */
     this.perches = [...this.reeds.perches, ...this.lilies.perches];
-    this.scene.add(this.sky.mesh, this.moon.mesh, this.shore.group, this.mist.group, this.rainFx.points, this.water.mesh, this.bed.mesh, this.bedLife.group, this.reeds.group, this.lilies.group);
+    this.scene.add(this.sky.group, this.moon.mesh, this.shore.group, this.mist.group, this.rainFx.points, this.water.mesh, this.bed.mesh, this.bedLife.group, this.reeds.group, this.lilies.group);
+    this.sky.load(renderer);
+    this.sky.setPixelRatio(app.pixelRatio ?? 1, !!settings.lowPower);
 
     this.stoneGeometry = new THREE.SphereGeometry(1, 14, 10);
     this.stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4744, roughness: 0.7, metalness: 0.05 });
@@ -389,6 +391,7 @@ export class Lake {
     this.mist.update(dt, this.night, this.rain);
     this.rainFx.update(this.rain);
     this.moon.update(this.night, this.rain);
+    this.sky.update(dt, this.night, this.rain);
     this.water.uniforms.uRingCount.value = this.rings.update(this.clock);
     this.sim.step(dt);
   }

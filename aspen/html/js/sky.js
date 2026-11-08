@@ -5,8 +5,18 @@
 import * as THREE from 'three';
 import { TAU, rnd, clamp, lerp, smoothstep, v3, unit, approach, Art } from './util.js';
 import { G, Q, NOISE_GLSL } from './shaders.js';
+import { RealSky } from 'realsky';
 
 export const SKY_RADIUS = 8000;
+
+/**
+ * Where the grove is, for the real sky's turn: 39 degrees north, the Colorado aspen belt. Night mode had
+ * only hashed stars and no Milky Way, so there is no painted band to keep: BAND_NORMAL is chosen instead, to
+ * stand the band steeply across the view the way it does on a clear winter night, and which way north lies
+ * is solved from it (assets/sky/realsky.js, fitNorth).
+ */
+export const CELESTIAL = { latitude: 39 };
+export const BAND_NORMAL = v3(0.55, 0.68, 0.48).normalize();
 
 // ---------------------------------------------------------------------------------------------
 // Sky dome. Overcast: a pale grey stratus, brighter toward the hidden sun and the horizon, its
@@ -19,6 +29,7 @@ export class Sky {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: G.uTime, uSun: G.uSun, uNight: G.uNight, uSunDir: G.uSunDir, uMoonDir: G.uMoonDir, uFogColor: G.uFogColor, uSnowing: G.uSnowing,
+        uProcedural: { value: 1 },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -26,7 +37,7 @@ export class Sky {
         varying vec3 vDir;
         void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uSun, uNight, uSnowing; uniform vec3 uSunDir, uMoonDir, uFogColor;
+        uniform float uTime, uSun, uNight, uSnowing, uProcedural; uniform vec3 uSunDir, uMoonDir, uFogColor;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
@@ -76,9 +87,13 @@ export class Sky {
 
           // --- Night: deep blue, stars, the moon's halo and a hint of the 22-degree ice halo.
           vec3 night = mix(vec3(0.012, 0.018, 0.04), vec3(0.002, 0.004, 0.012), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
-          vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-          vec3 stars = starLayer(uv, 380.0, 0.75, 1.2, 0.0) + starLayer(uv, 760.0, 0.84, 0.6, 5.0) + starLayer(uv, 1400.0, 0.9, 0.3, 11.0);
-          night += stars * smoothstep(-0.02, 0.08, h) * (1.0 - cum * 0.9 * (1.0 - uSun) * 0.0);
+          // The hashed stars stand in until the real sky arrives (realsky.js draws the real stars and the
+          // Milky Way); once it has, uProcedural is 0 and none of this is paid for.
+          if (uProcedural > 0.001) {
+            vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            vec3 stars = starLayer(uv, 380.0, 0.75, 1.2, 0.0) + starLayer(uv, 760.0, 0.84, 0.6, 5.0) + starLayer(uv, 1400.0, 0.9, 0.3, 11.0);
+            night += stars * smoothstep(-0.02, 0.08, h) * uProcedural;
+          }
           float cosM = dot(d, uMoonDir);
           float halo = exp((cosM - 1.0) * 90.0) * 0.05 + exp((cosM - 1.0) * 900.0) * 0.25;
           float ring = exp(-pow((acos(clamp(cosM, -1.0, 1.0)) - 0.384) / 0.012, 2.0)) * 0.012;
@@ -96,9 +111,37 @@ export class Sky {
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 48, 32), this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
+
+    // The real sky, turning at the sidereal rate, inside the painted dome.
+    this.real = new RealSky({
+      latitude: CELESTIAL.latitude, matchBand: BAND_NORMAL, radius: SKY_RADIUS, horizon: [-0.02, 0.08],
+    });
+    this.reveal = 0;
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.real.group);
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); }
+  /** Starts fetching the real Milky Way and star catalogue; the hashed stars stand in until they land. */
+  load(renderer) { return this.real.load(renderer); }
+
+  /**
+   * Turns the real sky and cross-fades it in as it arrives. It belongs to a clear night: `night` brings it
+   * up and the snow cloud (sun = 0) covers it, exactly as the hashed stars behaved.
+   */
+  update(dt, night, sun) {
+    this.reveal += clamp(this.real.ready - this.reveal, -dt * 0.5, dt * 0.5);
+    this.material.uniforms.uProcedural.value = 1 - this.reveal;
+    this.real.setFade(this.reveal * night * sun);
+    this.real.update(dt);
+  }
+
+  /** Point sprites are in device pixels; Low Power keeps the brightest quarter of the catalogue. */
+  setPixelRatio(ratio, lowPower = false) {
+    this.real.setPixelRatio(ratio);
+    this.real.setStarFraction(lowPower ? 0.25 : 1);
+  }
+
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.real.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------

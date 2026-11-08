@@ -55,7 +55,9 @@ export class Boreal {
     this.moon = new Moon();
     this.meteors = new Meteors();
     this.aurora = new Aurora();
-    this.scene.add(this.sky.mesh, this.moon.group, this.meteors.mesh, this.aurora.group);
+    this.scene.add(this.sky.group, this.moon.group, this.meteors.mesh, this.aurora.group);
+    this.sky.load(app.renderer);
+    this.sky.setPixelRatio(app.pixelRatio ?? 1, !!settings.lowPower);
 
     // --- Ground -----------------------------------------------------------------------------
     this.snowpack = new Snowpack(this.height);
@@ -578,6 +580,7 @@ export class Boreal {
     // --- Sky and light ----------------------------------------------------------------------------
     G.uMoon.value = approach(G.uMoon.value, settings.moonlight ? 1 : 0, 1.2, dt);
     this.moon.update(G.uMoon.value);
+    this.sky.update(dt, G.uMoon.value);
     this.moonLight.intensity = 1.15 * G.uMoon.value;
     this.moonLight.visible = G.uMoon.value > 0.01;
     this.aurora.update(dt, this.camera);

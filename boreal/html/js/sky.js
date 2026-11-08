@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TAU, rnd, clamp, lerp, smoothstep, fbm2, v3, unit, Art } from './util.js';
 import { G, Q, NOISE_GLSL } from './shaders.js';
+import { RealSky } from 'realsky';
 
 // The sky sits beyond the aurora, which is drawn at a tenth of its real size (see aurora.js).
 export const SKY_RADIUS = 150000;
@@ -14,7 +15,15 @@ export const SKY_RADIUS = 150000;
 // ---------------------------------------------------------------------------------------------
 
 /** The plane of the galaxy, tilted so the band crosses the sky in front of the viewer. */
-const MILKY_WAY_NORMAL = v3(-0.55, 0.62, 0.56).normalize();
+export const MILKY_WAY_NORMAL = v3(-0.55, 0.62, 0.56).normalize();
+
+/**
+ * Where the clearing is, for the real sky's turn: 64 degrees north, under the auroral oval, with north
+ * toward -z, which is where the curtains stand (aurora.js). North is fixed by the aurora here rather than
+ * solved for from the painted band, so the pole is where the aurora says it is: the sky wheels about a point
+ * 64 degrees up in the north, almost overhead, as it does in the sub-arctic.
+ */
+export const CELESTIAL = { latitude: 64, north: -Math.PI / 2 };
 
 let milkyWayCache = null;
 
@@ -82,7 +91,7 @@ export class Sky {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: G.uTime, uMoon: G.uMoon, uMoonDir: G.uMoonDir, uFogColor: G.uFogColor, uAuroraLight: G.uAuroraLight,
-        uHaze: { value: this.hazeTexture },
+        uHaze: { value: this.hazeTexture }, uProcedural: { value: 1 },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -90,7 +99,7 @@ export class Sky {
         varying vec3 vDir;
         void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uMoon; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform sampler2D uHaze;
+        uniform float uTime, uMoon, uProcedural; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform sampler2D uHaze;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         // One layer of stars on a grid of cells: most faint and white, a few bright, each with its
@@ -122,15 +131,19 @@ export class Sky {
           // The aurora lights the whole sky a little.
           col += uAuroraLight * 0.05 * (0.4 + 0.6 * exp(-max(h, 0.0) * 3.0));
 
-          vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-          vec3 haze = texture2D(uHaze, uv).rgb;
-          float hazeAmt = dot(haze, vec3(0.33));
-          vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0)
-                     + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
-                     + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
-          // Moonlight washes out the faint stars and most of the Milky Way.
-          col += haze * 0.22 * (1.0 - uMoon * 0.6);
-          col += stars * (1.0 - uMoon * 0.35) * smoothstep(-0.02, 0.08, h);
+          // The painted band and the hashed stars stand in until the real sky arrives (realsky.js draws
+          // that one); once it has, uProcedural is 0 and none of this is paid for.
+          if (uProcedural > 0.001) {
+            vec2 uv = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            vec3 haze = texture2D(uHaze, uv).rgb;
+            float hazeAmt = dot(haze, vec3(0.33));
+            vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0)
+                       + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                       + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
+            // Moonlight washes out the faint stars and most of the Milky Way.
+            col += haze * 0.22 * (1.0 - uMoon * 0.6) * uProcedural;
+            col += stars * (1.0 - uMoon * 0.35) * smoothstep(-0.02, 0.08, h) * uProcedural;
+          }
 
           // The moon's halo, and a hint of the 22-degree ice halo in cold air.
           float cosm = dot(d, uMoonDir);
@@ -146,9 +159,35 @@ export class Sky {
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 48, 32), this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
+
+    // The real sky, turning at the sidereal rate, inside the painted dome.
+    this.real = new RealSky({
+      latitude: CELESTIAL.latitude, north: CELESTIAL.north, matchBand: MILKY_WAY_NORMAL,
+      radius: SKY_RADIUS, horizon: [-0.02, 0.08],
+    });
+    this.reveal = 0;
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.real.group);
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); }
+  /** Starts fetching the real Milky Way and star catalogue; the painted sky stands in until they land. */
+  load(renderer) { return this.real.load(renderer); }
+
+  /** Turns the real sky, cross-fades it in as it arrives, and lets the moon wash it out as it did before. */
+  update(dt, moon) {
+    this.reveal += clamp(this.real.ready - this.reveal, -dt * 0.5, dt * 0.5);
+    this.material.uniforms.uProcedural.value = 1 - this.reveal;
+    this.real.setFade(this.reveal * (1 - moon * 0.45));
+    this.real.update(dt);
+  }
+
+  /** Point sprites are in device pixels; Low Power keeps the brightest quarter of the catalogue. */
+  setPixelRatio(ratio, lowPower = false) {
+    this.real.setPixelRatio(ratio);
+    this.real.setStarFraction(lowPower ? 0.25 : 1);
+  }
+
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); this.real.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------

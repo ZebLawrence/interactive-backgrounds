@@ -6,10 +6,27 @@
 import * as THREE from 'three';
 import { TAU, rnd, clamp, lerp, smoothstep, fbm2, v3, unit, approach, Art } from './util.js';
 import { G, Q, NOISE_GLSL, LAYER } from './shaders.js';
+import { RealSky } from 'realsky';
 
 export const SKY_RADIUS = 8000;
 
-const MILKY_WAY_NORMAL = v3(0.62, 0.55, 0.56).normalize();
+export const MILKY_WAY_NORMAL = v3(0.62, 0.55, 0.56).normalize();
+
+/**
+ * Where the canyon is, for the real sky's turn: Glen Canyon, 37 degrees north, with north toward -z, where
+ * the aurora's curtains stand (aurora.js). North is fixed by the aurora rather than solved for from the
+ * painted band, so the sky wheels about a pole 37 degrees up in the north, as it does over Utah.
+ *
+ * That leaves the band where Utah really has it rather than where the painter put it. The galactic core sits
+ * at declination -29, so from 37 north it culminates 24 degrees above the southern horizon and no higher:
+ * the painted band, steep and overhead, was never a sky this canyon could have. So the start is chosen by
+ * the hour instead (realsky.js, bestAngleForView): the core stays in the south behind the viewer, where Utah
+ * keeps it, and the hour chosen is the one that stands the band at its highest across the view north, so
+ * the Milky Way arches over the bridge through Cygnus and Cassiopeia. The frame only shows the sky from
+ * the cliff tops to about 30 degrees up, so the arc is aimed at 24, inside that strip, not at the zenith
+ * where it would be out of shot.
+ */
+export const CELESTIAL = { latitude: 37, north: -Math.PI / 2, bandAltitude: 24 };
 
 function milkyWayCanvas(w = 1536, h = 768) {
   const N = MILKY_WAY_NORMAL;
@@ -61,12 +78,12 @@ export class Sky {
     this.hazeTexture = Art.texture(milkyWayCanvas(), { srgb: false });
     this.hazeTexture.wrapS = THREE.RepeatWrapping;
     this.material = new THREE.ShaderMaterial({
-      uniforms: { uTime: G.uTime, uAurora: G.uAurora, uMoonDir: G.uMoonDir, uMoonI: { value: 1 }, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture }, uAuroraLight: G.uAuroraLight, uRain: G.uRain, uFlash: G.uFlash },
+      uniforms: { uTime: G.uTime, uAurora: G.uAurora, uMoonDir: G.uMoonDir, uMoonI: { value: 1 }, uFogColor: G.uFogColor, uHaze: { value: this.hazeTexture }, uAuroraLight: G.uAuroraLight, uRain: G.uRain, uFlash: G.uFlash, uProcedural: { value: 1 } },
       side: THREE.BackSide,
       depthWrite: false,
       vertexShader: `varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
-        uniform float uTime, uAurora, uMoonI, uRain; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform vec4 uFlash; uniform sampler2D uHaze;
+        uniform float uTime, uAurora, uMoonI, uRain, uProcedural; uniform vec3 uMoonDir, uFogColor, uAuroraLight; uniform vec4 uFlash; uniform sampler2D uHaze;
         varying vec3 vDir;
         ${NOISE_GLSL}${Q}
         vec3 starLayer(vec2 uv, float cells, float threshold, float gain, float seed) {
@@ -91,13 +108,17 @@ export class Sky {
           vec3 night = mix(vec3(0.02, 0.035, 0.07), vec3(0.003, 0.005, 0.014), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
           night += vec3(0.02, 0.035, 0.03) * exp(-max(h, 0.0) * 12.0) * 0.6;
           night += uAuroraLight * 0.5 * exp(-max(h, 0.0) * 3.0);
-          vec3 haze = texture2D(uHaze, uv).rgb;
-          float hazeAmt = dot(haze, vec3(0.33));
-          vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
-                     + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt) + starLayer(uv, 2600.0, 0.93, 0.15, 23.0) * (0.3 + 2.5 * hazeAmt);
-          // Under a bright aurora the fainter stars and the Milky Way wash out.
-          float wash = 1.0 - 0.6 * clamp(uAurora, 0.0, 1.0);
-          night += haze * 0.3 * wash + stars * (0.6 + 0.4 * wash);
+          // The painted band and the hashed stars stand in until the real sky arrives (realsky.js draws
+          // that one); once it has, uProcedural is 0 and none of this is paid for.
+          if (uProcedural > 0.001) {
+            vec3 haze = texture2D(uHaze, uv).rgb;
+            float hazeAmt = dot(haze, vec3(0.33));
+            vec3 stars = starLayer(uv, 380.0, 0.75, 1.5, 0.0) + starLayer(uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                       + starLayer(uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt) + starLayer(uv, 2600.0, 0.93, 0.15, 23.0) * (0.3 + 2.5 * hazeAmt);
+            // Under a bright aurora the fainter stars and the Milky Way wash out.
+            float wash = 1.0 - 0.6 * clamp(uAurora, 0.0, 1.0);
+            night += (haze * 0.3 * wash + stars * (0.6 + 0.4 * wash)) * uProcedural;
+          }
           float cosm = dot(d, uMoonDir);
           night += vec3(0.6, 0.6, 0.75) * (exp((cosm - 1.0) * 90.0) * 0.12 + exp((cosm - 1.0) * 600.0) * 0.3) * uMoonI;
           vec3 col = night;
@@ -121,9 +142,41 @@ export class Sky {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -10;
     this.mesh.layers.enable(LAYER.ABOVE);
+
+    // The real sky, turning at the sidereal rate, inside the painted dome. Both of its parts go in the
+    // reflection's layer too, so the band and the stars lie on the water under the bridge.
+    this.real = new RealSky({
+      latitude: CELESTIAL.latitude, north: CELESTIAL.north,
+      viewAzimuth: CELESTIAL.north, viewAltitude: CELESTIAL.bandAltitude,
+      radius: SKY_RADIUS, horizon: [-0.01, 0.06],
+    });
+    for (const o of [this.real.map, this.real.stars]) o.layers.enable(LAYER.ABOVE);
+    this.reveal = 0;
+    this.group = new THREE.Group();
+    this.group.add(this.mesh, this.real.group);
   }
 
-  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); }
+  /** Starts fetching the real Milky Way and star catalogue; the painted sky stands in until they land. */
+  load(renderer) { return this.real.load(renderer); }
+
+  /**
+   * Turns the real sky and cross-fades it in as it arrives. A bright aurora washes the faint stars and the
+   * band out, as it did before, and the storm's lid of cloud takes the sky away entirely.
+   */
+  update(dt, aurora, rain) {
+    this.reveal += clamp(this.real.ready - this.reveal, -dt * 0.5, dt * 0.5);
+    this.material.uniforms.uProcedural.value = 1 - this.reveal;
+    this.real.setFade(this.reveal * (1 - 0.45 * clamp(aurora, 0, 1)) * (1 - rain * 0.95));
+    this.real.update(dt);
+  }
+
+  /** Point sprites are in device pixels; Low Power keeps the brightest quarter of the catalogue. */
+  setPixelRatio(ratio, lowPower = false) {
+    this.real.setPixelRatio(ratio);
+    this.real.setStarFraction(lowPower ? 0.25 : 1);
+  }
+
+  dispose() { this.mesh.geometry.dispose(); this.material.dispose(); this.hazeTexture.dispose(); this.real.dispose(); }
 }
 
 // ---------------------------------------------------------------------------------------------

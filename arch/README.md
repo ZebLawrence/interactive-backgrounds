@@ -66,7 +66,13 @@ background (`swift/`) and a web page (`html/`).
   weathering, rust, the rim lamps, the eye) is drawn in the shader from the surface position.
   It walks `ROUTE`; it yaws so the eye itself bears on what it studies and tilts to carry its
   gaze; the beam is cast along the eye's own facing, so it sweeps with the hull.
-- **Water, waves, rings, the sky, the moon and the aurora** are carried over from Loon Lake and
+- **The sky** is the real one: NASA's photographic Milky Way and the Hipparcos catalogue, turning
+  about the celestial pole once a sidereal day. North is where the aurora stands, and the canyon is at
+  37 degrees north, which fixes the rest: the galactic core culminates 24 degrees above the southern
+  horizon, behind the viewer, and the band that crosses the view northward is the stretch through
+  Cygnus and Cassiopeia. The hour of the night is chosen to stand that arc at about 24 degrees, inside
+  the strip of sky the frame actually shows between the cliff tops and its top edge.
+- **Water, waves, rings, the moon and the aurora** are carried over from Loon Lake and
   Boreal Night; the lightning bolt from Firefly Meadow.
 - The rock photographs in `html/assets/` (`wall*.png`, `wall3.webp`, `streaks.png`) are the
   owner's Lake Powell pictures; they fill the little rock the projection cannot cover.
@@ -142,3 +148,12 @@ land against the picture, lay `assets/reference.webp` over the page as an `<img>
 sized to the viewport height; to check the shore, swap the water's material for a flat colour.
 Force a lightning strike with `arch.canyon.lightning.timer = 0` under rain. Module URLs in
 `index.html` carry `?v=N`; raise N whenever the JS changes.
+
+The night sky is the real one, shared by every background that has one (`assets/sky/realsky.js`):
+the Milky Way is NASA/Goddard's Scientific Visualization Studio **Deep Star Maps 2020**
+(https://svs.gsfc.nasa.gov/4851, Gaia DR2: ESA/Gaia/DPAC), and the stars are the **Hipparcos**
+catalogue, 118,218 of them to magnitude 12, each at its measured position, brightness and colour.
+Both files are the ones Hangar prepared (`hangar/html/assets/images/milkyway.ktx2`,
+`hangar/html/data/stars.bin`, see `hangar/tools/prepare-sky-ground.py`) and are loaded from there, so
+the browser caches them once for all of the backgrounds. Credit: NASA's Scientific Visualization
+Studio, and ESA/Gaia/DPAC.

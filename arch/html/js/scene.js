@@ -178,7 +178,9 @@ export class Scene {
     this.moon = new Moon();
     this.aurora = new Aurora();
     this.lightState = new Light(settings);
-    this.scene.add(this.sky.mesh, this.moon.mesh, this.aurora.group);
+    this.scene.add(this.sky.group, this.moon.mesh, this.aurora.group);
+    this.sky.load(renderer);
+    this.sky.setPixelRatio(app.pixelRatio ?? 1, !!settings.lowPower);
     this.aurora.group.traverse((o) => o.layers.enable(LAYER.ABOVE));
 
     // --- The water ----------------------------------------------------------------------------
@@ -468,6 +470,7 @@ export class Scene {
       this.craft.update(dt, this);
     }
     this.moon.update(this.lightState.moon * (1 - 0.97 * this.rain));
+    this.sky.update(dt, G.uAurora.value, this.rain);
     this.water.uniforms.uRingCount.value = this.rings.update(this.clock);
     this.sim.step(dt);
   }
