@@ -3,8 +3,8 @@
 // new PhobosSky(scene, assets, rng, { level, renderer, edges?, shell? }) adds everything to the THREE.Scene
 // (edges and shell: phobos.openEdges / planShell, when the caller already made them); update(dt, camera)
 // turns Mars (slowly: the face it shows drifts by a full turn every 11 hours, as it does from Phobos) and keeps
-// the stars sized for the pixel ratio; setAsset(kind, name, asset) takes the Mars mosaic, the regolith and
-// concrete scans and the boulder models as they stream in. `assets` is the map of items that arrived before
+// the stars sized for the pixel ratio; setAsset(kind, name, asset) takes the Mars mosaic and the regolith and
+// concrete scans as they stream in. `assets` is the map of items that arrived before
 // (app.assetItems); the sky works on stand-ins until each arrives.
 //
 // The real sky (phobos.skyOrientation turns it so the galactic centre hangs beside Mars, away from the sun):
@@ -26,7 +26,8 @@
 // round it, rendered only when something in it changes (shadow.autoUpdate off, needsUpdate on demand: the base
 // is static; call refreshShadow() when something in it moves), inside the one per-frame shadow update
 // scene.render() already does. Boulders beyond that box get a planar shadow: the rock projected onto its
-// ground plane along the sun, multiplied in. Near boulders are the two scans; far ones a 320-triangle lump.
+// ground plane along the sun, multiplied in. Near boulders are two shapes built in code for each seed
+// (codeRock); far ones a 320-triangle lump. All wear the regolith scan, mapped triplanar.
 // Terrain and boulders use an outdoor shader (sun, shadow, fill, Mars's warm light) instead of the standard
 // one, which would make every outdoor pixel pay for the interior's lamps; Emergency Power never reaches them.
 //
@@ -81,7 +82,10 @@ const SHADOW_TINT = 0.08; // what a planar shadow leaves of the sunlit ground (a
 // Phobos is dark (albedo about 0.07): the moon scan, light grey, is scaled down to it on the open ground.
 const STAND_IN = new THREE.Color().setRGB(0.07, 0.066, 0.062);
 const REGOLITH_TINT = new THREE.Color().setRGB(0.2, 0.19, 0.18);
-const ROCK_TINT = new THREE.Color().setRGB(0.32, 0.31, 0.3); // the scanned rocks, darkened to match
+// The rocks: the regolith scan, a little lighter than the open ground, and a flat stand-in until it arrives.
+const ROCK_TINT = new THREE.Color().setRGB(0.32, 0.31, 0.3);
+const ROCK_STAND_IN = ROCK_TINT.clone().multiplyScalar(0.35);
+const ROCK_TRIPLANAR = 0.6; // the scan's repeats per metre on the rocks (it covers 2 m on the ground)
 
 const SKY_VERT = /* glsl */ `
 // Camera-relative: rotate by the view, never translate, and sit on the far plane.
@@ -322,6 +326,9 @@ uniform float groundSize;
 uniform float groundContrast;
 varying float vRelief;
 #endif
+#ifdef TRIPLANAR
+uniform float triScale;
+#endif
 varying vec3 vOutW;
 varying vec3 vOutN;
 varying vec2 vOutUv;
@@ -362,6 +369,24 @@ void main() {
 #endif
   vec3 N = Ng;
   vec3 albedo = tint * vOutCol;
+#ifdef TRIPLANAR
+  // The code-built rocks have no uvs: the maps are projected along the three world axes and blended by the
+  // normal (the whiteout blend for the normal map), so there are no seams and no stretching.
+  vec3 tw = pow( abs( Ng ), vec3( 4.0 ) );
+  tw /= tw.x + tw.y + tw.z;
+  vec3 tp = vOutW * triScale;
+  if ( hasMap > 0.5 ) albedo *= texture2D( map, tp.zy ).rgb * tw.x + texture2D( map, tp.xz ).rgb * tw.y + texture2D( map, tp.xy ).rgb * tw.z;
+  if ( hasNormal > 0.5 ) {
+    vec3 nx = texture2D( normalMap, tp.zy ).xyz * 2.0 - 1.0;
+    vec3 ny = texture2D( normalMap, tp.xz ).xyz * 2.0 - 1.0;
+    vec3 nz = texture2D( normalMap, tp.xy ).xyz * 2.0 - 1.0;
+    nx.xy *= normalScale; ny.xy *= normalScale; nz.xy *= normalScale;
+    nx = vec3( nx.xy + Ng.zy, abs( nx.z ) * Ng.x );
+    ny = vec3( ny.xy + Ng.xz, abs( ny.z ) * Ng.y );
+    nz = vec3( nz.xy + Ng.xy, abs( nz.z ) * Ng.z );
+    N = normalize( nx.zyx * tw.x + ny.xzy * tw.y + nz.xyz * tw.z );
+  }
+#else
   if ( hasMap > 0.5 ) {
     vec3 c = texture2D( map, vOutUv ).rgb;
 #ifdef ANTI_TILE
@@ -396,6 +421,7 @@ void main() {
       if ( l > 1e-6 ) N = Np / l;
     }
   }
+#endif
   // The geometric normal gates the mapped one, so relief never lights a face turned from the sun.
   float ndl = max( dot( N, sunDir ), 0.0 ) * smoothstep( - 0.05, 0.1, dot( Ng, sunDir ) );
   vec3 irr = vec3( sunI * ndl * outdoorShadow( vOutSh ) ) + fill + marsFill * max( dot( N, marsDir ), 0.0 );
@@ -411,7 +437,10 @@ const MW_GAIN = 0.15; // the Milky Way map's stored value (radiance / 0.2) to li
 const OUTDOOR_FILL = new THREE.Color().setRGB(0.1, 0.1, 0.11);
 const MARS_FILL = new THREE.Color().setRGB(0.22, 0.11, 0.05); // Mars at half phase, 42° across, albedo 0.25
 
-/** An outdoor material (see above). `opts`: { tint, mask, antiTile, vertexColors, ground (terrain.ground) }. */
+/**
+ * An outdoor material (see above). `opts`: { tint, mask, antiTile, vertexColors, ground (terrain.ground),
+ * triplanar (map repeats per metre, projected along the world axes instead of the uvs) }.
+ */
 function outdoorMaterial(sky, opts = {}) {
   const u = {
     map: { value: null }, normalMap: { value: null }, hasMap: { value: 0 }, hasNormal: { value: 0 },
@@ -430,10 +459,12 @@ function outdoorMaterial(sky, opts = {}) {
       groundSize: { value: g.size }, groundContrast: { value: GROUND_CONTRAST },
     });
   }
+  if (opts.triplanar) u.triScale = { value: opts.triplanar };
   const defines = {};
   if (opts.mask) defines.TERRAIN_MASK = '';
   if (g) defines.GROUND = '';
   if (opts.antiTile) defines.ANTI_TILE = '';
+  if (opts.triplanar) defines.TRIPLANAR = '';
   const m = new THREE.ShaderMaterial({ uniforms: u, defines, vertexShader: OUTDOOR_VERT, fragmentShader: OUTDOOR_FRAG, vertexColors: !!opts.vertexColors });
   m.name = opts.name ?? 'outdoor';
   m.userData.setMaps = (map, normalMap, normalScale) => {
@@ -474,6 +505,75 @@ function chunked(geo, material, name, key) {
     group.add(m);
   }
   return group;
+}
+
+/** Seeded 3D value noise in [-1, 1] (smoothstep-blended lattice values). */
+function valueNoise3(rng) {
+  const perm = new Uint8Array(512), val = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { perm[i] = i; val[i] = rng.range(-1, 1); }
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rng.next() * (i + 1)); [perm[i], perm[j]] = [perm[j], perm[i]]; }
+  for (let i = 0; i < 256; i++) perm[256 + i] = perm[i];
+  const h = (x, y, z) => val[perm[perm[perm[x & 255] + (y & 255)] + (z & 255)]];
+  const s = (t) => t * t * (3 - 2 * t);
+  const l = (a, b, t) => a + (b - a) * t;
+  return (x, y, z) => {
+    const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    const fx = s(x - xi), fy = s(y - yi), fz = s(z - zi);
+    return l(
+      l(l(h(xi, yi, zi), h(xi + 1, yi, zi), fx), l(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), fx), fy),
+      l(l(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), fx), l(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), fx), fy),
+      fz,
+    );
+  };
+}
+
+/**
+ * A boulder built in code (the near rocks; no scanned model): an icosphere squashed to a seeded ellipsoid and
+ * bent by two octaves of noise, then cut by a few seeded planes for the flat broken faces of fractured rock,
+ * and roughened lightly so those faces are not glassy. Vertex colour darkens the hollows (a cheap occlusion).
+ * `detail` is the icosphere's segments per edge less one: 15 makes 5120 triangles, 27 makes 15680. No uvs: its
+ * material maps triplanar.
+ */
+function codeRock(rng, detail) {
+  const g = mergeVertices(new THREE.IcosahedronGeometry(1, detail).deleteAttribute('normal').deleteAttribute('uv'));
+  const p = g.attributes.position;
+  const noise = valueNoise3(rng);
+  const e = [1, rng.range(0.55, 0.75), rng.range(0.75, 0.95)]; // x is the long axis, y the flattened one
+  const cuts = [];
+  for (let i = 0, n = rng.int(8, 12); i < n; i++) {
+    const y = i === 0 ? rng.range(0.75, 1) : rng.range(-0.3, 0.75); // one across the top, the rest round the sides
+    const a = rng.range(0, Math.PI * 2), r = Math.sqrt(1 - y * y);
+    const nx = Math.cos(a) * r, nz = Math.sin(a) * r;
+    // The ellipsoid's reach along the normal, so a cut takes the same share off a long side as a short one.
+    const reach = Math.hypot(nx * e[0], y * e[1], nz * e[2]);
+    cuts.push({ n: [nx, y, nz], d: rng.range(0.45, 0.8) * reach });
+  }
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const ux = p.getX(i), uy = p.getY(i), uz = p.getZ(i);
+    const bend = noise(ux * 1.3, uy * 1.3, uz * 1.3) * 0.22 + noise(ux * 3.1 + 7.3, uy * 3.1, uz * 3.1) * 0.08;
+    const x = ux * (1 + bend) * e[0], y = uy * (1 + bend) * e[1], z = uz * (1 + bend) * e[2];
+    // Every point slides in along its own ray from the centre to the nearest cut it lies beyond: the surface
+    // stays star-shaped, so the faces meet in clean edges and nothing folds over (pushing points along the
+    // cuts' normals instead leaves fins where two cuts meet on a lumpy surface).
+    let k = 1;
+    for (const c of cuts) {
+      const t = x * c.n[0] + y * c.n[1] + z * c.n[2];
+      if (t > c.d) k = Math.min(k, c.d / t);
+    }
+    // Relief on the broken faces (a gentle warp and pitted grain), so they are not glassy planes; along the ray too.
+    const relief = noise(ux * 4.2 + 1.7, uy * 4.2, uz * 4.2) * 0.03 + noise(ux * 11 + 3.1, uy * 11, uz * 11) * 0.016
+      + noise(ux * 27, uy * 27 + 5.7, uz * 27) * 0.006;
+    k *= 1 + relief / Math.hypot(x, y, z);
+    p.setXYZ(i, x * k, y * k, z * k);
+    const shade = Math.min(1.08, Math.max(0.6, 0.94 + bend * 0.8 + relief * 3));
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = shade;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  const size = g.boundingBox.getSize(new THREE.Vector3());
+  return { geo: g, extent: Math.max(size.x, size.y, size.z), centre: g.boundingBox.getCenter(new THREE.Vector3()), minY: g.boundingBox.min.y };
 }
 
 /** A lumpy rock: an icosphere (320 triangles) pushed in and out by a fixed hash of each vertex, flattened. */
@@ -558,9 +658,11 @@ export class PhobosSky {
     this.boulders = new THREE.Group();
     this.boulders.name = 'boulders';
     this.group.add(this.boulders);
-    this.models = {};
+    // This seed's two rock shapes: 'a' for some of the big ones (finer), 'b' for the rest.
+    const shapes = rng.fork('rock-shapes');
+    this.rocks = { a: codeRock(shapes.fork('a'), 27), b: codeRock(shapes.fork('b'), 15) };
     this.rockMats = {};
-    this.buildBoulders(); // the far ones need no model
+    this.buildBoulders();
     for (const it of assets?.values?.() ?? []) this.setAsset(it.kind, it.name, it.asset);
   }
 
@@ -874,39 +976,14 @@ export class PhobosSky {
   // ---- boulders ----
   buildBoulders() {
     for (const c of [...this.boulders.children]) { this.boulders.remove(c); c.dispose?.(); }
-    const src = {};
-    for (const k of ['a', 'b']) {
-      const scene = this.models[k];
-      if (!scene) continue;
-      let mesh = null;
-      scene.updateMatrixWorld(true);
-      scene.traverse((o) => { if (!mesh && o.isMesh) mesh = o; });
-      if (!mesh) continue;
-      const node = mesh.matrixWorld.clone();
-      const geo = mesh.geometry;
-      geo.userData.shared = true; // the page's (the loaded model's): Scene.dispose must leave it
-      if (!geo.boundingBox) geo.computeBoundingBox();
-      const bb = geo.boundingBox.clone().applyMatrix4(node);
-      const size = bb.getSize(new THREE.Vector3());
-      const centre = bb.getCenter(new THREE.Vector3());
-      // The scan's maps on an outdoor material (one per model, kept across rebuilds).
-      const gm = mesh.material;
-      this.rockMats[k] ??= outdoorMaterial(this, { name: `boulder-${k}`, tint: ROCK_TINT });
-      this.rockMats[k].userData.setMaps(gm.map, gm.normalMap, gm.normalScale);
-      const mat = this.rockMats[k];
-      src[k] = { geo, node, mat, extent: Math.max(size.x, size.y, size.z), centre, minY: bb.min.y };
-    }
-    // Far rocks (tens of pixels at most): a lumpy 320-triangle stand-in wearing the scanned rock's material.
+    // Near rocks: the two code-built shapes (vertex-coloured hollows). Far rocks (tens of pixels at most): a
+    // lumpy 320-triangle stand-in. All wear the regolith scan, triplanar, once it arrives (setAsset).
     this.loRock ??= lowPolyRock();
-    this.rockMats.lo ??= outdoorMaterial(this, { name: 'boulder-lo', tint: ROCK_TINT.clone().multiplyScalar(0.5) });
-    const loMat = this.rockMats.lo;
-    const scan = this.models.b ?? this.models.a;
-    if (scan) {
-      let gm = null;
-      scan.traverse((o) => { if (!gm && o.isMesh) gm = o.material; });
-      if (gm?.map) { loMat.userData.setMaps(gm.map, null); loMat.uniforms.tint.value.copy(ROCK_TINT); }
+    const src = {};
+    for (const [k, rock] of [['a', this.rocks.a], ['b', this.rocks.b], ['lo', this.loRock]]) {
+      this.rockMats[k] ??= outdoorMaterial(this, { name: `boulder-${k}`, tint: ROCK_STAND_IN, triplanar: ROCK_TRIPLANAR, vertexColors: k !== 'lo' });
+      src[k] = { geo: rock.geo, node: new THREE.Matrix4(), mat: this.rockMats[k], extent: rock.extent, centre: rock.centre, minY: rock.minY };
     }
-    src.lo = { geo: this.loRock.geo, node: new THREE.Matrix4(), mat: loMat, extent: this.loRock.extent, centre: this.loRock.centre, minY: this.loRock.minY };
     // Planar shadow: the rock flattened onto its ground plane along the sun, multiplied into the ground once
     // (front faces only, and the depth test stops a second layer at the same depth).
     this.planarMat ??= new THREE.MeshBasicMaterial({
@@ -918,8 +995,7 @@ export class PhobosSky {
     const groups = new Map();
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     for (const r of this.boulderPlan) {
-      const model = src[r.model] ? r.model : (r.model === 'lo' ? null : (src.a ? 'a' : (src.b ? 'b' : null)));
-      if (!model) continue;
+      const model = r.model;
       const S = src[model];
       const k = r.size / S.extent;
       e.set(r.tiltX, r.yaw, r.tiltZ, 'YXZ');
@@ -982,11 +1058,6 @@ export class PhobosSky {
       if (img?.width) u.marsTexel.value.set(1 / img.width, 1 / img.height);
       return true;
     }
-    if (kind === 'model' && (name === 'boulder-a' || name === 'boulder-b') && asset && !asset.userData?.fallback) {
-      this.models[name.slice(-1)] = asset;
-      this.buildBoulders();
-      return true;
-    }
     if (kind === 'image' && name === 'milkyway' && asset && !asset.userData?.fallback) {
       this.mwMat.uniforms.mwMap.value = asset;
       this.milkyWay.visible = true;
@@ -1002,6 +1073,11 @@ export class PhobosSky {
       for (const m of [this.nearMat, this.farMat]) {
         m.userData.setMaps(asset.color, asset.normal);
         m.uniforms.tint.value.copy(REGOLITH_TINT);
+      }
+      // The rocks wear the same scan (the far ones too small to need its normals).
+      for (const [k, m] of Object.entries(this.rockMats)) {
+        m.userData.setMaps(asset.color, k === 'lo' ? null : asset.normal);
+        m.uniforms.tint.value.copy(ROCK_TINT);
       }
       return true;
     }
@@ -1042,7 +1118,7 @@ export class PhobosSky {
     this.planarMat?.dispose();
     this.shellMat?.dispose();
     for (const m of Object.values(this.rockMats)) m.dispose();
-    this.loRock?.geo.dispose();
+    for (const r of [this.rocks?.a, this.rocks?.b, this.loRock]) r?.geo.dispose();
     this.sun?.shadow?.dispose?.();
     for (const c of this.boulders.children) c.dispose?.();
   }

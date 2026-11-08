@@ -232,7 +232,7 @@ export class Scene {
    * replaces the greybox on every surface planned to wear it. The tour keeps running throughout.
    */
   applyAsset(kind, name, asset) {
-    // The sky's own assets (Mars, boulders, regolith and concrete for the outside); the probes then re-bake so
+    // The sky's own assets (Mars, the regolith and concrete for the outside); the probes then re-bake so
     // the courtyard and window rooms see them.
     if (this.sky?.setAsset(kind, name, asset) && this.probes) { this.assignProbes(); this.probeRebakeAt = this.time + 0.5; }
     // A prop model: its instances appear, cast into the sun's (static) shadow map if the sun reaches them, and
