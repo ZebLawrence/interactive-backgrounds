@@ -679,6 +679,7 @@ final class Boreal {
 
         // --- Sky and light ----------------------------------------------------------------------
         light.moon = approach(light.moon, settings.moonlight ? 1 : 0, 1.2, dt)
+        sky.update(dt: dt, moon: light.moon, lowPower: settings.lowPower)
         aurora.update(dt: dt, camera: cameraPosition)
         light.aurora = aurora.light
         light.auroraLevel = aurora.level
@@ -700,6 +701,9 @@ final class Boreal {
         let sway = forest.trees.map { hypot($0.sx, $0.sz) }.max() ?? 0
         print(String(format: "puffs %d, top sway %.2f m", puffs.liveCount, sway))
         for o in owls { print("owl \(o.debugDescription)") }
+        let gc = sky.real.direction(RealSky.galacticCenter), gp = sky.real.direction(RealSky.galacticPole)
+        print(String(format: "real sky %@: turn %.5f rad, galactic centre (%.4f, %.4f, %.4f), pole (%.4f, %.4f, %.4f), fade %.2f",
+                     sky.real.ready ? "up" : "missing", sky.real.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, sky.real.fade))
     }
 
     // MARK: - Drawing

@@ -8,6 +8,13 @@ APP=build/Balloons.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/Balloons" "$APP/Contents/MacOS/Balloons"
+# The real night sky (assets/sky): the Milky Way map transcoded for Apple GPUs, and Hangar's star catalogue.
+# Without them the app keeps its hashed stars.
+if ../../assets/sky/tools/prepare-macos.sh; then
+    cp ../../assets/sky/build/milkyway.astc ../../hangar/html/data/stars.bin "$APP/Contents/Resources/"
+else
+    echo "warning: couldn't make the real sky's Milky Way map; the app will hash its own stars" >&2
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

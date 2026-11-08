@@ -108,6 +108,16 @@ filtered shadow sample; and the moon's shadow map is redrawn every other frame. 
 about 12 ms of GPU time per frame at 2560x1600 on an M3 laptop (about 14 at the laptop's own
 3024x1964): the trees about 6, the snow 3, the aurora 1.5.
 
+The night sky is the same real one as the web page's, from the shared `assets/sky/RealSky.swift`
+(a port of `realsky.js`, copied into `Sources/Boreal/`): the Hipparcos stars as points and NASA's
+Milky Way on a sphere, turning at the sidereal rate about a pole 64 degrees up in the north. The app
+carries the Milky Way as ASTC 4x4, which Apple GPUs sample directly (43 MB of GPU memory for the
+8192 x 4096 map); `build.sh` makes it once from Hangar's `milkyway.ktx2` with
+`assets/sky/tools/prepare-macos.sh` (it needs `node` and a network connection the first time) and
+bundles it with `stars.bin`. Low Power draws the brightest quarter of the catalogue. Without the
+files the app keeps its painted Milky Way and hashed stars. `--log` prints the sky's turn and where
+the galactic centre and pole are.
+
 ## Running the web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with

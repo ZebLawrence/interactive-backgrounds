@@ -126,7 +126,9 @@ Like the other ports it follows the web version file for file (`Arch.swift` ← 
 `Shore.swift` ← `shore.js`, `Rain.swift` ← `rain.js`, `Sky.swift` and `Aurora.swift` ← `sky.js`
 and `aurora.js`) and renders with Metal directly, sharing its plumbing with Loon Lake's and Boreal
 Night's apps: the same traced land and the same projection of the reference picture (it loads
-`html/assets/reference.webp` and the rock photographs from the app bundle), the wave simulation
+`html/assets/reference.webp` and the rock photographs from the app bundle), the same real sky
+(`assets/sky/RealSky.swift`, the Swift port of `realsky.js`, with the same latitude, north and hour),
+the wave simulation
 as a compute pass, the reflection from a mirrored camera and the refraction with its depth, the
 moon's shadow map, then the main pass with 4x MSAA, three.js's UnrealBloomPass, the vignette and
 ACES tone mapping. To keep it light enough for an all-day wallpaper, a few things are done more

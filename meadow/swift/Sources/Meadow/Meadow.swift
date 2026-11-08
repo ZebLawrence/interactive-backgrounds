@@ -285,10 +285,19 @@ final class Meadow {
         updateBlends(dt: dt, settings: settings)
         updateCursorPush(dt: dt)
         swarm.update(dt: dt)
+        sky.update(dt: dt, moon: moon, storm: storm, lowPower: settings.lowPower)
         mist.update(dt: dt, halfWidth: halfWidth, wind: wind, windDir: windDir, storm: storm)
         meteors.update(dt: dt, storm: storm)
         rain.update(dt: dt, storm: storm, wind: wind, windDir: windDir)
         lightning.update(dt: dt, storm: storm)
+    }
+
+    /// `--log` with `--snapshot`: where the real sky stands.
+    func log() {
+        let r = sky.real
+        let gc = r.direction(RealSky.galacticCenter), gp = r.direction(RealSky.galacticPole)
+        print(String(format: "real sky %@: north %.5f, turn %.5f rad, galactic centre (%.4f, %.4f, %.4f), pole (%.4f, %.4f, %.4f), fade %.2f",
+                     r.ready ? "up" : "missing", r.frame.north, r.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, r.fade))
     }
 
     // MARK: - Drawing

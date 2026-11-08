@@ -90,9 +90,27 @@ final class Weather {
 final class Sky {
     private let mesh = Geometry.sphere(radius: skyRadius, widthSegments: 48, heightSegments: 32).upload()
 
+    /// The real sky (assets/sky/RealSky.swift): 39 degrees north, the Colorado aspen belt. Night mode had
+    /// only hashed stars and no Milky Way, so there is no painted band to keep; the band is stood steeply
+    /// across the view, the way it is on a clear winter night, and north is solved from that. The hashed
+    /// stars stand in only if its files are missing.
+    let real = RealSky(latitude: 39, matchBand: simd_normalize(SIMD3<Float>(0.55, 0.68, 0.48)),
+                       radius: skyRadius, horizon: SIMD2(-0.02, 0.08))
+
+    /// Turns the real sky. It belongs to a clear night: `night` brings it up and the snow cloud (sun 0)
+    /// covers it, as the hashed stars did.
+    func update(dt: Float, night: Float, sun: Float, lowPower: Bool) {
+        real.fade = night * sun
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
+    }
+
     func draw(_ ctx: DrawContext) {
         ctx.use("skyVertex", "skyFragment", depthWrite: false)
+        var procedural = V4(real.ready ? 0 : 1, 0, 0, 0)
+        ctx.encoder.setFragmentBytes(&procedural, length: 16, index: 3)
         mesh.draw(ctx.encoder)
+        if !Aspen.hidden.contains("realsky") { real.draw(ctx.encoder, frame: ctx.frame, samples: ctx.samples) }
     }
 }
 
@@ -182,7 +200,7 @@ extension Shaders {
         return tint * star;
     }
 
-    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]]) {
+    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]], constant float4& S [[buffer(3)]]) {
         float uTime = F.misc.x, uSun = F.misc.y, uNight = F.misc.z, uSnowing = F.misc.w;
         float3 d = normalize(in.dir);
         float h = d.y;
@@ -223,9 +241,11 @@ extension Shaders {
         // Night: deep blue, stars, the moon's halo and a hint of the 22-degree ice halo.
         float3 night = mix(float3(0.012, 0.018, 0.04), float3(0.002, 0.004, 0.012), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
         float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-        if (uSun > 0.001 && h > -0.02) {
+        // The hashed stars stand in only when the real sky's files are missing (S.x = 1); otherwise
+        // RealSky draws the real stars and the Milky Way.
+        if (S.x > 0.001 && uSun > 0.001 && h > -0.02) {
             float3 stars = starLayer(uv, 380.0, 0.75, 1.2, 0.0, uTime) + starLayer(uv, 760.0, 0.84, 0.6, 5.0, uTime) + starLayer(uv, 1400.0, 0.9, 0.3, 11.0, uTime);
-            night += stars * smoothstep(-0.02, 0.08, h);
+            night += stars * smoothstep(-0.02, 0.08, h) * S.x;
         }
         float cosM = dot(d, F.moonDir.xyz);
         float halo = exp((cosM - 1.0) * 90.0) * 0.05 + exp((cosM - 1.0) * 900.0) * 0.25;

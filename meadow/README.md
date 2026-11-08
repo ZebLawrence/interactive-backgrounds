@@ -57,6 +57,8 @@ swift run Meadow --preview                        # a normal window instead of t
 swift run Meadow --snapshot out.png --at 6        # render with a resting cursor, save a frame, exit
 swift run Meadow --snapshot out.png --clap-at 5.5 # ... clapping first
 swift run Meadow --storm                          # force the storm (or --calm); --dark / --moon likewise
+swift run Meadow --low-power                      # Low Power without changing the setting
+swift run Meadow --snapshot out.png --log         # ... and print where the real sky stands
 swift run Meadow --lightning-now                  # a storm whose first strike comes after a second
 swift run Meadow --preview --stats                # log the GPU time per frame
 ```
@@ -68,7 +70,12 @@ trail and the clap rings change every frame, all of which SceneKit handles poorl
 to Metal in `Shaders.swift`, and `RenderView` reproduces three.js's post-processing: 4x MSAA into a
 16-bit float target, UnrealBloomPass (bright pass, five blur levels), the grade, and ACES filmic tone
 mapping. The procedural textures are drawn with Core Graphics using the same calls as the canvas
-code; the moon maps are copied from `html/assets` into the app bundle. At 60 fps it uses about 10% of
+code; the moon maps are copied from `html/assets` into the app bundle. The night sky is the same real
+one as the web page's, ported once for all the apps in `assets/sky/RealSky.swift` (copied into
+`Sources/Meadow/`): the Hipparcos stars as points and NASA's Milky Way map on a sphere, turning at the
+sidereal rate from the same place and hour. `build.sh` bundles Hangar's `stars.bin` and a copy of its
+Milky Way map transcoded to ASTC for Apple GPUs (`assets/sky/tools/prepare-macos.sh`, which needs node
+and a network connection the first time); without them the app keeps its painted Milky Way. At 60 fps it uses about 10% of
 one CPU core and ~7 ms of GPU time per frame at 2560x1600 on an Apple Silicon laptop.
 
 ## Web page

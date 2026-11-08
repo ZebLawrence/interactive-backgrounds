@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if args.contains("--calm") { settings.stormOverride = false }
         if args.contains("--dark") { settings.moonOverride = false }
         if args.contains("--moon") { settings.moonOverride = true }
+        if args.contains("--low-power") { settings.lowPowerOverride = true }
         if args.contains("--lightning-now") { settings.stormOverride = true; Lightning.strikeSoon = true }
         buildWindows()
         setupStatusItem()
@@ -200,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + clapAt) { w.meadow.clap(atScreen: CGPoint(x: f.width / 2, y: f.height * 0.42)) }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + (number(after: "--at") ?? 6)) {
+            if self.args.contains("--log") { w.meadow.log() }
             w.view.captureNextFrame { image in
                 guard let image else { exit(1) }
                 let rep = NSBitmapImageRep(cgImage: image)

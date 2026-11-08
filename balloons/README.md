@@ -75,6 +75,14 @@ tone mapping). Every texture is drawn with Core Graphics using the same calls as
 60 fps it uses about 7% of one CPU core and costs about the same GPU time per frame as Firefly
 Meadow.
 
+The Night Glow's sky is the real one, as on the web page, from the shared `assets/sky/RealSky.swift`
+(a port of `realsky.js`, copied into the app's sources): the same 35-degrees-north frame turning at
+the sidereal rate, NASA's Milky Way on a sphere and the Hipparcos stars as points (the brightest
+quarter in Low Power). `build.sh` bundles Hangar's `stars.bin` and the Milky Way map transcoded once
+to ASTC 4x4 by `assets/sky/tools/prepare-macos.sh` (it needs node and a network connection the first
+time); an app built without them keeps its hashed stars. `--log` prints the sky's turn and where the
+galactic centre and pole stand, to check against the web page.
+
 ## Web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with
