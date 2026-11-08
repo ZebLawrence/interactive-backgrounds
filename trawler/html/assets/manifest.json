@@ -1,5 +1,29 @@
 {
   "materials": {
+    "mat:cherry": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/cherry/color.webp",
+        "normal": "assets/materials/cherry/normal.webp",
+        "orm": "assets/materials/cherry/orm.webp"
+      },
+      "name": "Lacquered Cherry Wood",
+      "source": "https://polyhaven.com/a/lacquered_cherry_wood",
+      "author": "Jenelle van Heerden, Rico Cilliers",
+      "license": "CC0"
+    },
+    "mat:cherry-panel": {
+      "tile": 1.2,
+      "maps": {
+        "color": "assets/materials/cherry-panel/color.webp",
+        "normal": "assets/materials/cherry-panel/normal.webp",
+        "orm": "assets/materials/cherry-panel/orm.webp"
+      },
+      "name": "Cherry Veneer",
+      "source": "https://polyhaven.com/a/cherry_veneer",
+      "author": "Jenelle van Heerden",
+      "license": "CC0"
+    },
     "mat:deck": {
       "tile": 1,
       "maps": {
@@ -45,6 +69,18 @@
       },
       "name": "Brown Leather",
       "source": "https://polyhaven.com/a/brown_leather",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:leather-cream": {
+      "tile": 0.5,
+      "maps": {
+        "color": "assets/materials/leather-cream/color.webp",
+        "normal": "assets/materials/leather-cream/normal.webp",
+        "orm": "assets/materials/leather-cream/orm.webp"
+      },
+      "name": "Leather White",
+      "source": "https://polyhaven.com/a/leather_white",
       "author": "Rob Tuytel",
       "license": "CC0"
     },
@@ -206,14 +242,6 @@
     }
   },
   "models": {
-    "binoculars": {
-      "file": "assets/models/binoculars/binoculars.gltf",
-      "scale": 1,
-      "name": "Binoculars",
-      "source": "https://polyhaven.com/a/binoculars",
-      "author": "Derek Wight",
-      "license": "CC0"
-    },
     "buoy": {
       "file": "assets/models/buoy/buoy.gltf",
       "scale": 1,
@@ -230,30 +258,6 @@
       "author": "Ulan Cabanilla",
       "license": "CC0"
     },
-    "clipboard": {
-      "file": "assets/models/clipboard/clipboard.gltf",
-      "scale": 1,
-      "name": "Clipboard",
-      "source": "https://polyhaven.com/a/clipboard",
-      "author": "ProgrammerOnCoffee",
-      "license": "CC0"
-    },
-    "clock": {
-      "file": "assets/models/clock/clock.gltf",
-      "scale": 1,
-      "name": "Wall Clock",
-      "source": "https://polyhaven.com/a/wall_clock",
-      "author": "PierreB3D",
-      "license": "CC0"
-    },
-    "compass": {
-      "file": "assets/models/compass/compass.gltf",
-      "scale": 1,
-      "name": "Seadogs Compass",
-      "source": "https://polyhaven.com/a/seadogs_compass",
-      "author": "Benny Weimer",
-      "license": "CC0"
-    },
     "crate": {
       "file": "assets/models/crate/crate.gltf",
       "scale": 1,
@@ -262,28 +266,12 @@
       "author": "Fabi_G",
       "license": "CC0"
     },
-    "extinguisher": {
-      "file": "assets/models/extinguisher/extinguisher.gltf",
-      "scale": 1,
-      "name": "Korean Fire Extinguisher 01",
-      "source": "https://polyhaven.com/a/korean_fire_extinguisher_01",
-      "author": "UM JOORIN",
-      "license": "CC0"
-    },
     "fender": {
       "file": "assets/models/fender/fender.gltf",
       "scale": 1,
       "name": "Old Tyre",
       "source": "https://polyhaven.com/a/old_tyre",
       "author": "MP",
-      "license": "CC0"
-    },
-    "hat": {
-      "file": "assets/models/hat/hat.gltf",
-      "scale": 1,
-      "name": "Fishermans Hat",
-      "source": "https://polyhaven.com/a/fishermans_hat",
-      "author": "PierreB3D",
       "license": "CC0"
     },
     "jerrycan": {
@@ -316,38 +304,6 @@
       "name": "Lateral Sea Marker",
       "source": "https://polyhaven.com/a/lateral_sea_marker",
       "author": "James Ray Cock, Kuutti Siitonen",
-      "license": "CC0"
-    },
-    "stool": {
-      "file": "assets/models/stool/stool.gltf",
-      "scale": 1,
-      "name": "Metal Stool 02",
-      "source": "https://polyhaven.com/a/metal_stool_02",
-      "author": "Ulan Cabanilla",
-      "license": "CC0"
-    },
-    "thermos": {
-      "file": "assets/models/thermos/thermos.gltf",
-      "scale": 1,
-      "name": "Plastic Thermos",
-      "source": "https://polyhaven.com/a/plastic_thermos",
-      "author": "PierreB3D",
-      "license": "CC0"
-    },
-    "torch": {
-      "file": "assets/models/torch/torch.gltf",
-      "scale": 1,
-      "name": "Vintage Flashlight",
-      "source": "https://polyhaven.com/a/vintage_flashlight",
-      "author": "Omar M. El-Safy",
-      "license": "CC0"
-    },
-    "vhf": {
-      "file": "assets/models/vhf/vhf.gltf",
-      "scale": 1,
-      "name": "Vintage Radio Transceiver",
-      "source": "https://polyhaven.com/a/vintage_radio_transceiver",
-      "author": "Mateusz Sadek",
       "license": "CC0"
     }
   },

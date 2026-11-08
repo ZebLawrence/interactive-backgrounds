@@ -1,34 +1,40 @@
-// Trawler — The pilot house: the room the whole scene is seen from, and so the frame of every shot.
+// Trawler — The wheelhouse: the room the whole background is seen from.
 //
-// Built in code rather than bought. There is no wheelhouse interior under a licence that can be
-// fetched without an account (see the README), but more to the point the window openings, the
-// mullion positions and the sight lines over the bow *are* the composition here: a model would
-// have had to be rebuilt around them anyway.
+// Built to the owner's reference photograph of a trawler yacht's pilot house: lacquered cherry
+// joinery everywhere, a big chrome destroyer wheel on a varnished pedestal, a dash of plotter and
+// radar under the windscreen, an overhead fascia of gauges and radio sets, louvred lockers, two
+// cream leather helm chairs, and a teak-and-holly sole. Nothing in here is a downloaded model: the
+// joinery, the leather and the chrome are scanned materials (CC0, see the README) and every gauge
+// face, switch legend and radio fascia is drawn in code by panel.js at better than 2000 pixels to
+// the metre, because nobody publishes a CC0 scan of a marine instrument and a drawn one can be made
+// exactly as sharp as it needs to be.
 //
 // Body coordinates: +x starboard, +y up, +z aft, y = 0 at the waterline.
 //
-//   4.00  the wheelhouse sole, 4 m above the water
-//   4.68  the console top
-//   4.94  the dash top, which carries the sounder and the dials
+//   4.00  the sole
+//   4.30  the bottom rail of the dash lockers
+//   4.86  the dash top, the side desks and the wheel's centre
 //   4.98  the windscreen sill
 //   5.52  the helmsman's eye
 //   6.02  the windscreen head
 //   6.14  the deckhead
 //
 // The composition, worked out from those numbers rather than by nudging a camera about: the eye is
-// 1.58 m back from the windscreen, whose sill is 0.54 m below it and whose head is 0.50 m above
-// it. Through a 62 degree lens pitched three degrees down, the glass fills the middle 63% of the
-// frame, the console and its dash take the bottom sixth, and the deckhead and the overhead console
+// 1.58 m back from the windscreen, whose sill is 0.54 m below it and whose head is 0.50 m above it.
+// Through a 62 degree lens pitched three degrees down the glass fills the middle 63% of the frame,
+// the dash and its instrument panel take the bottom sixth, and the deckhead and the overhead fascia
 // take the top fifth. Three front panes, the middle one wide: the two mullions sit 24 degrees off
-// the centreline, well clear of where the bow and the horizon are.
+// the centreline, well clear of where the bow and the horizon are. Those numbers are why the
+// rebuild kept the window openings exactly where they were and changed everything inside them.
 //
-// Everything is modelled at a texel density of 1024 px per metre or better (materials.js), because
-// all of it is within two metres of the viewer and the owner will lean in.
+// Everything is modelled at a texel density of 1024 px per metre or better (materials.js), and the
+// cherry at 2048, because all of it is within two metres of the viewer and the owner will lean in.
 
 import * as THREE from 'three';
 import { G, LAYER, ATMOS_READ } from './shaders.js';
 import { Materials, paint, metreUvsBox, metreUvsPlane, scaleUvs } from './materials.js';
-import { v3, DEG, TAU, lerp } from './util.js';
+import { Gauge, SwitchBank, RadioSet, handset, louvreDoor } from './panel.js';
+import { v3, DEG, TAU, lerp, clamp01, Art } from './util.js';
 
 export const HOUSE = {
   sole: 4.00,
@@ -38,7 +44,7 @@ export const HOUSE = {
   frontTop: -1.56, // the windscreen head's z: the glass rakes forward, as a working boat's does
   back: 1.75,
   // The windscreen opening. The sill is 0.54 m below the eye, which leaves room under it for the
-  // console and its dash without either of them climbing into the view.
+  // dash and its instrument panel without either of them climbing into the view.
   sill: 4.98,
   head: 6.02,
   glassHalf: 1.55,
@@ -47,23 +53,29 @@ export const HOUSE = {
   // The side windows.
   sideSill: 4.90,
   sideHead: 5.82,
-  // The console. Its top is well below the sill; the dash is the strip between the two, and it
-  // carries the sounder and the dials. The radar and the plotter go overhead, which is where a
-  // trawler really has them and which puts them in the part of the frame that was bare deckhead.
-  consoleTop: 4.68,
-  consoleFront: -1.32,
-  consoleBack: -0.62,
-  dashTop: 4.94,
-  // Where the overhead console hangs, and how far its face is raked down toward the helmsman.
-  // It tucks up under the deckhead above the window head, so it frames the top of the view
-  // instead of taking a third of it.
-  overheadY: 6.00,
-  overheadZ: -1.14,
-  overheadRake: 42,
-  // Where the helmsman stands.
-  wheelZ: -0.42,
-  wheelY: 4.92,
-  wheelR: 0.27,
+  // The dash. Its top is a hand's breadth below the sill; the instrument panel stands on it,
+  // raked back, and carries the plotter and the radar.
+  dashTop: 4.86,
+  dashFront: -1.34,
+  dashBack: -0.72,
+  dashRake: 24,
+  lockerTop: 4.34, // where the louvred lockers under the dash begin
+  // The overhead fascia: a cherry panel hung under the deckhead above the window head, raked down
+  // toward the helmsman, carrying the gauges and the sets.
+  overheadY: 5.99,
+  overheadZ: -1.13,
+  overheadRake: 40,
+  overheadHeight: 0.30,
+  // The side desks: a chart table to port and a desk with a screen to starboard.
+  deskTop: 4.86,
+  deskInboard: 0.98,
+  deskFront: -0.70,
+  deskBack: 0.72,
+  // Where the helmsman stands, and the wheel he stands at.
+  wheelZ: -0.50,
+  wheelY: 4.86,
+  wheelR: 0.325,
+  wheelTilt: 13,
 };
 
 /** A box with its UVs in metres, so every material tiles at the size the manifest says. */
@@ -93,6 +105,54 @@ function bar(a, b, radius, material, segments = 12) {
   return m;
 }
 
+/**
+ * A half-round nosing along the front edge of a worktop. Every horizontal edge of this joinery has
+ * one, and they are what catch the light along the dash and the desks: a square edge there reads
+ * as cardboard however good the timber is.
+ */
+function nosing(length, radius, material, x, y, z, alongX = true) {
+  const g = scaleUvs(new THREE.CylinderGeometry(radius, radius, length, 10, 1, false, 0, Math.PI), TAU * radius, length);
+  const m = new THREE.Mesh(g, material);
+  m.position.set(x, y, z);
+  if (alongX) m.rotation.set(0, 0, Math.PI / 2);
+  else m.rotation.set(Math.PI / 2, 0, 0);
+  return m;
+}
+
+/**
+ * The sole: teak laid fore and aft with holly seams between the planks, which is what the deck of
+ * a boat like this is. Drawn rather than scanned because the stripe is a 6 mm line in a 75 mm
+ * plank and no tiling photograph keeps that crisp at arm's length.
+ */
+function teakAndHollyTexture() {
+  return Art.image(1024, 1024, (ctx, w, h) => {
+    const plank = w / 12; // twelve 83 mm planks to the metre-square tile
+    for (let i = 0; i < 12; i++) {
+      const x = i * plank;
+      const base = 118 + Math.sin(i * 2.7) * 9;
+      ctx.fillStyle = `rgb(${base + 28}, ${base - 16}, ${base - 54})`;
+      ctx.fillRect(x, 0, plank, h);
+      // Grain: long fine streaks, darker and lighter, running the length of the plank.
+      for (let k = 0; k < 90; k++) {
+        const gx = x + 2 + Math.random() * (plank - 4);
+        const a = 0.025 + Math.random() * 0.05;
+        ctx.strokeStyle = Math.random() < 0.5 ? `rgba(60,34,16,${a})` : `rgba(226,186,138,${a * 0.8})`;
+        ctx.lineWidth = 0.6 + Math.random() * 1.6;
+        ctx.beginPath();
+        let gy = -10;
+        ctx.moveTo(gx, gy);
+        while (gy < h) { gy += 40 + Math.random() * 90; ctx.lineTo(gx + (Math.random() - 0.5) * 3.5, gy); }
+        ctx.stroke();
+      }
+      // The holly seam on the port side of each plank.
+      ctx.fillStyle = '#efe9d6';
+      ctx.fillRect(x, 0, plank * 0.075, h);
+      ctx.fillStyle = 'rgba(0,0,0,0.30)';
+      ctx.fillRect(x + plank * 0.075, 0, plank * 0.02, h);
+    }
+  });
+}
+
 export class PilotHouse {
   /**
    * @param {THREE.Scene} scene
@@ -111,6 +171,11 @@ export class PilotHouse {
 
     this.lamps = [];
     this.parts = {};
+    this.buildFill();
+    this.gauges = {};
+    this.banks = [];
+    this.sets = [];
+    this.panes = [];
     this.lampMode = 'white';
     this.build();
     this.group.traverse((o) => {
@@ -120,20 +185,66 @@ export class PilotHouse {
     });
   }
 
+  /**
+   * The light inside the room, which is not the light outside it.
+   *
+   * Three's hemisphere light and its ambient fill are the whole sky, and they reach in here
+   * unoccluded - but the sun does not, because the roof is over it. So on a bright day the cabin
+   * sits four stops under the sea in the window and reads as a cave, where in life a wheelhouse
+   * with six square metres of glass is a bright room: the sea throws light up through the windows
+   * from below, the cream deckhead throws it back down, and the varnish bounces it round again.
+   * None of that is in a single hemisphere term, and none of it can be, because three has no
+   * global illumination.
+   *
+   * So the house carries its own fill, on the interior layer alone so it touches nothing outside:
+   * warm from above (the deckhead), cool from below (the water through the glass), and scaled by
+   * the real sky irradiance so it follows the day down to nothing at night. The number is set by
+   * measurement - see the comment on `setFill` - not by eye.
+   */
+  buildFill() {
+    this.fill = new THREE.HemisphereLight(0xfff1dc, 0x8fb4c8, 0);
+    this.fill.position.set(0, HOUSE.deckhead, (HOUSE.front + HOUSE.back) / 2);
+    this.fill.layers.set(LAYER.INTERIOR);
+    this.group.add(this.fill);
+  }
+
+  /**
+   * Sets that fill from the sky's own irradiance. The gain of 16 was chosen by measuring the frame:
+   * at noon it puts the mean of the cabin about a third of the mean of the sea in the window -
+   * which is what a photograph of a wheelhouse looks like - where the sky term alone left it at a
+   * seventh and the room read as a cave.
+   */
+  setFill(skyIrradiance) {
+    if (!this.fill) return;
+    const m = Math.max(skyIrradiance.x, skyIrradiance.y, skyIrradiance.z);
+    this.fill.intensity = m * 16.0;
+  }
+
   mat(tag, opts) { return this.materials.get(tag, opts); }
+  add(mesh) { this.group.add(mesh); return mesh; }
+
+  /** The lacquered cherry everything in here is made of, shared so it is one material. */
+  get cherry() {
+    return this.mat('mat:cherry', { key: 'cherry', roughness: 0.22, normalScale: 0.8 });
+  }
+
+  /** The same timber in a darker, flatter cut, for the big flat panels and the locker fronts. */
+  get cherryPanel() {
+    return this.mat('mat:cherry-panel', { key: 'cherry-panel', tint: 0xcf9d6e, roughness: 0.3 });
+  }
 
   build() {
     this.buildShell();
     this.buildWindscreen();
     this.buildSideWindows();
     this.buildAftBulkhead();
-    this.buildConsole();
+    this.buildDash();
     this.buildWheel();
     this.buildOverhead();
+    this.buildSideDesks();
+    this.buildSeats();
     this.buildFittings();
   }
-
-  add(mesh) { this.group.add(mesh); return mesh; }
 
   // --- the room --------------------------------------------------------------------------------
 
@@ -141,32 +252,54 @@ export class PilotHouse {
     const H = HOUSE;
     const w = H.halfWidth * 2;
     const d = H.back - H.front;
-    const midZ = (H.back + H.front) / 2;
+    const midZ = (H.front + H.back) / 2;
 
-    // The sole: rubber tiles, worn through to the steel in a track from the wheel to the door.
-    const sole = this.add(panel(w, d, this.mat('mat:rubber', { key: 'sole', roughness: 0.95, side: THREE.DoubleSide })));
+    // The sole: teak and holly, laid fore and aft.
+    // The tile is one metre square and the plane's uvs are already in metres, so the texture
+    // repeats once a metre on its own: setting a repeat as well squeezed twelve planks into
+    // 85 mm and the sole aliased to a flat orange sheet.
+    this.soleTex = Art.texture(teakAndHollyTexture(), { repeat: true });
+    const sole = this.add(new THREE.Mesh(
+      metreUvsPlane(new THREE.PlaneGeometry(w, d), w, d),
+      new THREE.MeshStandardMaterial({ map: this.soleTex, roughness: 0.34, metalness: 0, side: THREE.DoubleSide }),
+    ));
     sole.rotation.x = -Math.PI / 2;
-    sole.position.set(0, H.sole + 0.002, midZ);
+    sole.position.set(0, H.sole, midZ);
     sole.receiveShadow = true;
 
-    // The deckhead: plywood panels with the beams showing between them.
-    const head = this.add(panel(w, d, this.mat('mat:enamel', { key: 'deckhead', tint: 0xdfe0d8, side: THREE.DoubleSide })));
+    // The deckhead: cream painted panels between varnished battens running athwartships.
+    const headMat = this.mat('mat:enamel', { key: 'deckhead', tint: 0xf2ece0, roughness: 0.78, side: THREE.DoubleSide });
+    const head = this.add(panel(w, d, headMat));
     head.rotation.x = Math.PI / 2;
     head.position.set(0, H.deckhead, midZ);
+    head.receiveShadow = true;
+    const batten = this.cherry;
+    for (let z = H.front + 0.46; z < H.back - 0.2; z += 0.52) {
+      this.add(box(w, 0.016, 0.055, batten, 0, H.deckhead - 0.010, z));
+    }
+    // And the perimeter trim where the deckhead meets the walls.
+    for (const s of [-1, 1]) this.add(box(0.05, 0.022, d, batten, s * (H.halfWidth - 0.025), H.deckhead - 0.013, midZ));
 
-    const beamMat = this.mat('mat:enamel', { key: 'beam', tint: 0xeceee6 });
-    for (let i = 0; i < 4; i++) {
-      const z = H.front + 0.42 + i * ((d - 0.84) / 3);
-      this.add(box(w, 0.075, 0.09, beamMat, 0, H.deckhead - 0.04, z));
+    // The side walls: cherry panelling above the side windows and below their sills.
+    const wallMat = this.cherryPanel;
+    for (const s of [-1, 1]) {
+      const lowerH = H.sideSill - H.sole;
+      const lower = this.add(panel(d, lowerH, wallMat, s * H.halfWidth, H.sole + lowerH / 2, midZ));
+      lower.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+      const upperH = H.deckhead - H.sideHead;
+      const upper = this.add(panel(d, upperH, wallMat, s * H.halfWidth, H.sideHead + upperH / 2, midZ));
+      upper.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+      // The corner posts, fore and aft, in solid cherry.
+      this.add(box(0.11, H.deckhead - H.sole, 0.13, batten, s * (H.halfWidth - 0.055), (H.sole + H.deckhead) / 2, H.front + 0.065));
+      this.add(box(0.11, H.deckhead - H.sole, 0.13, batten, s * (H.halfWidth - 0.055), (H.sole + H.deckhead) / 2, H.back - 0.065));
     }
 
-    // The roof: the top of the house, and the deck the main mast and the radar stand on.
+    // The roof above, which is the deck the main mast and the radar stand on.
     const roof = this.add(panel(w + 0.14, d + 0.14, this.mat('mat:steel-rust', { key: 'wheelroof', desaturate: 0.8, tint: 0xb8b2a4 }),
       0, H.deckhead + 0.09, midZ));
     roof.rotation.x = -Math.PI / 2;
     roof.receiveShadow = true;
     roof.castShadow = true;
-    // Its coaming, which is what you see from the deck.
     const coamMat = this.mat('mat:enamel', { key: 'coaming', tint: 0xe6e8e2, side: THREE.DoubleSide });
     for (const s of [-1, 1]) {
       const side = this.add(panel(d + 0.14, 0.12, coamMat, s * (H.halfWidth + 0.07), H.deckhead + 0.03, midZ));
@@ -176,77 +309,40 @@ export class PilotHouse {
       const end = this.add(panel(w + 0.14, 0.12, coamMat, 0, H.deckhead + 0.03, z));
       end.rotation.y = rot;
     }
-
-    // The side walls: painted panelling above the sole, down to the window sills.
-    const wallMat = this.mat('mat:enamel', { key: 'wall', tint: 0xd9ded9, side: THREE.DoubleSide });
-    const lowerH = H.sideSill - H.sole;
-    for (const s of [-1, 1]) {
-      const wall = this.add(panel(d, lowerH, wallMat, s * H.halfWidth, H.sole + lowerH / 2, midZ));
-      wall.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-      // Above the side windows, back to the deckhead.
-      const upperH = H.deckhead - H.sideHead;
-      const upper = this.add(panel(d, upperH, wallMat, s * H.halfWidth, H.sideHead + upperH / 2, midZ));
-      upper.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-      // The corner posts, which are what you actually see at the edge of the view.
-      this.add(box(0.10, H.deckhead - H.sole, 0.12, beamMat, s * (H.halfWidth - 0.05), (H.sole + H.deckhead) / 2, H.front + 0.06));
-      this.add(box(0.10, H.deckhead - H.sole, 0.12, beamMat, s * (H.halfWidth - 0.05), (H.sole + H.deckhead) / 2, H.back - 0.06));
-    }
   }
 
-  // --- the windscreen ---------------------------------------------------------------------------
-
-  /** The z of the windscreen's face at a height y: it rakes forward as it rises. */
+  /** The windscreen's z at a height: it rakes forward from the sill to the head. */
   frontZ(y) {
     const H = HOUSE;
-    const t = (y - H.sill) / (H.head - H.sill);
+    const t = clamp01((y - H.sill) / (H.head - H.sill));
     return lerp(H.front, H.frontTop, t);
   }
 
   buildWindscreen() {
     const H = HOUSE;
-    const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
-    const sealMat = paint(0x161a1c, 0.85, 0);
+    const frame = this.cherry;
     const rake = Math.atan2(H.frontTop - H.front, H.head - H.sill);
+    const openH = H.head - H.sill;
+    const glassH = openH / Math.cos(rake);
 
-    // The sill below the glass and the header above it, both raked with the glass.
+    // Under the sill: the bulkhead the dash is built against.
     const sillH = H.sill - H.sole;
-    const sillPanel = this.add(panel(H.halfWidth * 2, sillH, this.mat('mat:enamel', { key: 'wall', tint: 0xd9ded9, side: THREE.DoubleSide }),
-      0, H.sole + sillH / 2, H.front + 0.004));
+    const sillPanel = this.add(panel(H.halfWidth * 2, sillH, this.cherryPanel, 0, H.sole + sillH / 2, H.front - 0.012));
     sillPanel.rotation.y = Math.PI;
-    this.add(box(H.halfWidth * 2, 0.10, 0.16, frameMat, 0, H.sill - 0.04, H.front - 0.02));
-    this.add(box(H.halfWidth * 2, 0.11, 0.17, frameMat, 0, H.head + 0.05, H.frontTop - 0.02));
-    // Above the header, up to the deckhead.
-    const browH = H.deckhead - H.head - 0.1;
-    const brow = this.add(panel(H.halfWidth * 2, browH,
-      this.mat('mat:enamel', { key: 'frame2', tint: 0xeef0ea, side: THREE.DoubleSide }),
-      0, H.head + 0.1 + browH / 2, H.frontTop - 0.01));
-    brow.rotation.y = Math.PI;
-    brow.rotation.x = -rake;
 
-    // The two mullions, and the glazing bars round every opening.
-    const glassH = H.head - H.sill;
-    const midY = (H.sill + H.head) / 2;
-    const midZ = this.frontZ(midY);
-    for (const s of [-1, 1]) {
-      const m = this.add(box(H.mullionWidth, glassH + 0.04, 0.13, frameMat, s * H.mullion, midY, midZ - 0.015));
+    // The sill capping and the head rail, both with a half-round nosing on the inboard edge: these
+    // are the two horizontals that frame the view and they are 1.5 m from the eye.
+    this.add(box(H.halfWidth * 2, 0.085, 0.14, frame, 0, H.sill - 0.042, H.front - 0.005));
+    this.add(nosing(H.halfWidth * 2, 0.042, frame, 0, H.sill - 0.042, H.front + 0.065));
+    this.add(box(H.halfWidth * 2, 0.095, 0.15, frame, 0, H.head + 0.047, H.frontTop + 0.01));
+
+    // Three panes: a wide one on the centreline and a narrower one each side. The two mullions are
+    // what the composition is built round, so they are placed and not nudged.
+    const mullions = [-H.mullion, H.mullion];
+    for (const x of mullions) {
+      const m = this.add(box(H.mullionWidth, openH + 0.02, 0.12, frame, x, (H.sill + H.head) / 2, this.frontZ((H.sill + H.head) / 2)));
       m.rotation.x = -rake;
-      // The rubber seal either side of each mullion.
-      for (const t of [-1, 1]) {
-        const seal = this.add(box(0.016, glassH, 0.05, sealMat, s * H.mullion + t * (H.mullionWidth / 2 + 0.008), midY, midZ + 0.02));
-        seal.rotation.x = -rake;
-      }
-      // The side posts at the outboard edge of the glass.
-      const post = this.add(box(0.09, glassH + 0.04, 0.13, frameMat, s * (H.glassHalf + 0.045), midY, midZ - 0.015));
-      post.rotation.x = -rake;
     }
-    // Seals along the top and bottom edges of the glass.
-    for (const y of [H.sill + 0.012, H.head - 0.012]) {
-      const seal = this.add(box(H.glassHalf * 2, 0.024, 0.05, sealMat, 0, y, this.frontZ(y) + 0.02));
-      seal.rotation.x = -rake;
-    }
-
-    // The glass itself, one pane at a time. glass.js gives it the material.
-    this.panes = [];
     const spans = [
       [-H.glassHalf, -H.mullion - H.mullionWidth / 2],
       [-H.mullion + H.mullionWidth / 2, H.mullion - H.mullionWidth / 2],
@@ -254,46 +350,59 @@ export class PilotHouse {
     ];
     for (const [x0, x1] of spans) {
       const w = x1 - x0;
-      const g = metreUvsPlane(new THREE.PlaneGeometry(w, glassH, 2, 2), w, glassH);
-      const mesh = new THREE.Mesh(g, this.glassMaterial ?? paint(0x8899aa, 0.04, 0, { transparent: true, opacity: 0.06 }));
-      mesh.position.set((x0 + x1) / 2, midY, midZ + 0.03);
+      const y = (H.sill + H.head) / 2;
+      const mesh = new THREE.Mesh(metreUvsPlane(new THREE.PlaneGeometry(w, glassH), w, glassH), this.glassMaterial ?? paint(0xffffff, 0.05, 0));
+      mesh.position.set((x0 + x1) / 2, y, this.frontZ(y) + 0.004);
       mesh.rotation.x = -rake;
-      mesh.rotation.y = Math.PI;
-      mesh.renderOrder = 800;
-      this.panes.push(mesh);
-      this.add(mesh);
+      mesh.renderOrder = 820;
+      this.group.add(mesh);
+      this.panes.push({ mesh, kind: 'FRONT', width: w, height: glassH });
     }
-    this.parts.rake = rake;
+
+    // The angled corner panes, which is what makes a wheelhouse of this kind look like one: a
+    // narrow light each side running from the windscreen's outboard edge back to the side window.
+    for (const s of [-1, 1]) {
+      const cw = 0.42;
+      const y = (H.sill + H.head) / 2;
+      const z = (this.frontZ(y) + H.front + 0.30) / 2;
+      const mesh = new THREE.Mesh(metreUvsPlane(new THREE.PlaneGeometry(cw, openH), cw, openH), this.glassMaterial ?? paint(0xffffff, 0.05, 0));
+      mesh.position.set(s * (H.glassHalf + 0.09), y, z);
+      mesh.rotation.y = s * 52 * DEG;
+      mesh.renderOrder = 820;
+      this.group.add(mesh);
+      this.panes.push({ mesh, kind: 'SIDE', width: cw, height: openH });
+      // Its frame: a post at the outboard end and cappings top and bottom.
+      const post = this.add(box(0.09, openH + 0.1, 0.11, frame, s * (H.halfWidth - 0.05), y, H.front + 0.30));
+      post.rotation.y = s * 18 * DEG;
+      for (const yy of [H.sill - 0.042, H.head + 0.047]) {
+        const cap = this.add(box(cw + 0.12, 0.085, 0.11, frame, s * (H.glassHalf + 0.09), yy, z));
+        cap.rotation.y = s * 52 * DEG;
+      }
+    }
   }
 
   buildSideWindows() {
     const H = HOUSE;
-    const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
-    const h = H.sideHead - H.sideSill;
-    const midY = (H.sideSill + H.sideHead) / 2;
-    const spans = [[-1.22, -0.26], [-0.14, 0.82]];
+    const frame = this.cherry;
+    const openH = H.sideHead - H.sideSill;
+    const y = (H.sideSill + H.sideHead) / 2;
+    // Two lights each side, between the corner posts.
+    const zs = [[H.front + 0.52, H.front + 1.52], [H.front + 1.62, H.back - 0.22]];
     for (const s of [-1, 1]) {
-      // The run of wall abaft the last window.
-      const backW = H.back - 0.9;
-      const backPanel = this.add(panel(backW, h, this.mat('mat:plywood', { key: 'liner', tint: 0xa88f68 }),
-        s * (H.halfWidth - 0.004), midY, 0.9 + backW / 2));
-      backPanel.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-      for (const [z0, z1] of spans) {
+      for (const [z0, z1] of zs) {
         const w = z1 - z0;
-        // The frame round the opening.
-        this.add(box(0.10, 0.06, w + 0.1, frameMat, s * (H.halfWidth - 0.03), H.sideSill - 0.03, (z0 + z1) / 2));
-        this.add(box(0.10, 0.06, w + 0.1, frameMat, s * (H.halfWidth - 0.03), H.sideHead + 0.03, (z0 + z1) / 2));
-        for (const z of [z0 - 0.03, z1 + 0.03]) {
-          this.add(box(0.10, h + 0.12, 0.06, frameMat, s * (H.halfWidth - 0.03), midY, z));
-        }
-        const g = metreUvsPlane(new THREE.PlaneGeometry(w, h), w, h);
-        const mesh = new THREE.Mesh(g, this.glassMaterial ?? paint(0x8899aa, 0.04, 0, { transparent: true, opacity: 0.06 }));
-        mesh.position.set(s * (H.halfWidth - 0.02), midY, (z0 + z1) / 2);
+        const mesh = new THREE.Mesh(metreUvsPlane(new THREE.PlaneGeometry(w, openH), w, openH), this.glassMaterial ?? paint(0xffffff, 0.05, 0));
+        mesh.position.set(s * (H.halfWidth - 0.012), y, (z0 + z1) / 2);
         mesh.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-        mesh.renderOrder = 800;
-        this.panes.push(mesh);
-        this.add(mesh);
+        mesh.renderOrder = 820;
+        this.group.add(mesh);
+        this.panes.push({ mesh, kind: 'SIDE', width: w, height: openH });
       }
+      // The capping above and below, and the post between the two lights.
+      for (const yy of [H.sideSill - 0.045, H.sideHead + 0.045]) {
+        this.add(box(0.12, 0.09, H.back - H.front - 0.24, frame, s * (H.halfWidth - 0.055), yy, (H.front + H.back) / 2 + 0.06));
+      }
+      this.add(box(0.12, openH, 0.08, frame, s * (H.halfWidth - 0.055), y, H.front + 1.57));
     }
   }
 
@@ -301,241 +410,378 @@ export class PilotHouse {
     const H = HOUSE;
     const w = H.halfWidth * 2;
     const h = H.deckhead - H.sole;
-    const linerMat = this.mat('mat:plywood', { key: 'liner', tint: 0xa88f68 });
-    const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
-
-    const back = this.add(panel(w, h, this.mat('mat:plywood', { key: 'liner2', tint: 0xa88f68, side: THREE.DoubleSide }),
-      0, H.sole + h / 2, H.back - 0.01));
+    const back = this.add(panel(w, h, this.cherryPanel, 0, H.sole + h / 2, H.back - 0.012));
     back.rotation.y = Math.PI;
 
-    // The door, slightly ajar, with a window in its upper half.
-    const doorW = 0.72, doorH = 1.88;
-    const door = new THREE.Group();
-    door.position.set(0.98, H.sole, H.back - 0.04);
-    door.rotation.y = -0.17;
-    const leaf = box(doorW, doorH, 0.045, this.mat('mat:enamel', { key: 'door', tint: 0xdcdfd8 }), -doorW / 2, doorH / 2, 0);
-    door.add(leaf);
-    const glassH = 0.52;
-    const dg = new THREE.Mesh(metreUvsPlane(new THREE.PlaneGeometry(doorW - 0.18, glassH), doorW - 0.18, glassH),
-      this.glassMaterial ?? paint(0x8899aa, 0.04, 0, { transparent: true, opacity: 0.07 }));
-    dg.position.set(-doorW / 2, doorH - 0.42, 0.03);
-    dg.renderOrder = 800;
-    door.add(dg);
-    this.panes.push(dg);
-    // A bronze handle.
-    const brass = paint(0x8a6a2e, 0.32, 0.85);
-    door.add(bar(v3(-0.12, 1.02, 0.05), v3(-0.12, 1.22, 0.05), 0.012, brass));
-    door.add(bar(v3(-0.12, 1.12, 0.03), v3(-0.12, 1.12, 0.07), 0.014, brass));
-    this.group.add(door);
-    this.parts.door = door;
-    this.add(box(doorW + 0.12, 0.07, 0.09, frameMat, 0.98 - doorW / 2, H.sole + doorH + 0.03, H.back - 0.05));
-
-    // The chart table along the port side of the aft bulkhead, with a light over it.
-    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
-    const tableW = 1.05, tableD = 0.46;
-    this.add(box(tableW, 0.045, tableD, teak, -0.95, 4.74, H.back - 0.28));
-    this.add(box(tableW - 0.06, 0.52, 0.03, teak, -0.95, 4.47, H.back - 0.07));
-    for (const x of [-0.95 - tableW / 2 + 0.06, -0.95 + tableW / 2 - 0.06]) {
-      this.add(box(0.05, 0.72, 0.05, teak, x, 4.36, H.back - 0.48));
-    }
-    // A rolled chart and a pencil on it.
-    const chartMat = paint(0xc9c0a8, 0.85, 0);
-    const roll = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.035, 0.035, 0.62, 16), 0.22, 0.62), chartMat);
-    roll.rotation.z = Math.PI / 2;
-    roll.position.set(-1.0, 4.80, H.back - 0.33);
-    this.add(roll);
+    // The door down to the saloon, on the port quarter: a cherry door with a glazed light in it.
+    const dw = 0.78, dh = 1.92;
+    const dx = -0.86, dz = H.back - 0.035;
+    this.add(box(dw + 0.09, dh + 0.05, 0.06, this.cherry, dx, H.sole + dh / 2 + 0.02, dz - 0.005));
+    this.add(box(dw, dh, 0.042, this.cherryPanel, dx, H.sole + dh / 2, dz - 0.03));
+    const gw = 0.52, gh = 0.56;
+    const mesh = new THREE.Mesh(metreUvsPlane(new THREE.PlaneGeometry(gw, gh), gw, gh), this.glassMaterial ?? paint(0xffffff, 0.05, 0));
+    mesh.position.set(dx, H.sole + 1.42, dz - 0.052);
+    mesh.rotation.y = Math.PI;
+    mesh.renderOrder = 820;
+    this.group.add(mesh);
+    this.panes.push({ mesh, kind: 'DOOR', width: gw, height: gh });
+    this.add(bar(v3(dx + 0.30, H.sole + 1.00, dz - 0.06), v3(dx + 0.30, H.sole + 1.18, dz - 0.06), 0.013, paint(0xc8ccd0, 0.28, 0.85), 10));
   }
 
-  // --- the console ------------------------------------------------------------------------------
+  // --- the dash --------------------------------------------------------------------------------
 
-  buildConsole() {
+  buildDash() {
     const H = HOUSE;
-    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
-    const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
-    const dark = paint(0x24282b, 0.6, 0.1);
-    const w = H.glassHalf * 2 + 0.18;
+    const cherry = this.cherry;
+    const wHalf = 1.52;
+    const topD = H.dashBack - H.dashFront;
 
-    // The top, sloping up a little toward the glass so instruments face the helmsman.
-    const topD = H.consoleBack - H.consoleFront;
-    const top = this.add(box(w, 0.05, topD, teak, 0, H.consoleTop, (H.consoleFront + H.consoleBack) / 2));
-    top.rotation.x = -5 * DEG;
+    // The worktop, with a nosing along its aft edge where a hand would rest.
+    const top = this.add(box(wHalf * 2, 0.042, topD, cherry, 0, H.dashTop, (H.dashFront + H.dashBack) / 2));
     top.receiveShadow = true;
+    this.add(nosing(wHalf * 2, 0.026, cherry, 0, H.dashTop - 0.005, H.dashBack));
+    this.parts.dashTop = top;
 
-    // The front face, down to the sole, and the kick panel at the back.
-    const faceH = H.consoleTop - H.sole;
-    this.add(box(w, faceH, 0.05, teak, 0, H.sole + faceH / 2, H.consoleBack));
-    this.add(box(w, faceH - 0.26, 0.05, dark, 0, H.sole + 0.13 + (faceH - 0.26) / 2, H.consoleFront + 0.02));
-    this.add(box(w, 0.02, topD, dark, 0, H.sole + 0.001, (H.consoleFront + H.consoleBack) / 2));
+    // The face below it, down to the lockers: this is where the breaker panels live.
+    const faceH = H.dashTop - H.lockerTop;
+    this.add(box(wHalf * 2, faceH, 0.05, cherry, 0, H.lockerTop + faceH / 2, H.dashBack - 0.02));
 
-    // The dash: a panel standing up from the back of the console top, raked back, carrying the
-    // instruments. instruments.js fills it; this is the carcass.
-    const dashH = H.dashTop - H.consoleTop;
-    const dash = this.add(box(w, dashH, 0.07, this.mat('mat:enamel', { key: 'dash', tint: 0x2d3238, roughness: 0.6 }),
-      0, H.consoleTop + dashH / 2 - 0.01, H.consoleFront + 0.10));
-    dash.rotation.x = 14 * DEG;
-    this.parts.dash = dash;
-    this.parts.dashRake = 14 * DEG;
-
-    // The brass grab rail along the front edge: the thing you hold when she rolls.
-    const brass = paint(0x9a7a34, 0.28, 0.88);
-    const railY = H.consoleTop + 0.17, railZ = H.consoleBack - 0.04;
-    this.add(bar(v3(-w / 2 + 0.08, railY, railZ), v3(w / 2 - 0.08, railY, railZ), 0.016, brass, 14));
-    for (const x of [-w / 2 + 0.10, -0.52, 0.52, w / 2 - 0.10]) {
-      this.add(bar(v3(x, H.consoleTop + 0.02, railZ), v3(x, railY, railZ), 0.013, brass, 10));
+    // The louvred lockers under the dash, three a side with the wheel pedestal between them.
+    const lockH = H.lockerTop - H.sole - 0.06;
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 2; i++) {
+        const dw = 0.46;
+        const x = s * (0.42 + i * (dw + 0.045));
+        const door = louvreDoor(dw, lockH, cherry);
+        door.position.set(x, H.sole + 0.06 + lockH / 2, H.dashBack - 0.052);
+        door.rotation.y = Math.PI;
+        this.group.add(door);
+        // A chrome flush pull on the inboard stile.
+        this.add(bar(
+          v3(x - s * dw * 0.38, H.sole + 0.06 + lockH * 0.74, H.dashBack - 0.064),
+          v3(x - s * dw * 0.38, H.sole + 0.06 + lockH * 0.86, H.dashBack - 0.064),
+          0.009, paint(0xcdd1d5, 0.26, 0.88), 10));
+      }
     }
-    this.parts.consoleWidth = w;
+    // The plinth they stand on, set back so the sole runs under it.
+    this.add(box(wHalf * 2, 0.06, topD * 0.6, this.cherryPanel, 0, H.sole + 0.03, H.dashBack - 0.14));
+
+    // The instrument panel: a raked cherry surround standing on the worktop, carrying the plotter,
+    // the sounder and the radar. In the reference it sits just under the window sill and the
+    // screens are square to the helmsman rather than to the boat, which is what the rake is for.
+    const panelH = 0.30;
+    const stand = new THREE.Group();
+    stand.position.set(0, H.dashTop + 0.021, H.dashFront + 0.10);
+    stand.rotation.x = -H.dashRake * DEG;
+    const carcass = box(wHalf * 1.42, panelH, 0.06, cherry, 0, panelH / 2 - 0.02, -0.03);
+    stand.add(carcass);
+    this.group.add(stand);
+    this.parts.instrumentPanel = stand;
+    this.parts.dash = carcass;
+
+    // The breaker and switch banks either side of the wheel, in the dash face.
+    const dcBank = new SwitchBank(
+      ['nav lights', 'anchor', 'deck flood', 'steaming', 'wipers', 'horn', 'bilge', 'blower'],
+      { width: 0.40, height: 0.26, columns: 2, title: 'DC main', on: [0, 4] },
+    );
+    dcBank.group.position.set(-0.92, H.lockerTop + 0.26, H.dashBack - 0.047);
+    dcBank.group.rotation.y = Math.PI;
+    this.group.add(dcBank.group);
+    this.banks.push(dcBank);
+    this.parts.wiperSwitch = dcBank.switches[4].body;
+
+    const acBank = new SwitchBank(
+      ['radar', 'plotter', 'sounder', 'vhf', 'autopilot', 'instruments', 'panel light', 'spare'],
+      { width: 0.40, height: 0.26, columns: 2, title: 'electronics', breaker: true, on: [0, 1, 2, 3, 4, 5] },
+    );
+    acBank.group.position.set(0.92, H.lockerTop + 0.26, H.dashBack - 0.047);
+    acBank.group.rotation.y = Math.PI;
+    this.group.add(acBank.group);
+    this.banks.push(acBank);
+
+    // The engine controls: a single-lever head on a cherry plinth to starboard of the wheel.
+    const quad = new THREE.Group();
+    quad.position.set(0.74, H.dashTop + 0.021, H.dashBack - 0.20);
+    const plinth = box(0.17, 0.05, 0.22, cherry, 0, 0.025, 0);
+    quad.add(plinth);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.055, 0.19), paint(0x1b1e21, 0.5, 0.35));
+    head.position.y = 0.078;
+    quad.add(head);
+    const lever = new THREE.Group();
+    lever.position.set(0, 0.10, 0.0);
+    const shaft = bar(v3(0, 0, 0), v3(0, 0.20, 0), 0.011, paint(0xc9ced2, 0.26, 0.9), 12);
+    lever.add(shaft);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.028, 16, 12), paint(0x16181a, 0.45, 0.1));
+    knob.position.y = 0.21;
+    lever.add(knob);
+    quad.add(lever);
+    this.group.add(quad);
+    this.parts.quadrant = quad;
+    this.parts.levers = [lever];
+
+    // The chrome grab rail along the aft edge: the thing you hold when she rolls.
+    const chrome = paint(0xcdd1d5, 0.24, 0.9);
+    const railY = H.dashTop + 0.115, railZ = H.dashBack - 0.045;
+    this.add(bar(v3(-wHalf + 0.10, railY, railZ), v3(wHalf - 0.10, railY, railZ), 0.015, chrome, 14));
+    for (const x of [-wHalf + 0.12, -0.46, 0.46, wHalf - 0.12]) {
+      this.add(bar(v3(x, H.dashTop + 0.022, railZ), v3(x, railY, railZ), 0.012, chrome, 10));
+    }
   }
+
+  // --- the wheel -------------------------------------------------------------------------------
 
   buildWheel() {
     const H = HOUSE;
-    const steel = this.mat('mat:steel-brushed', { key: 'wheelsteel', roughness: 0.3 });
-    const teak = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
-    const bronze = paint(0x8a6a2e, 0.3, 0.88);
+    const chrome = this.mat('mat:steel-brushed', { key: 'wheelchrome', roughness: 0.16, metalness: 0.95 });
+    const cherry = this.cherry;
 
+    // The pedestal: a cherry column with a chrome collar, standing on the sole.
+    const colH = H.wheelY - H.sole - 0.30;
+    this.add(box(0.19, colH, 0.19, cherry, 0, H.sole + colH / 2, H.wheelZ));
+    this.add(box(0.26, 0.05, 0.26, cherry, 0, H.sole + 0.025, H.wheelZ));
+    const collar = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.075, 0.075, 0.09, 20), 0.47, 0.09), chrome);
+    collar.position.set(0, H.sole + colH + 0.045, H.wheelZ);
+    this.add(collar);
+
+    // The wheel itself: a destroyer type, six spokes with turned grips standing proud of the rim.
     const wheel = new THREE.Group();
     wheel.position.set(0, H.wheelY, H.wheelZ);
-    wheel.rotation.x = 18 * DEG; // the wheel leans back toward the helmsman
-
-    // The rim: a torus with a turned section, in teak with bronze ferrules.
-    const rim = new THREE.Mesh(scaleUvs(new THREE.TorusGeometry(H.wheelR, 0.022, 12, 64), TAU * H.wheelR, TAU * 0.022), teak);
+    wheel.rotation.x = H.wheelTilt * DEG;
+    const R = H.wheelR;
+    const rim = new THREE.Mesh(scaleUvs(new THREE.TorusGeometry(R, 0.017, 14, 72), TAU * R, TAU * 0.017), chrome);
     wheel.add(rim);
-    // Six spokes with turned grips standing proud of the rim, as a working wheel has.
     for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * TAU;
+      const a = (i / 6) * TAU + Math.PI / 6;
       const dir = v3(Math.cos(a), Math.sin(a), 0);
-      wheel.add(bar(v3(0, 0, 0), dir.clone().multiplyScalar(H.wheelR), 0.013, steel, 8));
-      const grip = new THREE.Mesh(
-        scaleUvs(new THREE.CylinderGeometry(0.018, 0.013, 0.085, 10), 0.11, 0.085), teak);
-      grip.position.copy(dir).multiplyScalar(H.wheelR + 0.042);
+      // A spoke that tapers from the hub out to the rim.
+      const sp = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.0085, 0.014, R - 0.05, 10), 0.07, R), chrome);
+      sp.position.copy(dir).multiplyScalar((R - 0.05) / 2 + 0.05);
+      sp.quaternion.setFromUnitVectors(v3(0, 1, 0), dir.clone().normalize());
+      wheel.add(sp);
+      // The grip beyond the rim, turned from the same timber as the joinery.
+      const grip = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.019, 0.014, 0.085, 12), 0.11, 0.085), cherry);
+      grip.position.copy(dir).multiplyScalar(R + 0.044);
       grip.quaternion.setFromUnitVectors(v3(0, 1, 0), dir.clone().normalize());
       wheel.add(grip);
     }
-    const hub = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.052, 0.058, 0.075, 20), 0.33, 0.075), bronze);
+    const hub = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.052, 0.058, 0.085, 22), 0.33, 0.085), chrome);
     hub.rotation.x = Math.PI / 2;
     wheel.add(hub);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.036, 20, 14), paint(0x8f6f2c, 0.26, 0.9));
+    cap.position.z = -0.05;
+    wheel.add(cap);
     this.group.add(wheel);
     this.parts.wheel = wheel;
-
-    // The pedestal it stands on.
-    const col = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.055, 0.085, H.wheelY - H.sole - 0.06, 18), 0.44, 1.0),
-      this.mat('mat:steel-brushed', { key: 'pedestal', roughness: 0.42 }));
-    col.position.set(0, (H.sole + H.wheelY - 0.06) / 2, H.wheelZ);
-    this.add(col);
-    const base = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.14, 0.17, 0.06, 20), 0.95, 0.06), this.mat('mat:steel-rust', { key: 'base' }));
-    base.position.set(0, H.sole + 0.03, H.wheelZ);
-    this.add(base);
-
-    // Throttle and gearbox levers to starboard of the wheel, in a bronze quadrant.
-    const quad = new THREE.Group();
-    quad.position.set(0.56, H.consoleTop + 0.03, H.consoleBack - 0.16);
-    const plate = box(0.2, 0.025, 0.16, bronze, 0, 0, 0);
-    quad.add(plate);
-    this.parts.levers = [];
-    for (let i = 0; i < 2; i++) {
-      const lever = new THREE.Group();
-      lever.position.set(-0.045 + i * 0.09, 0.012, 0);
-      lever.add(bar(v3(0, 0, 0), v3(0, 0.24, 0), 0.011, bronze, 8));
-      const knob = new THREE.Mesh(scaleUvs(new THREE.SphereGeometry(0.026, 14, 10), 0.16, 0.16), paint(i === 0 ? 0x9b1f1f : 0x16181a, 0.5, 0.05));
-      knob.position.set(0, 0.25, 0);
-      lever.add(knob);
-      quad.add(lever);
-      this.parts.levers.push(lever);
-    }
-    this.group.add(quad);
-    this.parts.quadrant = quad;
   }
 
-  // --- overhead and fittings ---------------------------------------------------------------------
+  // --- the overhead ----------------------------------------------------------------------------
 
   buildOverhead() {
     const H = HOUSE;
-    const frameMat = this.mat('mat:enamel', { key: 'frame', tint: 0xeef0ea });
-    const dark = paint(0x2a2f33, 0.6, 0.1);
+    const cherry = this.cherry;
+    const w = 3.00;
+    const fascia = new THREE.Group();
+    fascia.position.set(0, H.overheadY, H.overheadZ);
+    fascia.rotation.x = H.overheadRake * DEG;
+    // The carcass and its surround: a cherry box with a raked face.
+    fascia.add(box(w, H.overheadHeight, 0.16, cherry, 0, 0, -0.09));
+    fascia.add(box(w + 0.05, H.overheadHeight + 0.05, 0.022, cherry, 0, 0, -0.004));
+    this.group.add(fascia);
+    this.parts.overhead = fascia;
 
-    // The overhead console: a box hung from the deckhead above and abaft the window head, with its
-    // face raked down toward the helmsman. The radar and the plotter live on that face.
-    const w = 1.42;
-    const shelf = new THREE.Group();
-    shelf.position.set(0, H.overheadY, H.overheadZ);
-    // Positive, so the face turns down toward the helmsman rather than up at the deckhead.
-    shelf.rotation.x = H.overheadRake * DEG;
-    shelf.add(box(w, 0.34, 0.16, dark, 0, 0, -0.09));
-    shelf.add(box(w + 0.03, 0.38, 0.02, frameMat, 0, 0, -0.172));
-    this.group.add(shelf);
-    this.parts.overhead = shelf;
-    // The straps that hold it up.
-    for (const s of [-1, 1]) {
-      this.add(bar(v3(s * 0.60, H.overheadY + 0.10, H.overheadZ - 0.12), v3(s * 0.62, H.deckhead - 0.02, H.overheadZ - 0.18), 0.012, frameMat, 8));
-      this.add(bar(v3(s * 0.60, H.overheadY - 0.02, H.overheadZ + 0.10), v3(s * 0.62, H.deckhead - 0.02, H.overheadZ + 0.16), 0.012, frameMat, 8));
-    }
-    // A row of switches and warning lamps along the bottom of it.
-    this.parts.switches = [];
-    for (let i = 0; i < 8; i++) {
-      const x = -0.58 + i * 0.166;
-      const body = box(0.05, 0.04, 0.045, paint(0x1b1f22, 0.6, 0.1), x, -0.135, 0.012);
-      shelf.add(body);
-      // The first switch of the row is the wipers: the one thing on this panel worth working by
-      // hand, since everything else on it is already following the weather.
-      if (i === 0) this.parts.wiperSwitch = body;
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.0105, 10, 8),
-        new THREE.MeshStandardMaterial({
-          color: 0x401008, emissive: [0xff3020, 0x40ff60, 0xffc040][i % 3], emissiveIntensity: 0.2, roughness: 0.4,
-        }));
-      lamp.position.set(x, -0.078, 0.02);
-      shelf.add(lamp);
-      this.parts.switches.push(lamp);
+    // What is on it, left to right, as in the reference: a hailer, the AIS and radar repeats (left
+    // to instruments.js), a bank of engine gauges in the middle, the VHF with its handset, and a
+    // small switch panel outboard.
+    const face = 0.012;
+
+    const hailer = new RadioSet('hailer', { width: 0.21, height: 0.082, brand: 'STANDARD', lcdText: '2', lcdSub: 'PA' });
+    hailer.group.position.set(-1.24, 0.03, face);
+    fascia.add(hailer.group);
+    this.sets.push(hailer);
+
+    const vhf = new RadioSet('vhf', { width: 0.21, height: 0.082, brand: 'ICOM', lcdText: '16', lcdSub: 'DUP' });
+    vhf.group.position.set(0.96, 0.03, face);
+    fascia.add(vhf.group);
+    this.sets.push(vhf);
+    // Its handset, hanging on a clip under the fascia on its curly cord.
+    const hs = handset();
+    hs.position.set(1.14, -H.overheadHeight / 2 - 0.02, 0.03);
+    hs.rotation.set(-H.overheadRake * DEG, 0, 0.18);
+    fascia.add(hs);
+    this.parts.handset = hs;
+    fascia.add(box(0.05, 0.03, 0.05, paint(0xc9ced2, 0.3, 0.85), 1.14, -H.overheadHeight / 2 + 0.02, 0.03));
+
+    // The engine gauges: a bank of four over the centreline and two outboard of them. Their
+    // numbers come from the boat every frame (update), which is the point of modelling the needle.
+    const spec = [
+      ['tacho', { label: 'TACH', unit: 'rpm x100', min: 0, max: 30, major: 5, minor: 1, redFrom: 24 }, -0.56],
+      ['temp', { label: 'TEMP', unit: 'deg C', min: 40, max: 120, major: 20, minor: 5, redFrom: 100 }, -0.34],
+      ['oil', { label: 'OIL', unit: 'bar', min: 0, max: 8, major: 2, minor: 0.5, redFrom: 7 }, -0.12],
+      ['volts', { label: 'VOLTS', unit: 'DC', min: 8, max: 16, major: 2, minor: 0.5, redFrom: null }, 0.10],
+      ['rudder', { label: 'RUDDER', unit: 'deg', min: -35, max: 35, major: 10, minor: 5, redFrom: null }, 0.36],
+      ['clino', { label: 'HEEL', unit: 'deg', min: -30, max: 30, major: 10, minor: 5, redFrom: null }, 0.60],
+    ];
+    for (const [name, opts, x] of spec) {
+      const gauge = new Gauge({ ...opts, diameter: 0.098, start: opts.min });
+      gauge.group.position.set(x, 0.0, face);
+      fascia.add(gauge.group);
+      this.gauges[name] = gauge;
     }
 
-    // The grab rail you hold when you stand up into a sea.
-    const brass = paint(0x9a7a34, 0.28, 0.88);
-    const railY = H.deckhead - 0.26, railZ = H.frontTop + 0.62;
-    this.add(bar(v3(-w / 2 + 0.1, railY, railZ), v3(w / 2 - 0.1, railY, railZ), 0.018, brass, 14));
-    for (const x of [-w / 2 + 0.12, 0, w / 2 - 0.12]) {
-      this.add(bar(v3(x, railY, railZ), v3(x, H.deckhead - 0.04, railZ - 0.05), 0.014, brass, 10));
-    }
+    // A small bank of switches at the outboard end, and the deckhead lamps under the fascia.
+    const bank = new SwitchBank(['chart lt', 'dome', 'red', 'inst'], { width: 0.24, height: 0.20, title: null, on: [3] });
+    bank.group.position.set(1.36, 0.0, face);
+    fascia.add(bank.group);
+    this.banks.push(bank);
 
-    // The cable run along the deckhead, which is what a real wheelhouse ceiling actually looks like.
-    const conduit = paint(0x8d9298, 0.5, 0.6);
-    for (const x of [-0.9, 0.9]) {
-      this.add(bar(v3(x, H.deckhead - 0.055, H.frontTop + 0.5), v3(x, H.deckhead - 0.055, H.back - 0.1), 0.014, conduit, 8));
-    }
-
-    // Two deckhead lamps: white for working, red for night vision.
     this.parts.domeLamps = [];
-    for (const z of [H.frontTop + 0.95, H.back - 0.55]) {
-      const housing = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.085, 0.10, 0.055, 20), 0.6, 0.055), frameMat);
-      housing.position.set(0, H.deckhead - 0.035, z);
-      this.add(housing);
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.075, 20, 12, 0, TAU, Math.PI / 2, Math.PI / 2),
-        new THREE.MeshStandardMaterial({ color: 0xf6f1e4, emissive: 0xfff0d0, emissiveIntensity: 2, roughness: 0.5 }));
-      lens.position.set(0, H.deckhead - 0.062, z);
+    for (const x of [-0.95, 0.95]) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.055, 18, 12, 0, TAU, Math.PI * 0.5, Math.PI * 0.5),
+        new THREE.MeshStandardMaterial({ color: 0xf2efe6, emissive: 0xffeedd, emissiveIntensity: 0, roughness: 0.35 }));
+      lens.position.set(x, HOUSE.deckhead - 0.03, -0.55);
+      lens.rotation.x = Math.PI;
       this.add(lens);
-      const light = new THREE.PointLight(0xffe8c0, 0, 4.2, 2);
-      light.position.set(0, H.deckhead - 0.10, z);
-      light.layers.set(LAYER.DEFAULT);
-      light.layers.enable(LAYER.INTERIOR);
-      this.group.add(light);
-      this.parts.domeLamps.push({ light, lens });
+      this.add(box(0.14, 0.016, 0.14, this.cherry, x, HOUSE.deckhead - 0.012, -0.55));
+      const light = new THREE.PointLight(0xffe9cf, 0, 5.5, 2);
+      light.position.set(x, HOUSE.deckhead - 0.10, -0.55);
+      this.add(light);
       this.lamps.push(light);
+      this.parts.domeLamps.push({ light, lens });
     }
   }
 
+  // --- the side desks --------------------------------------------------------------------------
+
+  buildSideDesks() {
+    const H = HOUSE;
+    const cherry = this.cherry;
+    const d = H.deskBack - H.deskFront;
+    for (const s of [-1, 1]) {
+      const w = H.halfWidth - H.deskInboard;
+      const cx = s * (H.deskInboard + w / 2);
+      // The top and its nosing.
+      const top = this.add(box(w, 0.042, d, cherry, cx, H.deskTop, (H.deskFront + H.deskBack) / 2));
+      top.receiveShadow = true;
+      this.add(nosing(d, 0.026, cherry, s * H.deskInboard, H.deskTop - 0.005, (H.deskFront + H.deskBack) / 2, false));
+      // A fiddle along the outboard and forward edges, so nothing slides off in a sea.
+      this.add(box(0.018, 0.045, d, cherry, s * (H.halfWidth - 0.015), H.deskTop + 0.042, (H.deskFront + H.deskBack) / 2));
+      this.add(box(w, 0.045, 0.018, cherry, cx, H.deskTop + 0.042, H.deskFront + 0.01));
+
+      // Lockers under: two louvred doors and a bank of three drawers.
+      const lockH = H.deskTop - H.sole - 0.10;
+      const door = louvreDoor(w * 0.92, lockH * 0.98, cherry);
+      door.position.set(cx, H.sole + 0.10 + lockH / 2, H.deskFront + 0.02);
+      this.group.add(door);
+      const chrome = paint(0xcdd1d5, 0.26, 0.88);
+      for (let i = 0; i < 3; i++) {
+        const dh = (d - 0.10) / 3;
+        const z = H.deskFront + 0.30 + i * dh + dh / 2;
+        const front = this.add(panel(dh - 0.012, lockH - 0.02, cherry, s * (H.deskInboard - 0.012), H.sole + 0.10 + lockH / 2, z));
+        front.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
+        this.add(bar(
+          v3(s * (H.deskInboard - 0.03), H.sole + 0.10 + lockH * 0.5, z - dh * 0.22),
+          v3(s * (H.deskInboard - 0.03), H.sole + 0.10 + lockH * 0.5, z + dh * 0.22),
+          0.010, chrome, 10));
+      }
+      // The plinth.
+      this.add(box(w, 0.10, d - 0.06, this.cherryPanel, cx, H.sole + 0.05, (H.deskFront + H.deskBack) / 2));
+    }
+
+    // To starboard, the flat screen on its stand that the reference has over the desk.
+    const mon = new THREE.Group();
+    mon.position.set(1.30, H.deskTop + 0.021, 0.10);
+    const base = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.075, 0.085, 0.016, 20), 0.5, 0.016), paint(0x1a1d20, 0.42, 0.5));
+    mon.add(base);
+    mon.add(bar(v3(0, 0.008, 0), v3(0, 0.17, -0.02), 0.014, paint(0x1a1d20, 0.42, 0.5), 10));
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.26, 0.016), paint(0x15171a, 0.48, 0.2));
+    bezel.position.set(0, 0.30, -0.03);
+    bezel.rotation.set(-0.12, -0.42, 0);
+    mon.add(bezel);
+    this.group.add(mon);
+    this.parts.monitor = bezel;
+
+    // To port, the chart table's fiddled binder and a pair of dividers: the two things that are
+    // always on one.
+    const binder = this.add(box(0.30, 0.035, 0.22, paint(0x24303a, 0.72, 0.02), -1.34, H.deskTop + 0.040, 0.18));
+    binder.rotation.y = 0.18;
+    this.add(box(0.012, 0.004, 0.17, paint(0xb8bcc0, 0.3, 0.85), -1.16, H.deskTop + 0.024, -0.06));
+  }
+
+  // --- the seats -------------------------------------------------------------------------------
+
+  /**
+   * Two helm chairs in cream leather on chrome pedestals, abaft the wheel. They are behind the eye
+   * and so are only seen when the cursor swings the gaze aft, but the room is wrong without them:
+   * from the door this is the first thing you see.
+   */
+  buildSeats() {
+    const H = HOUSE;
+    const hide = this.mat('mat:leather-cream', { key: 'hide', tint: 0xe6ddcb, roughness: 0.52 });
+    const chrome = paint(0xcdd1d5, 0.24, 0.9);
+    this.parts.seats = [];
+    for (const s of [-1, 1]) {
+      const seat = new THREE.Group();
+      seat.position.set(s * 0.60, H.sole, 0.92);
+      // The pedestal and its foot.
+      seat.add(new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.20, 0.23, 0.035, 22), 1.3, 0.035), chrome).translateY(0.018));
+      seat.add(new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.055, 0.055, 0.48, 18), 0.35, 0.48), chrome).translateY(0.27));
+      // The squab, its front edge rolled.
+      const squab = box(0.50, 0.11, 0.46, hide, 0, 0.56, 0);
+      seat.add(squab);
+      seat.add(nosing(0.50, 0.055, hide, 0, 0.555, -0.23));
+      // The back, raked, with a roll along its top.
+      const back = box(0.48, 0.52, 0.10, hide, 0, 0.84, 0.20);
+      back.rotation.x = -0.14;
+      seat.add(back);
+      seat.add(nosing(0.48, 0.05, hide, 0, 1.095, 0.165));
+      // Armrests.
+      for (const a of [-1, 1]) {
+        const arm = box(0.07, 0.065, 0.34, hide, a * 0.265, 0.70, 0.02);
+        seat.add(arm);
+        seat.add(bar(v3(a * 0.265, 0.62, 0.15), v3(a * 0.265, 0.68, 0.15), 0.011, chrome, 8));
+      }
+      this.group.add(seat);
+      this.parts.seats.push(seat);
+    }
+  }
+
+  // --- the small things ------------------------------------------------------------------------
+
   buildFittings() {
     const H = HOUSE;
-    // Hooks and a shelf along the aft part of the port wall, for the props to hang from.
+    const cherry = this.cherry;
     const brass = paint(0x9a7a34, 0.3, 0.86);
-    const shelfMat = this.mat('mat:teak', { key: 'teak', tint: 0x9a6334 });
-    // The shelf runs fore and aft along the wall, not across it: 0.9 m long, 0.24 m deep, with a
-    // fiddle along its outer edge, because anything on an unfenced shelf is on the sole by the
-    // second roll.
-    const shelf = this.add(box(0.24, 0.035, 0.9, shelfMat, -H.halfWidth + 0.12, 5.62, 1.15));
-    this.parts.shelf = shelf;
-    this.shelfTop = 5.62 + 0.0175;
-    this.add(box(0.022, 0.05, 0.9, shelfMat, -H.halfWidth + 0.23, 5.655, 1.15));
-    for (const [z, y] of [[0.80, 5.44], [1.52, 5.44]]) {
-      this.add(bar(v3(-H.halfWidth + 0.02, y, z), v3(-H.halfWidth + 0.09, y - 0.04, z), 0.009, brass, 8));
+
+    // A grab rail under the overhead fascia, which is what you hold standing up into a sea.
+    this.add(bar(v3(-1.30, H.deckhead - 0.14, -0.74), v3(1.30, H.deckhead - 0.14, -0.74), 0.016, paint(0xcdd1d5, 0.24, 0.9), 14));
+    for (const x of [-1.28, 0, 1.28]) {
+      this.add(bar(v3(x, H.deckhead - 0.14, -0.74), v3(x, H.deckhead - 0.02, -0.80), 0.012, paint(0xcdd1d5, 0.24, 0.9), 10));
     }
-    // A coffee mug on the console: it slides when she rolls (update()).
+
+    // A brass clock and a barometer on the aft bulkhead, the pair every wheelhouse has.
+    for (const [x, label, unit, min, max, major, minor] of [
+      [0.62, 'CLOCK', '', 0, 12, 3, 1],
+      [0.92, 'BAROMETER', 'mb', 960, 1050, 30, 10],
+    ]) {
+      const g = new Gauge({ label, unit, min, max, major, minor, dark: false, diameter: 0.145, maker: 'WEMPE', start: (min + max) / 2 });
+      g.group.position.set(x, 5.58, H.back - 0.045);
+      g.group.rotation.y = Math.PI;
+      this.group.add(g.group);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.082, 0.012, 10, 32), brass);
+      ring.position.set(x, 5.58, H.back - 0.050);
+      ring.rotation.y = Math.PI;
+      this.add(ring);
+      this.gauges[label.toLowerCase()] = g;
+    }
+
+    // A teak shelf on the port wall aft, with a fiddle: the one flat place in the room.
+    const shelf = this.add(box(0.24, 0.035, 0.80, cherry, -H.halfWidth + 0.12, 5.44, 1.20));
+    this.parts.shelf = shelf;
+    this.shelfTop = 5.44 + 0.0175;
+    this.add(box(0.022, 0.05, 0.80, cherry, -H.halfWidth + 0.23, 5.4725, 1.20));
+    this.add(box(0.26, 0.05, 0.05, cherry, -H.halfWidth + 0.13, 5.415, 0.82));
+
+    // A mug on the dash: it slides when she rolls (update), and fetches up against the rail.
     const mug = new THREE.Group();
     const body = new THREE.Mesh(scaleUvs(new THREE.CylinderGeometry(0.042, 0.037, 0.095, 20, 1, true), 0.26, 0.095),
       paint(0xeae5dc, 0.5, 0, { side: THREE.DoubleSide }));
@@ -549,87 +795,11 @@ export class PilotHouse {
     coffee.position.y = 0.072;
     mug.add(coffee);
     mug.add(bar(v3(0.042, 0.062, 0), v3(0.068, 0.046, 0), 0.006, paint(0xeae5dc, 0.5, 0), 8));
-    mug.position.set(-0.34, H.consoleTop + 0.03, H.consoleBack - 0.17);
+    mug.position.set(-0.34, H.dashTop + 0.021, H.dashBack - 0.17);
     this.group.add(mug);
     this.parts.mug = mug;
     this.mugX = -0.30;
     this.mugV = 0;
-  }
-
-  // --- props from the manifest --------------------------------------------------------------------
-
-  /**
-   * Where each scanned prop goes once it arrives. Positions are in body coordinates, in metres.
-   *
-   * Nothing here is scaled. Every one of these props is a Poly Haven scan, and Poly Haven models
-   * are modelled at their real size in metres, which is the unit this scene is in as well: the
-   * pocket compass is 8 cm across because a pocket compass is 8 cm across. An earlier version of
-   * this table normalised each model to a guessed height, which is what you do to models of
-   * unknown provenance, and the result measured out as a 1.7 m clipboard standing through the port
-   * wall and a half-metre fisherman's hat. The sizes are checked by measurement, not by eye:
-   * `trawler.propSizes()` prints the bounding box of every prop in metres, in the house's own
-   * frame, and every one of them has to read like the real object.
-   *
-   * `anchor` says what the position means: 'base' (the default) stands the prop on its own bottom
-   * face, which is what you want for anything standing on the console or the sole; 'centre' puts
-   * its middle there, which is what you want for the things hanging on the port wall.
-   */
-  static PROPS = {
-    // On the console, where the helmsman's hands are. The set is a valve transceiver 0.62 m across
-    // and 0.43 m tall: that puts its top a hand's breadth above the window sill in the bottom port
-    // corner of the view, which is exactly where a working boat's radio gets in the way.
-    vhf: { pos: [-1.10, 4.68, -0.92], rot: [0, 0.42, 0] },
-    compass: { pos: [-0.60, 4.68, -0.98], rot: [0, 0.35, 0] },
-    torch: { pos: [0.72, 4.68, -0.95], rot: [0, 0.55, 0] },
-    // On the sole.
-    stool: { pos: [0.80, 4.00, 0.62], rot: [0, 0.4, 0] },
-    extinguisher: { pos: [1.44, 4.00, 1.38], rot: [0, -0.6, 0] },
-    // On the teak shelf on the port wall, whose top is at 5.6375.
-    thermos: { pos: [-1.60, 5.6375, 0.88], rot: [0, 0.9, 0] },
-    clipboard: { pos: [-1.575, 5.6375, 1.30], rot: [0, 0.12, 0] },
-    // Hung on the port wall: the clock on the panelling, the glasses and the hat on the two brass
-    // hooks at 5.44. These are placed by their centres.
-    clock: { pos: [-1.690, 5.93, 1.15], rot: [0, 1.5708, 0], anchor: 'centre' },
-    binoculars: { pos: [-1.615, 5.27, 0.80], rot: [1.5708, 0, 0.22], anchor: 'centre' },
-    hat: { pos: [-1.505, 5.34, 1.48], rot: [0.30, 0.3, 0], anchor: 'centre' },
-  };
-
-  /** Drops a loaded glTF prop into the house. */
-  addProp(name, model) {
-    const spec = PilotHouse.PROPS[name];
-    if (!spec || !model) return;
-    const obj = model.clone(true);
-    obj.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = false;
-      o.receiveShadow = false;
-      if (o.material) {
-        o.material = o.material.clone();
-        o.material.fog = true;
-        // The props come out of the loader as standard materials, so they take the same
-        // atmosphere as everything else once patched.
-        o.material.onBeforeCompile = (shader) => { patchPropShader(shader); };
-        o.material.needsUpdate = true;
-      }
-    });
-    // Models arrive at whatever size they were modelled at and with their origin wherever the
-    // author left it. Scale by the real height the prop should be, then sit it on its own base so
-    // a thermos stands on the console rather than halfway through it.
-    obj.rotation.set(spec.rot[0] ?? 0, spec.rot[1] ?? 0, spec.rot[2] ?? 0);
-    obj.updateMatrixWorld(true);
-    const bounds = new THREE.Box3().setFromObject(obj);
-    const centre = bounds.getCenter(new THREE.Vector3());
-    const yRef = spec.anchor === 'centre' ? centre.y : bounds.min.y;
-    obj.position.set(
-      spec.pos[0] - centre.x,
-      spec.pos[1] - yRef,
-      spec.pos[2] - centre.z,
-    );
-    obj.layers.set(LAYER.DEFAULT);
-    obj.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.INTERIOR); });
-    const parent = spec.parent && this.parts[spec.parent] ? this.parts[spec.parent] : this.group;
-    parent.add(obj);
-    this.parts[`prop:${name}`] = obj;
   }
 
   // --- what can be worked -------------------------------------------------------------------------
@@ -645,7 +815,7 @@ export class PilotHouse {
     add(this.parts.wheel, 'wheel');
     for (const l of this.parts.domeLamps ?? []) add(l.lens, 'lamp');
     add(this.parts.overhead, 'horn');
-    add(this.parts.dash, 'radar');
+    add(this.parts.instrumentPanel, 'radar');
     add(this.parts.wiperSwitch, 'wipers');
   }
 
@@ -680,15 +850,22 @@ export class PilotHouse {
 
     // The wheel follows the rudder, geared about four turns lock to lock.
     if (this.parts.wheel) this.parts.wheel.rotation.z = -boat.rudder * 4.2;
-    // The throttle lever follows the engine, the gear lever stays ahead.
-    if (this.parts.levers) {
-      this.parts.levers[0].rotation.x = lerp(0.42, -0.52, boat.throttle);
-      this.parts.levers[1].rotation.x = -0.34;
-    }
-    // The mug slides on the console when she rolls, and fetches up against the rail.
+    // The single-lever head: ahead is forward, and it comes back to the detent at neutral.
+    if (this.parts.levers) this.parts.levers[0].rotation.x = lerp(0.40, -0.50, boat.throttle);
+
+    // The gauges read the boat. A needle that does not move is a sticker.
+    const g = this.gauges;
+    if (g.tacho) g.tacho.set(boat.rpm ? boat.rpm / 100 : boat.throttle * 22 + 5);
+    if (g.temp) g.temp.set(62 + boat.throttle * 24);
+    if (g.oil) g.oil.set(2.4 + boat.throttle * 2.2);
+    if (g.volts) g.volts.set(13.8 + Math.sin(this.lampLevel ?? 0) * 0.1);
+    if (g.rudder) g.rudder.set(-boat.rudder * 35);
+    if (g.clino) g.clino.set(boat.roll * 57.2957795);
+    if (g.clock) g.clock.set(((G.uDayTime.value * 24) % 12));
+
+    // The mug slides on the dash when she rolls, and fetches up against the rail.
     if (this.parts.mug) {
       const a = Math.sin(boat.roll) * 9.81 - boat.rate.x * 0.4;
-      // Rubber matting under it: it holds until the slope beats the friction, then it goes.
       const stick = 0.9;
       if (Math.abs(a) > stick || Math.abs(this.mugV) > 1e-3) {
         this.mugV += (a - Math.sign(this.mugV || a) * stick) * dt;
@@ -699,16 +876,8 @@ export class PilotHouse {
       }
       this.parts.mug.position.x = this.mugX;
     }
-    // The door swings on its hinge with the roll, and knocks at the stops.
-    if (this.parts.door) {
-      this.doorAngle ??= -0.17;
-      this.doorRate ??= 0;
-      const torque = -Math.sin(boat.roll) * 2.2 - this.doorRate * 1.1;
-      this.doorRate += torque * dt;
-      this.doorAngle = Math.max(-0.62, Math.min(0.02, this.doorAngle + this.doorRate * dt));
-      if (this.doorAngle <= -0.62 || this.doorAngle >= 0.02) this.doorRate *= -0.25;
-      this.parts.door.rotation.y = this.doorAngle;
-    }
+
+    this.setFill(G.uSkyLight.value);
     this.updateLamps(dt, state);
   }
 
@@ -724,24 +893,28 @@ export class PilotHouse {
    */
   updateLamps(dt, state) {
     const night = G.uNight.value;
-    // Nobody lights a wheelhouse at night: a white light in here and you cannot see a thing
-    // outside, which is the whole job. So the deckhead lamp is off unless it is asked for, and
-    // when it is asked for it is red, which is what it is for.
-    const want = (state?.redLight ? 1 : 0) * night;
+    const red = state?.redLight ? 1 : 0;
+    const off = state?.lampsOff ? 0 : 1;
+    const want = Math.max(night, state?.redLight ? 1 : 0) * off;
     this.lampLevel = lerp(this.lampLevel ?? 0, want, 1 - Math.exp(-dt / 1.1));
     const screen = state?.emissiveScale ?? 1;
     for (const { light, lens } of this.parts.domeLamps ?? []) {
-      light.intensity = this.lampLevel * 0.0009;
-      light.color.setRGB(1, 0.12, 0.07);
-      lens.material.emissive.setRGB(1, 0.14, 0.08);
-      lens.material.emissiveIntensity = this.lampLevel * 0.42 * screen;
+      light.intensity = this.lampLevel * (red ? 0.0011 : 0.0026);
+      light.color.setRGB(1, red ? 0.12 : 0.88, red ? 0.07 : 0.68);
+      lens.material.emissive.setRGB(1, red ? 0.14 : 0.94, red ? 0.08 : 0.82);
+      lens.material.emissiveIntensity = this.lampLevel * (red ? 0.45 : 0.75) * screen;
     }
-    for (const lamp of this.parts.switches ?? []) {
-      lamp.material.emissiveIntensity = (0.05 + 0.5 * this.lampLevel) * screen;
-    }
+    // The tell-tales in the switch banks and the sets' displays, all screen brightnesses.
+    const panelLit = Math.max(0.15, this.lampLevel);
+    for (const b of this.banks) b.setLamps(panelLit, screen);
+    for (const s of this.sets) s.setLit(Math.max(0.35, this.lampLevel), screen);
   }
 
   dispose() {
+    for (const b of this.banks) b.dispose();
+    for (const s of this.sets) s.dispose();
+    for (const g of Object.values(this.gauges)) g.dispose();
+    this.soleTex?.dispose();
     this.group.traverse((o) => {
       o.geometry?.dispose?.();
       if (o.material && o.material.userData?.tag === undefined) o.material.dispose?.();
@@ -753,7 +926,8 @@ export class PilotHouse {
 /**
  * The atmosphere, for a prop's own loaded material. A scanned prop arrives as a plain standard
  * material that knows nothing about this scene's aerial perspective; this bolts the same read onto
- * it that every other surface uses. deck.js uses it too, for the props out on the foredeck.
+ * it that every other surface uses. deck.js and wildlife.js use it, for the props out on the
+ * foredeck and the channel marks: nothing in the wheelhouse is a downloaded model any more.
  */
 export function patchPropShader(shader) {
   shader.uniforms.uSkyLut = G.uSkyLut;

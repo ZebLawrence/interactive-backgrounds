@@ -93,6 +93,8 @@ export class Scene {
     this.sky = new Sky(this.scene, renderer, this.rng.fork('sky'), {
       dayTime: settings.startTime ?? 0.28,
     });
+    this.sky.buildEnvironment(renderer);
+    this.sky.updateEnvironment(true);
     this.ocean = new Ocean(this.scene, renderer, this.rng.fork('ocean'), this.weather);
     this.terrain = new Terrain(this.scene, renderer, this.materials ?? null, this.rng.fork('land'));
     this.ocean.useTerrain(this.terrain);
@@ -113,7 +115,7 @@ export class Scene {
     this.glazing = new Glazing();
     this.pilot = new PilotHouse(this.scene, this.materials, this.rng.fork('house'), this.glazing.material);
     this.deck = new Deck(this.scene, this.materials, this.rng.fork('deck'));
-    this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.overhead);
+    this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.instrumentPanel);
     this.registerPanes();
     // The rain is told where the wheelhouse is so it does not fall through the deckhead. The box
     // reaches out to the glass on every face and no further, so a drop a hand's breadth outside
@@ -183,18 +185,13 @@ export class Scene {
    * land in the right place on each one.
    */
   registerPanes() {
-    const H = HOUSE;
-    const frontH = H.head - H.sill;
-    const widths = [
-      H.glassHalf - H.mullion - H.mullionWidth / 2,
-      (H.mullion - H.mullionWidth / 2) * 2,
-      H.glassHalf - H.mullion - H.mullionWidth / 2,
-    ];
-    const kinds = [PANE.FRONT_SIDE, PANE.FRONT_CENTRE, PANE.FRONT_SIDE];
-    this.pilot.panes.forEach((mesh, i) => {
-      if (i < 3) this.glazing.register(mesh, kinds[i], widths[i], frontH);
-      else if (i < 7) this.glazing.register(mesh, PANE.SIDE, 0.96, H.sideHead - H.sideSill);
-      else this.glazing.register(mesh, PANE.DOOR, 0.54, 0.52);
+    // The house says what each pane is and how big it is, rather than this end counting them: the
+    // wheelhouse was rebuilt once already and a hard-coded pane order does not survive that.
+    this.pilot.panes.forEach(({ mesh, kind, width, height }, i) => {
+      const k = kind === 'DOOR' ? PANE.DOOR
+        : kind === 'SIDE' ? PANE.SIDE
+          : (i === 1 ? PANE.FRONT_CENTRE : PANE.FRONT_SIDE);
+      this.glazing.register(mesh, k, width, height);
     });
   }
 
@@ -214,8 +211,8 @@ export class Scene {
     this.materials.setManifest(manifest);
     const assets = await loadAssets(this.app.renderer, manifest, progress, {
       // The house first: it is what the viewer is sitting in.
-      priority: ['mat:teak', 'mat:paint', 'mat:plywood', 'mat:rubber', 'mat:paint-worn', 'mat:deck',
-        'mat:steel-rust', 'mat:steel-brushed', 'compass', 'vhf', 'stool',
+      priority: ['mat:cherry', 'mat:cherry-panel', 'mat:leather-cream', 'mat:enamel',
+        'mat:steel-brushed', 'mat:paint-worn', 'mat:deck', 'mat:steel-rust',
         // Then the props that are in the view every moment: the ones out on the foredeck.
         'crate', 'lifebuoy', 'fender', 'jerrycan', 'seamark', 'buoy'],
       onItem: (kind, name, asset) => {
@@ -235,7 +232,6 @@ export class Scene {
   applyModel(name, model) {
     this.models ??= new Map();
     this.models.set(name, model);
-    this.pilot.addProp(name, model);
     this.deck.addProp(name, model);
     this.marks.setModel(name, model);
   }

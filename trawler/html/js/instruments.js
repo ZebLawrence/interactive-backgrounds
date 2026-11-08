@@ -74,9 +74,9 @@ export class Instruments {
    * @param {THREE.Object3D} parent the pilot house's group
    * @param {object} house the HOUSE constants
    */
-  constructor(parent, house, rng, overheadParent = null) {
+  constructor(parent, house, rng, parentPanel = null) {
     this.parent = parent;
-    this.overheadParent = overheadParent;
+    this.parentPanel = parentPanel;
     this.house = house;
     this.rng = rng;
     this.time = 0;
@@ -100,22 +100,21 @@ export class Instruments {
 
   build() {
     const H = this.house;
-    // The radar and the plotter hang overhead, on the raked face of the console above the window.
-    // They are children of it, so they inherit the rake and stay square to it.
-    this.radar = this.placeOn(this.overheadParent, new Screen(0.26, 0.26, 576, { emissive: 0x63d87f }), 0.42, 0.035, 0.012);
-    this.plotter = this.placeOn(this.overheadParent, new Screen(0.33, 0.24, 576, { emissive: 0x8fd0ff }), -0.38, 0.035, 0.012);
-    // The dash strip between the console top and the window sill carries the rest.
-    const rake = 14 * DEG;
-    const y = (H.consoleTop + H.dashTop) / 2 + 0.01;
-    const z = H.consoleFront + 0.145;
-    this.sounder = this.place(new Screen(0.23, 0.115, 448, { emissive: 0xffc24a }), 0.0, y, z, rake);
-    this.tacho = this.place(new Screen(0.15, 0.15, 320, { emissive: 0xffd9a0 }), 0.52, y, z, rake);
-    this.clino = this.place(new Screen(0.30, 0.10, 448, { emissive: 0xffd9a0 }), -0.54, y, z, rake);
+    // The three live screens sit in the raked cherry surround standing on the dash, which is where
+    // the reference photograph has them: plotter to port, sounder between, radar to starboard, all
+    // square to the helmsman rather than to the boat. They are children of that surround, so they
+    // take its rake and move with it. The engine gauges are not here - they are real dials with
+    // real needles, built by panel.js on the overhead fascia.
+    this.plotter = this.placeOn(this.parentPanel, new Screen(0.42, 0.25, 768, { emissive: 0x8fd0ff }), -0.40, 0.145, 0.034);
+    this.radar = this.placeOn(this.parentPanel, new Screen(0.26, 0.25, 640, { emissive: 0x63d87f }), 0.46, 0.145, 0.034);
+    this.sounder = this.placeOn(this.parentPanel, new Screen(0.25, 0.145, 512, { emissive: 0xffc24a }), 0.06, 0.145, 0.034);
+    // The autopilot head, under the sounder: a narrow strip of a display in its own bezel.
+    this.pilotHead = this.placeOn(this.parentPanel, new Screen(0.20, 0.070, 384, { emissive: 0x9fe36a }), 0.06, 0.045, 0.034);
   }
 
-  /** A screen set into something that already has the right rake (the overhead console). */
+  /** A screen set into something that already has the right rake (the dash's instrument panel). */
   placeOn(parent, screen, x, y, z) {
-    if (!parent) return this.place(screen, x, y + 5.9, z - 0.96, 0);
+    if (!parent) return this.place(screen, x, y + 4.9, z - 1.2, 0);
     screen.group.position.set(x, y, z);
     parent.add(screen.group);
     screen.group.traverse((o) => { o.layers.set(LAYER.DEFAULT); o.layers.enable(LAYER.INTERIOR); });
@@ -269,70 +268,32 @@ export class Instruments {
     ctx.textAlign = 'left';
   }
 
-  paintTacho(ctx, w, h, throttle) {
-    const cx = w / 2, cy = h / 2, R = w / 2 - 5;
-    ctx.fillStyle = '#121010';
+  /**
+   * The autopilot head: the course it is steering, the course she is making, and which of the two
+   * it is in. A real one shows exactly this and nothing else.
+   */
+  paintPilotHead(ctx, w, h, boat) {
+    ctx.fillStyle = '#071008';
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = 'rgba(255,230,190,0.7)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, TAU);
-    ctx.stroke();
-    for (let i = 0; i <= 10; i++) {
-      const a = (-220 + i * 26) * DEG;
-      const r0 = R * (i % 2 ? 0.84 : 0.76);
-      ctx.strokeStyle = i >= 8 ? '#ff6a4a' : 'rgba(255,230,190,0.8)';
-      ctx.lineWidth = i % 2 ? 1.5 : 2.5;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
-      ctx.lineTo(cx + Math.cos(a) * R * 0.95, cy + Math.sin(a) * R * 0.95);
-      ctx.stroke();
-    }
-    // Idle is about a fifth of the scale; full ahead is eight tenths of it.
-    const rpm = lerp(0.18, 0.80, clamp01(throttle));
-    const a = (-220 + rpm * 260) * DEG;
-    ctx.strokeStyle = '#ffd9a0';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + Math.cos(a) * R * 0.8, cy + Math.sin(a) * R * 0.8);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,217,160,0.8)';
-    ctx.font = `${Math.round(w * 0.12)}px ui-monospace, monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${Math.round(rpm * 2200)}`, cx, cy + R * 0.55);
+    const deg = (r) => ((r * 57.2957795 % 360) + 360) % 360;
+    ctx.fillStyle = '#9fe36a';
+    ctx.textBaseline = 'middle';
+    ctx.font = `700 ${Math.round(h * 0.52)}px "Arial Narrow", Arial, sans-serif`;
     ctx.textAlign = 'left';
+    ctx.fillText(deg(boat.heading).toFixed(0).padStart(3, '0'), w * 0.06, h * 0.52);
+    ctx.font = `600 ${Math.round(h * 0.22)}px "Arial Narrow", Arial, sans-serif`;
+    ctx.globalAlpha = 0.75;
+    ctx.fillText('HDG', w * 0.06, h * 0.86);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'right';
+    ctx.font = `700 ${Math.round(h * 0.34)}px "Arial Narrow", Arial, sans-serif`;
+    ctx.fillText(`${(boat.speedKnots ?? 0).toFixed(1)} kn`, w * 0.96, h * 0.40);
+    ctx.font = `600 ${Math.round(h * 0.22)}px "Arial Narrow", Arial, sans-serif`;
+    ctx.globalAlpha = 0.75;
+    ctx.fillText('AUTO', w * 0.96, h * 0.82);
+    ctx.globalAlpha = 1;
   }
 
-  /** The clinometer: a bubble on a scale, swinging with the hull, which it really does. */
-  paintClino(ctx, w, h, roll) {
-    ctx.fillStyle = '#17120b';
-    ctx.fillRect(0, 0, w, h);
-    const cx = w / 2, cy = h * 1.55, R = h * 1.2;
-    ctx.strokeStyle = 'rgba(255,217,160,0.5)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, Math.PI * 1.22, Math.PI * 1.78);
-    ctx.stroke();
-    for (let d = -30; d <= 30; d += 5) {
-      const a = Math.PI * 1.5 + d * DEG * 1.0;
-      const big = d % 10 === 0;
-      ctx.strokeStyle = Math.abs(d) >= 25 ? '#ff7a5a' : 'rgba(255,217,160,0.85)';
-      ctx.lineWidth = big ? 2 : 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
-      ctx.lineTo(cx + Math.cos(a) * (R - (big ? h * 0.3 : h * 0.18)), cy + Math.sin(a) * (R - (big ? h * 0.3 : h * 0.18)));
-      ctx.stroke();
-    }
-    const a = Math.PI * 1.5 + clamp(roll, -34 * DEG, 34 * DEG) * 1.0;
-    ctx.fillStyle = '#ffe9b0';
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * (R - h * 0.42), cy + Math.sin(a) * (R - h * 0.42), h * 0.17, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(255,217,160,0.7)';
-    ctx.font = `${Math.round(h * 0.26)}px ui-monospace, monospace`;
-    ctx.fillText(`${Math.abs(roll * 180 / Math.PI).toFixed(0)}° ${roll > 0 ? 'P' : 'S'}`, 6, h - 5);
-  }
 
   /** Cycles the radar's range: what a click on the screen does. */
   nextRange() { this.rangeIndex = (this.rangeIndex + 1) % this.ranges.length; }
@@ -358,8 +319,7 @@ export class Instruments {
     this.radar.tick(this.time, 0.12, (c, w, h) => this.paintRadar(c, w, h, boat, depthAt));
     this.plotter.tick(this.time, 1.1, (c, w, h) => this.paintPlotter(c, w, h, boat, depthAt, origin));
     this.sounder.tick(this.time, 0.5, (c, w, h) => this.paintSounder(c, w, h, depth));
-    this.tacho.tick(this.time, 0.2, (c, w, h) => this.paintTacho(c, w, h, boat.throttle));
-    this.clino.tick(this.time, 1 / 20, (c, w, h) => this.paintClino(c, w, h, boat.roll));
+    this.pilotHead.tick(this.time, 0.4, (c, w, h) => this.paintPilotHead(c, w, h, boat));
 
     // A screen is drawn at a chosen brightness on the glass, not at a radiance, so it is divided
     // by the camera's exposure: a set that is readable in daylight and comfortable at night, and
