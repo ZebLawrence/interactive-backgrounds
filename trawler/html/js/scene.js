@@ -54,7 +54,17 @@ export const HEAD = { keepRoll: 0.34, keepPitch: 0.52, lag: 0.14, swayLag: 0.22 
 // follows the sky's own irradiance on a power law (a stop of light buys about two thirds of a stop
 // of exposure, which is roughly how human adaptation behaves), and it eases over a few seconds so
 // a cloud crossing the sun does not pump the picture.
-export const EXPOSURE = { key: 0.9, power: 0.62, min: 0.80, max: 1000, tau: 3.5 };
+// `key` is where the meter is pointed. This camera never leaves the wheelhouse, and a camera
+// inside a room looking out does not expose for the view: it opens up for what is around it and
+// lets the windows go bright. That is why the owner's reference photograph has honey-coloured
+// joinery and water you cannot see into. Metering for the open sky instead - which is what this
+// did - is also true, and gives a black cabin behind a perfect sea.
+//
+// So the key is lifted by the stop and a half that choice is worth. Measured at noon with it: the
+// joinery reads 128 of 255 against the sea's 236, which is the reference's own relationship; the
+// sea keeps its texture rather than going flat white, and nothing else in the scene changes shape
+// because every emissive thing is divided by this same number.
+export const EXPOSURE = { key: 2.5, power: 0.62, min: 0.80, max: 1000, tau: 3.5 };
 
 /** The exposure the current sky asks for. Pure, so the night test can assert on it. */
 export function targetExposure(skyIrradianceY, sunIrradianceY) {

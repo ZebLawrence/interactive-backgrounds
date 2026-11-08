@@ -62,13 +62,13 @@ export const HOUSE = {
   lockerTop: 4.34, // where the louvred lockers under the dash begin
   // The overhead fascia: a cherry panel hung under the deckhead above the window head, raked down
   // toward the helmsman, carrying the gauges and the sets.
-  overheadY: 5.99,
-  overheadZ: -1.13,
-  overheadRake: 40,
-  overheadHeight: 0.30,
+  overheadY: 6.03,
+  overheadZ: -1.19,
+  overheadRake: 34,
+  overheadHeight: 0.255,
   // The side desks: a chart table to port and a desk with a screen to starboard.
   deskTop: 4.86,
-  deskInboard: 0.98,
+  deskInboard: 1.14,
   deskFront: -0.70,
   deskBack: 0.72,
   // Where the helmsman stands, and the wheel he stands at.
@@ -196,10 +196,11 @@ export class PilotHouse {
    * None of that is in a single hemisphere term, and none of it can be, because three has no
    * global illumination.
    *
-   * So the house carries its own fill, on the interior layer alone so it touches nothing outside:
-   * warm from above (the deckhead), cool from below (the water through the glass), and scaled by
-   * the real sky irradiance so it follows the day down to nothing at night. The number is set by
-   * measurement - see the comment on `setFill` - not by eye.
+   * So the house carries its own fill: warm from above (the deckhead), cool from below (the water
+   * through the glass), scaled by the real sky irradiance so it follows the day down to nothing at
+   * night, and on the interior layer so that it reaches the room and not the sea. Its strength is
+   * frankly a stand-in for the bounce this renderer cannot compute, and it is set by measurement
+   * against the reference photograph - see `setFill` - rather than by eye.
    */
   buildFill() {
     this.fill = new THREE.HemisphereLight(0xfff1dc, 0x8fb4c8, 0);
@@ -209,15 +210,20 @@ export class PilotHouse {
   }
 
   /**
-   * Sets that fill from the sky's own irradiance. The gain of 16 was chosen by measuring the frame:
-   * at noon it puts the mean of the cabin about a third of the mean of the sea in the window -
-   * which is what a photograph of a wheelhouse looks like - where the sky term alone left it at a
-   * seventh and the room read as a cave.
+   * Sets that fill from the sky's own irradiance.
+   *
+   * A modest number, deliberately. An earlier pass had this at forty and used it to drag the whole
+   * cabin up to the brightness of the reference photograph - which worked on the timber and blew
+   * every white surface in the room to paper, because a flat fill of that size is thirteen times
+   * the entire sky. What the photograph actually shows is a camera exposed for the inside of a
+   * room, and that is a question for the meter (see EXPOSURE in scene.js), not for the lamps. So
+   * this is left at what it is for: several bounces of light round a varnished room with a cream
+   * deckhead, about four times the sky's own term.
    */
   setFill(skyIrradiance) {
     if (!this.fill) return;
     const m = Math.max(skyIrradiance.x, skyIrradiance.y, skyIrradiance.z);
-    this.fill.intensity = m * 16.0;
+    this.fill.intensity = m * 8.0;
   }
 
   mat(tag, opts) { return this.materials.get(tag, opts); }
@@ -268,7 +274,7 @@ export class PilotHouse {
     sole.receiveShadow = true;
 
     // The deckhead: cream painted panels between varnished battens running athwartships.
-    const headMat = this.mat('mat:enamel', { key: 'deckhead', tint: 0xf2ece0, roughness: 0.78, side: THREE.DoubleSide });
+    const headMat = this.mat('mat:enamel', { key: 'deckhead', tint: 0xfbf7ef, roughness: 0.84, side: THREE.DoubleSide });
     const head = this.add(panel(w, d, headMat));
     head.rotation.x = Math.PI / 2;
     head.position.set(0, H.deckhead, midZ);
@@ -334,7 +340,7 @@ export class PilotHouse {
     // are the two horizontals that frame the view and they are 1.5 m from the eye.
     this.add(box(H.halfWidth * 2, 0.085, 0.14, frame, 0, H.sill - 0.042, H.front - 0.005));
     this.add(nosing(H.halfWidth * 2, 0.042, frame, 0, H.sill - 0.042, H.front + 0.065));
-    this.add(box(H.halfWidth * 2, 0.095, 0.15, frame, 0, H.head + 0.047, H.frontTop + 0.01));
+    this.add(box(H.halfWidth * 2, 0.062, 0.10, frame, 0, H.head + 0.031, H.frontTop + 0.015));
 
     // Three panes: a wide one on the centreline and a narrower one each side. The two mullions are
     // what the composition is built round, so they are placed and not nudged.
@@ -471,9 +477,9 @@ export class PilotHouse {
     // screens are square to the helmsman rather than to the boat, which is what the rake is for.
     const panelH = 0.30;
     const stand = new THREE.Group();
-    stand.position.set(0, H.dashTop + 0.021, H.dashFront + 0.10);
+    stand.position.set(0, H.dashTop + 0.021, H.dashFront + 0.17);
     stand.rotation.x = -H.dashRake * DEG;
-    const carcass = box(wHalf * 1.42, panelH, 0.06, cherry, 0, panelH / 2 - 0.02, -0.03);
+    const carcass = box(wHalf * 1.52, panelH, 0.06, cherry, 0, panelH / 2 - 0.02, -0.03);
     stand.add(carcass);
     this.group.add(stand);
     this.parts.instrumentPanel = stand;
@@ -532,7 +538,12 @@ export class PilotHouse {
 
   buildWheel() {
     const H = HOUSE;
-    const chrome = this.mat('mat:steel-brushed', { key: 'wheelchrome', roughness: 0.16, metalness: 0.95 });
+    // Polished stainless: almost no roughness and reflecting more of the environment than one,
+    // because a wheel rim has no diffuse at all and everything you see in it is the room and the
+    // sea. At roughness 0.16 and unit reflection it came out gunmetal.
+    const chrome = this.mat('mat:steel-brushed', {
+      key: 'wheelchrome', color: 0xf0f3f5, roughness: 0.07, metalness: 1, envMapIntensity: 2.1,
+    });
     const cherry = this.cherry;
 
     // The pedestal: a cherry column with a chrome collar, standing on the sole.
@@ -622,7 +633,7 @@ export class PilotHouse {
       ['clino', { label: 'HEEL', unit: 'deg', min: -30, max: 30, major: 10, minor: 5, redFrom: null }, 0.60],
     ];
     for (const [name, opts, x] of spec) {
-      const gauge = new Gauge({ ...opts, diameter: 0.098, start: opts.min });
+      const gauge = new Gauge({ ...opts, diameter: 0.088, start: opts.min });
       gauge.group.position.set(x, 0.0, face);
       fascia.add(gauge.group);
       this.gauges[name] = gauge;

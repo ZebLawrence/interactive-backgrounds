@@ -56,7 +56,7 @@ export class Materials {
   /**
    * The material for a tag. `opts` are applied on top of the stand-in and kept across a swap:
    * `color` (a tint multiplied into the map), `roughness`, `metalness`, `side`, `aoIntensity`,
-   * `normalScale`, `extra` (an onBeforeCompile to chain on).
+   * `normalScale`, `envMapIntensity`, `extra` (an onBeforeCompile to chain on).
    */
   get(tag, opts = {}) {
     const key = `${tag}|${JSON.stringify(opts.key ?? opts)}`;
@@ -72,6 +72,10 @@ export class Materials {
       opacity: opts.opacity ?? 1,
       emissive: opts.emissive ?? 0x000000,
       emissiveIntensity: opts.emissiveIntensity ?? 1,
+      // How much of the scene's environment a surface reflects. Polished metal wants more than
+      // one: the environment here is a 32 x 16 picture of the sky and the sea, and a wheel rim
+      // that is nothing but reflections needs all of it and then some to read as stainless.
+      envMapIntensity: opts.envMapIntensity ?? 1,
     });
     m.name = tag;
     m.userData.tag = tag;

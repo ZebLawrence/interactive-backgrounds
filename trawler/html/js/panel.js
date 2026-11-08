@@ -269,11 +269,18 @@ export class Gauge {
     this.group.add(needle);
     this.needle = needle;
 
-    // The glass, a hair proud of the bezel's inner edge. Rough enough to catch the window as a
+    // The glass, a hair proud of the bezel's inner edge: rough enough to catch the window as a
     // smear rather than a mirror, which is what instrument glass does.
-    const glass = new THREE.Mesh(new THREE.CircleGeometry(r * 0.93, 40), new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, roughness: 0.08, metalness: 0, transmission: 0, transparent: true,
-      opacity: 0.10, depthWrite: false,
+    //
+    // It is black and additive, and both halves of that matter. A sheet of glass over a dial adds
+    // its reflection to what is behind it and takes nothing away, which is additive blending; and
+    // it has no diffuse colour of its own, which is the black. A white glass at ten per cent
+    // opacity - the obvious way to write this - is a white *diffuse* disc over the face, and under
+    // any strong fill it turns every dial in the wheelhouse into a blank white button, which is
+    // exactly what happened.
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(r * 0.93, 40), new THREE.MeshStandardMaterial({
+      color: 0x000000, roughness: 0.06, metalness: 0.0, envMapIntensity: 1.5,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
     glass.position.z = 0.0085;
     glass.renderOrder = 6;
