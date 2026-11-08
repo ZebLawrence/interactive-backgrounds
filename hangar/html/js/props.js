@@ -27,16 +27,15 @@ const SHADE_STRENGTH = 0.72;
 // Mounted boxes: their height, for the shade behind them on the wall.
 const MOUNT_H = { 'junction-box': 0.26, 'power-box': 0.5 };
 
-// Parts of a model file to keep (by triangle centroid in the model's own space): the crate scan holds a closed
-// and an open crate side by side, the power box an open door that would stick out 35 cm from the wall.
+// Parts of a model file to keep (by triangle centroid in the model's own space): the power box scan has an open
+// door that would stick out 35 cm from the wall.
 const KEEP = {
-  crate: (x) => x < 0,
   'power-box': (x, y, z) => z < 0.06,
 };
 
 // Small props cast no shadow from the lamps (their contact shade seats them); each shadow-casting lamp draws its
-// casters six times, and the small scans are the densest meshes.
-const NO_CAST = new Set(['toolbox', 'jerrycan', 'extinguisher', 'gas-tank', 'power-box', 'junction-box', 'scrap']);
+// casters six times.
+const NO_CAST = new Set(['power-box', 'junction-box', 'scrap']);
 
 // Page-owned prepared models: name -> { parts: [{ geometry, material }], size: Vector3 } (kept across reseeds).
 const prepared = new Map();
