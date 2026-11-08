@@ -5,3 +5,7 @@ build/
 # Hangar: raw asset downloads and tool deps (only processed assets under hangar/html/assets/ are committed)
 hangar/tools/raw/
 hangar/tools/node_modules/
+
+# Trawler: raw asset downloads and tool deps
+trawler/tools/raw/
+trawler/tools/node_modules/
