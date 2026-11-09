@@ -1,0 +1,341 @@
+{
+  "materials": {
+    "mat:cherry": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/cherry/color.webp",
+        "normal": "assets/materials/cherry/normal.webp",
+        "orm": "assets/materials/cherry/orm.webp"
+      },
+      "name": "Lacquered Cherry Wood",
+      "source": "https://polyhaven.com/a/lacquered_cherry_wood",
+      "author": "Jenelle van Heerden, Rico Cilliers",
+      "license": "CC0"
+    },
+    "mat:cherry-panel": {
+      "tile": 1.2,
+      "maps": {
+        "color": "assets/materials/cherry-panel/color.webp",
+        "normal": "assets/materials/cherry-panel/normal.webp",
+        "orm": "assets/materials/cherry-panel/orm.webp"
+      },
+      "name": "Cherry Veneer",
+      "source": "https://polyhaven.com/a/cherry_veneer",
+      "author": "Jenelle van Heerden",
+      "license": "CC0"
+    },
+    "mat:deck": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/deck/color.webp",
+        "normal": "assets/materials/deck/normal.webp",
+        "orm": "assets/materials/deck/orm.webp"
+      },
+      "name": "Wood Floor Deck",
+      "source": "https://polyhaven.com/a/wood_floor_deck",
+      "author": "Dimitrios Savva",
+      "license": "CC0"
+    },
+    "mat:enamel": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/enamel/color.webp",
+        "normal": "assets/materials/enamel/normal.webp",
+        "orm": "assets/materials/enamel/orm.webp"
+      },
+      "name": "Painted Plaster Wall",
+      "source": "https://polyhaven.com/a/painted_plaster_wall",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:heath": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/heath/color.webp",
+        "normal": "assets/materials/heath/normal.webp",
+        "orm": "assets/materials/heath/orm.webp"
+      },
+      "name": "Forest Ground 06",
+      "source": "https://polyhaven.com/a/forest_ground_06",
+      "author": "Charlotte Baglioni",
+      "license": "CC0"
+    },
+    "mat:leather": {
+      "tile": 0.6,
+      "maps": {
+        "color": "assets/materials/leather/color.webp",
+        "normal": "assets/materials/leather/normal.webp",
+        "orm": "assets/materials/leather/orm.webp"
+      },
+      "name": "Brown Leather",
+      "source": "https://polyhaven.com/a/brown_leather",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:leather-cream": {
+      "tile": 0.5,
+      "maps": {
+        "color": "assets/materials/leather-cream/color.webp",
+        "normal": "assets/materials/leather-cream/normal.webp",
+        "orm": "assets/materials/leather-cream/orm.webp"
+      },
+      "name": "Leather White",
+      "source": "https://polyhaven.com/a/leather_white",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:paint": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/paint/color.webp",
+        "normal": "assets/materials/paint/normal.webp",
+        "orm": "assets/materials/paint/orm.webp"
+      },
+      "name": "Painted Metal Shutter",
+      "source": "https://polyhaven.com/a/painted_metal_shutter",
+      "author": "Dario Barresi, Rico Cilliers, Charlotte Baglioni",
+      "license": "CC0"
+    },
+    "mat:paint-worn": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/paint-worn/color.webp",
+        "normal": "assets/materials/paint-worn/normal.webp",
+        "orm": "assets/materials/paint-worn/orm.webp"
+      },
+      "name": "Rusty Painted Metal",
+      "source": "https://polyhaven.com/a/rusty_painted_metal",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:plywood": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/plywood/color.webp",
+        "normal": "assets/materials/plywood/normal.webp",
+        "orm": "assets/materials/plywood/orm.webp"
+      },
+      "name": "Plywood",
+      "source": "https://polyhaven.com/a/plywood",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:rock": {
+      "tile": 3,
+      "maps": {
+        "color": "assets/materials/rock/color.webp",
+        "normal": "assets/materials/rock/normal.webp",
+        "orm": "assets/materials/rock/orm.webp"
+      },
+      "name": "Dark Rock",
+      "source": "https://polyhaven.com/a/dark_rock",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:rock-cliff": {
+      "tile": 4,
+      "maps": {
+        "color": "assets/materials/rock-cliff/color.webp",
+        "normal": "assets/materials/rock-cliff/normal.webp",
+        "orm": "assets/materials/rock-cliff/orm.webp"
+      },
+      "name": "Cliff Side",
+      "source": "https://polyhaven.com/a/cliff_side",
+      "author": "James Ray Cock, Jenelle van Heerden, Dario Barresi",
+      "license": "CC0"
+    },
+    "mat:rubber": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/rubber/color.webp",
+        "normal": "assets/materials/rubber/normal.webp",
+        "orm": "assets/materials/rubber/orm.webp"
+      },
+      "name": "Rubber Tiles",
+      "source": "https://polyhaven.com/a/rubber_tiles",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:scree": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/scree/color.webp",
+        "normal": "assets/materials/scree/normal.webp",
+        "orm": "assets/materials/scree/orm.webp"
+      },
+      "name": "Brown Mud Rocks 01",
+      "source": "https://polyhaven.com/a/brown_mud_rocks_01",
+      "author": "Rob Tuytel",
+      "license": "CC0"
+    },
+    "mat:shore": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/shore/color.webp",
+        "normal": "assets/materials/shore/normal.webp",
+        "orm": "assets/materials/shore/orm.webp"
+      },
+      "name": "Coast Land Rocks 01",
+      "source": "https://polyhaven.com/a/coast_land_rocks_01",
+      "author": "Rob Tuytel, Rico Cilliers",
+      "license": "CC0"
+    },
+    "mat:snow": {
+      "tile": 2,
+      "maps": {
+        "color": "assets/materials/snow/color.webp",
+        "normal": "assets/materials/snow/normal.webp",
+        "orm": "assets/materials/snow/orm.webp"
+      },
+      "name": "Snow006",
+      "source": "https://ambientcg.com/a/Snow006",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:steel": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/steel/color.webp",
+        "normal": "assets/materials/steel/normal.webp",
+        "orm": "assets/materials/steel/orm.webp"
+      },
+      "name": "MetalPlates001",
+      "source": "https://ambientcg.com/a/MetalPlates001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:steel-brushed": {
+      "tile": 0.6,
+      "maps": {
+        "color": "assets/materials/steel-brushed/color.webp",
+        "normal": "assets/materials/steel-brushed/normal.webp",
+        "orm": "assets/materials/steel-brushed/orm.webp"
+      },
+      "name": "Metal009",
+      "source": "https://ambientcg.com/a/Metal009",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mat:steel-rust": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/steel-rust/color.webp",
+        "normal": "assets/materials/steel-rust/normal.webp",
+        "orm": "assets/materials/steel-rust/orm.webp"
+      },
+      "name": "Rusty Metal 03",
+      "source": "https://polyhaven.com/a/rusty_metal_03",
+      "author": "Amal Kumar",
+      "license": "CC0"
+    },
+    "mat:teak": {
+      "tile": 1,
+      "maps": {
+        "color": "assets/materials/teak/color.webp",
+        "normal": "assets/materials/teak/normal.webp",
+        "orm": "assets/materials/teak/orm.webp"
+      },
+      "name": "Teak Veneer",
+      "source": "https://polyhaven.com/a/teak_veneer",
+      "author": "Jenelle van Heerden",
+      "license": "CC0"
+    },
+    "sat:heath": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/heath.webp"
+      },
+      "name": "Saltfjorden hills, Nordland, Norway (Landsat 8 OLI, 11 July 2016)",
+      "source": "https://earthobservatory.nasa.gov/images/89984/ungovernable-fury",
+      "author": "NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
+    },
+    "sat:upland": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/upland.webp"
+      },
+      "name": "The plateau behind Saltfjorden, Nordland, Norway (Landsat 8 OLI, 11 July 2016)",
+      "source": "https://earthobservatory.nasa.gov/images/89984/ungovernable-fury",
+      "author": "NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
+    },
+    "sat:snow": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/snow.webp"
+      },
+      "name": "Glaciers above Tunulliarfik Fjord, southern Greenland (Landsat 9 OLI-2, 3 August 2023)",
+      "source": "https://earthobservatory.nasa.gov/images/151870/ephemeral-arc-spans-greenland-fjord",
+      "author": "NASA Earth Observatory image by Wanmei Liang, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
+    }
+  },
+  "models": {
+    "buoy": {
+      "file": "assets/models/buoy/buoy.gltf",
+      "scale": 1,
+      "name": "Ocean Buoy",
+      "source": "https://polyhaven.com/a/ocean_buoy",
+      "author": "Mateusz Sadek",
+      "license": "CC0"
+    },
+    "caged_light": {
+      "file": "assets/models/caged_light/caged_light.gltf",
+      "scale": 1,
+      "name": "Caged Hanging Light",
+      "source": "https://polyhaven.com/a/caged_hanging_light",
+      "author": "Ulan Cabanilla",
+      "license": "CC0"
+    },
+    "crate": {
+      "file": "assets/models/crate/crate.gltf",
+      "scale": 1,
+      "name": "Plastic Crate 02",
+      "source": "https://polyhaven.com/a/plastic_crate_02",
+      "author": "Fabi_G",
+      "license": "CC0"
+    },
+    "fender": {
+      "file": "assets/models/fender/fender.gltf",
+      "scale": 1,
+      "name": "Old Tyre",
+      "source": "https://polyhaven.com/a/old_tyre",
+      "author": "MP",
+      "license": "CC0"
+    },
+    "jerrycan": {
+      "file": "assets/models/jerrycan/jerrycan.gltf",
+      "scale": 1,
+      "name": "Metal Jerrycan",
+      "source": "https://polyhaven.com/a/metal_jerrycan",
+      "author": "Sean Buckley",
+      "license": "CC0"
+    },
+    "lifebuoy": {
+      "file": "assets/models/lifebuoy/lifebuoy.gltf",
+      "scale": 1,
+      "name": "Lifebuoy",
+      "source": "https://polyhaven.com/a/lifebuoy",
+      "author": "Hank Kaamura",
+      "license": "CC0"
+    },
+    "lifejacket": {
+      "file": "assets/models/lifejacket/lifejacket.gltf",
+      "scale": 1,
+      "name": "Life Jacket",
+      "source": "https://polyhaven.com/a/life_jacket",
+      "author": "PierreB3D",
+      "license": "CC0"
+    },
+    "seamark": {
+      "file": "assets/models/seamark/seamark.gltf",
+      "scale": 1,
+      "name": "Lateral Sea Marker",
+      "source": "https://polyhaven.com/a/lateral_sea_marker",
+      "author": "James Ray Cock, Kuutti Siitonen",
+      "license": "CC0"
+    }
+  },
+  "images": {}
+}

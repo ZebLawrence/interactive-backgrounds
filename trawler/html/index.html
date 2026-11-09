@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trawler</title>
+<meta name="description" content="The view from the pilot house of a fishing trawler working its way through fjords and islands: a simulated sea that runs from glassy calm to a full gale, a boat that rides it, and real day and night.">
+<meta name="theme-color" content="#05080c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%9A%A4%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css?v=1">
+<!-- Module URLs (and the stylesheet's) carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS or CSS changes. The data and manifest fetches reuse the module's own ?v=. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "realsky": "../../assets/sky/realsky.js?v=3",
+  "./js/app.js": "./js/app.js?v=40",
+  "./js/scene.js": "./js/scene.js?v=40",
+  "./js/util.js": "./js/util.js?v=40",
+  "./js/shaders.js": "./js/shaders.js?v=40",
+  "./js/governor.js": "./js/governor.js?v=40",
+  "./js/post.js": "./js/post.js?v=40",
+  "./js/sky.js": "./js/sky.js?v=40",
+  "./js/ocean.js": "./js/ocean.js?v=40",
+  "./js/oceanspec.js": "./js/oceanspec.js?v=40",
+  "./js/seastate.js": "./js/seastate.js?v=40",
+  "./js/waves.js": "./js/waves.js?v=40",
+  "./js/boat.js": "./js/boat.js?v=40",
+  "./js/mathutil.js": "./js/mathutil.js?v=40",
+  "./js/fft.js": "./js/fft.js?v=40",
+  "./js/nav.js": "./js/nav.js?v=40",
+  "./js/terrain.js": "./js/terrain.js?v=40",
+  "./js/flora.js": "./js/flora.js?v=40",
+  "./js/pilot.js": "./js/pilot.js?v=40",
+  "./js/instruments.js": "./js/instruments.js?v=40",
+  "./js/panel.js": "./js/panel.js?v=40",
+  "./js/deck.js": "./js/deck.js?v=40",
+  "./js/glass.js": "./js/glass.js?v=40",
+  "./js/wake.js": "./js/wake.js?v=40",
+  "./js/wildlife.js": "./js/wildlife.js?v=40",
+  "./js/materials.js": "./js/materials.js?v=40",
+  "./js/assets.js": "./js/assets.js?v=40"
+} }
+</script>
+</head>
+<body>
+<canvas id="trawler"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Trawler menu" aria-expanded="false" title="Trawler">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 15h18l-2.2 5.2a2 2 0 0 1-1.84 1.2H7.04a2 2 0 0 1-1.84-1.2L3 15zm2-2V8.6c0-.9.6-1.68 1.47-1.92L15 4.4V2h2v2.3l2.6.74a1 1 0 0 1 .4 1.67L17 9.6V13H5zm2-2h8V8.1l-8 2.2V11z"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Trawler</div>
+    <div class="grp">Sea state</div>
+    <button data-sea="drift"><span class="check"></span><span class="label">Drifting weather</span><kbd>0</kbd></button>
+    <button data-sea="calm"><span class="check"></span><span class="label">Calm</span><kbd>1</kbd></button>
+    <button data-sea="moderate"><span class="check"></span><span class="label">Moderate</span><kbd>2</kbd></button>
+    <button data-sea="rough"><span class="check"></span><span class="label">Rough</span><kbd>3</kbd></button>
+    <button data-sea="storm"><span class="check"></span><span class="label">Storm</span><kbd>4</kbd></button>
+    <div class="grp">Clock</div>
+    <button data-clock="cycle"><span class="check"></span><span class="label">Full day and night</span></button>
+    <button data-clock="dawn"><span class="check"></span><span class="label">Dawn</span></button>
+    <button data-clock="noon"><span class="check"></span><span class="label">Midday</span></button>
+    <button data-clock="dusk"><span class="check"></span><span class="label">Dusk</span></button>
+    <button data-clock="night"><span class="check"></span><span class="label">Night</span><kbd>N</kbd></button>
+    <hr>
+    <button data-toggle="rain"><span class="check"></span><span class="label">Rain</span><kbd>R</kbd></button>
+    <button data-toggle="redLight"><span class="check"></span><span class="label">Red night lighting</span><kbd>L</kbd></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <hr>
+    <button data-act="reseed"><span class="check"></span><span class="label">New Waters</span></button>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="hint">Move the mouse to look around the pilot house · click the sea to alter course · click a lever, switch or screen to work it</div>
+<div id="loadbar" role="progressbar" aria-label="Loading assets" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=40"></script>
+</body>
+</html>
