@@ -1390,6 +1390,14 @@ export class PilotHouse {
     if (daylight) active.push(...this.windowLights);
     if (lamplight) active.push(...(this.spotLamps ?? []), ...(this.deskSpots ?? []));
     if (active.length) active[this.frame % active.length].shadow.needsUpdate = true;
+    // The maps keep, but the matrices must not. Three recomputes a light's shadow matrix only
+    // when it renders the map, so between refreshes the boat rolled on while each lamp's shadow
+    // stayed projected from where the lamp had been: the shadows slid across the room for five
+    // frames and snapped back on the sixth, a sawtooth the eye read as the whole cabin flashing.
+    // The depth in a map is in the lamp's own space and the lamp and the room move together, so
+    // the map stays right; only the matrix has to follow the lamp, every frame.
+    this.group.updateMatrixWorld(true);
+    for (const l of [...this.windowLights, ...(this.spotLamps ?? []), ...(this.deskSpots ?? [])]) l.shadow.updateMatrices(l);
   }
 
   /**
