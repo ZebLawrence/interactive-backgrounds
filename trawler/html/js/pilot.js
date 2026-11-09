@@ -41,7 +41,7 @@ import { Materials, paint, metreUvsBox, metreUvsPlane, scaleUvs } from './materi
 import {
   Gauge, VhfSet, Handset, EngineControl, BreakerPanel, SwitchPanel, Hailer,
   blankPanel, chartLight, handheldVhf, joystick, compassDome, wallPlate, louvreDoor, label,
-  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeEnv, lampBeam,
+  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeEnv,
 } from './panel.js';
 import { v3, DEG, TAU, lerp, clamp01, Art } from './util.js';
 
@@ -568,13 +568,7 @@ export class PilotHouse {
       light.position.set(x, H.deckhead - 0.10, z);
       this.add(light);
       this.lamps.push(light);
-      // What the air makes of the beam: see lampBeam.
-      const beam = lampBeam(1.5, 0.55);
-      beam.position.set(x, H.deckhead - 0.02, z);
-      this.add(beam);
-      this.beams = this.beams ?? [];
-      this.beams.push(beam);
-      this.parts.domeLamps.push({ light, lens, beam });
+      this.parts.domeLamps.push({ light, lens });
     }
 
     // The side walls, from the corner walls aft: cherry panelling below the side windows; the
@@ -1121,8 +1115,6 @@ export class PilotHouse {
       this.chartBulbs.push(lamp.userData.bulb);
       this.deskSpots = this.deskSpots ?? [];
       this.deskSpots.push(lamp.userData.spot);
-      this.deskBeams = this.deskBeams ?? [];
-      this.deskBeams.push(lamp.userData.beam);
     }
 
     // To starboard: the monitor on its stand, the keyboard and mouse, the two handhelds standing
@@ -1417,11 +1409,7 @@ export class PilotHouse {
     const want = Math.max(night, state?.redLight ? 1 : 0) * off;
     this.lampLevel = lerp(this.lampLevel ?? 0, want, 1 - Math.exp(-dt / 1.1));
     const screen = state?.emissiveScale ?? 1;
-    for (const { light, lens, beam } of this.parts.domeLamps ?? []) {
-      if (beam) {
-        beam.material.uniforms.uGain.value = this.lampLevel * 0.28 * screen;
-        beam.material.uniforms.uColor.value.setRGB(1, red ? 0.14 : 0.92, red ? 0.08 : 0.80);
-      }
+    for (const { light, lens } of this.parts.domeLamps ?? []) {
       // The forward pair light the dash and cast its shadows; the aft pair are softer, so the
       // room has a direction at night rather than an even wash.
       const cd = light.userData.forward ? (red ? 0.0017 : 0.0040) : (red ? 0.0008 : 0.0019);
@@ -1435,10 +1423,6 @@ export class PilotHouse {
     for (const sp of this.deskSpots ?? []) {
       sp.intensity = this.lampLevel * (red ? 0.0004 : 0.0010);
       sp.color.setRGB(1, red ? 0.12 : 0.84, red ? 0.07 : 0.62);
-    }
-    for (const b of this.deskBeams ?? []) {
-      b.material.uniforms.uGain.value = this.lampLevel * 0.22 * screen;
-      b.material.uniforms.uColor.value.setRGB(1, red ? 0.12 : 0.84, red ? 0.07 : 0.62);
     }
     // The tell-tales, the meters and the sets' displays, all screen brightnesses.
     const panelLit = Math.max(0.15, this.lampLevel);
