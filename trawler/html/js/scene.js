@@ -123,7 +123,7 @@ export class Scene {
     this.glazing = new Glazing();
     this.pilot = new PilotHouse(this.scene, this.materials, this.rng.fork('house'), this.glazing.material, renderer);
     this.deck = new Deck(this.scene, this.materials, this.rng.fork('deck'));
-    this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot.parts.instrumentPanel);
+    this.instruments = new Instruments(this.pilot.group, HOUSE, this.rng.fork('instruments'), this.pilot);
     this.registerPanes();
     // The rain is told where the wheelhouse is so it does not fall through the deckhead. The box
     // reaches out to the glass on every face and no further, so a drop a hand's breadth outside
@@ -357,7 +357,7 @@ export class Scene {
     // Everything that glows is specified as a brightness on the screen rather than a radiance,
     // so it is divided by the exposure the camera has adapted to.
     const emissiveScale = 1 / Math.max(this.exposure, 1e-3);
-    this.pilot.update(dt, this.boat, { redLight: this.redLight, lampsOff: this.lampsOff, emissiveScale });
+    this.pilot.update(dt, this.boat, { redLight: this.redLight, lampsOff: this.lampsOff, emissiveScale, wipers: this.wipersForced ?? false });
     this.instruments.step(dt, this.boat, this.depthAt, this.origin, G.uNight.value, emissiveScale);
     this.deck.update(dt, this.boat, { emissiveScale });
     // What a white surface out there is actually reflecting. Anything drawn with a fixed colour

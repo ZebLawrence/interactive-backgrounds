@@ -156,18 +156,76 @@ or have no clear licence; the marketplaces (TurboSquid, CGTrader, Unreal/Unity) 
 licences do not allow redistribution in a public repository. Only sources that need no account are
 used here, and everything shipped is CC0.
 
-So the shell of the house is built in code — which is the right answer anyway, because the window
-openings *are* the composition and they have to be placed to the centimetre — and it is furnished
-with CC0 scans: the compass, the radio, the binoculars, the clock, the clipboard, the thermos, the
-torch, the hat, the stool and the extinguisher are all photogrammetry. `tools/SKETCHFAB-WISHLIST.md`
+So the whole house is built in code, to the owner's reference photograph of a trawler yacht's
+wheelhouse — which is the right answer anyway, because the window openings *are* the composition and
+they have to be placed to the centimetre. Nothing in it is a downloaded model. The joinery, the
+leather and the paint are CC0 scans (Poly Haven's lacquered cherry, cherry veneer, white leather and
+painted plaster); everything else is modelled in `pilot.js` and `panel.js`. `tools/SKETCHFAB-WISHLIST.md`
 lists the richer CC-BY interiors and fittings the owner can download by hand and drop in.
+
+### What is in the room
+
+Region by region, as the photograph has it:
+
+- **Windows** with radiused inner corners, in cherry frames with a bevelled room-side edge and a
+  black rubber gasket between frame and glass, set in the cream-painted house side. Three forward,
+  two angled corner lights, two each side, and a glazed light in the saloon door aft.
+- **The dash**: a cherry counter with a bullnose edge and a raked pod standing on it, carrying the
+  nav display (radar and chart side by side, with soft keys down its edge), the fishfinder, the
+  autopilot head over the loudhailer with its hand mic on a clip, three engine gauges and a compass
+  in a black binnacle under a glass dome. The twin-lever chrome engine control sits on the counter to
+  starboard; the throttle lever follows the order and the gear lever sits in ahead.
+- **The wheel**: a thin-rimmed five-spoke stainless destroyer wheel on a chrome column from the
+  dash's face, with a knuckle where a tilt helm has one, following the rudder.
+- **Four breaker panels** in raised cherry frames across the dash's face — AC, DC, electronics,
+  pumps and tanks — each with two digital meters, a legend for every circuit and a black toggle
+  with a red tell-tale beside it that lights when the circuit is live. Clicking the DC panel throws
+  the wipers' breaker.
+- **The overhead fascia**, raked down toward the helmsman: a blanking panel, the AIS, the
+  stabiliser display, a lighting switch panel, a rudder gauge, a six-gauge engine cluster, a heel
+  gauge, a deck switch panel, the VHF with its handset hanging on a clip and its coiled cord
+  dropping to the socket, a blue-faced heading repeater and the nav data display.
+- **Side desks** with fiddle rails cut with oval handholds, two rows of drawers with routed finger
+  pulls over louvred doors, and a gooseneck chart light each. To starboard a monitor on its stand,
+  a keyboard and mouse, two handheld VHFs standing in a cherry cradle and the thruster stick; to
+  port the chart table's binder and dividers. White outlets and a switch plate on the walls.
+- **Two helm chairs** in cream leather: bolstered seats, winged backs with a headrest roll, padded
+  arms on chrome brackets, chrome pedestals.
+- A cream vinyl **headliner** with cherry trim and four recessed lights (white by day, red at night),
+  a teak-and-holly sole, a brass clock and barometer aft, a shelf, and a mug on the dash that slides
+  when she rolls.
+
+### How the devices are made
+
+The rule in `panel.js`: what is *printed* is a texture, because printing is flat; everything that
+catches the light is geometry. A case is a bevelled, rounded extrusion, not a box. A key is a raised
+cap with its legend on top. A knob is turned on a lathe with its pointer. A gauge bezel stands proud
+of the dial and the needle stands proud of that. A toggle is a stem and a tip that tilt. The ICOM
+VHF has its twelve-key pad, soft keys, amber LCD showing channel 16, channel and volume knobs, and
+the red DISTRESS button under a propped translucent cover. Fascias are drawn at 5,000–6,000 pixels
+to the metre, so they survive a 4K screen with the owner leaning in.
+
+Every screen shows the real thing: the radar walks out along 256 bearings until the chart says rock,
+the chart draws the same coast and the track she has run, the fishfinder reads the water under her
+keel, the stabiliser display reads the hull's own roll, the autopilot head and the nav data page show
+the heading and speed she is making. The gauges read the boat too; at night their dials are backlit.
+
+### Polished stainless without an environment
+
+Image-based lighting renders black on the owner's GPU (see the note in `sky.js`), and a metal lit
+by the cabin's fill alone comes out as flat pale plastic. So the chrome — the wheel, the column, the
+engine control, every knob ring and bezel lip — is a *matcap*: a drawn picture of a chrome ball
+sitting in this room (cream headliner above, the bright band of the windows at the horizon, dark
+joinery below), looked up by the view-space normal. A matcap is not lit by the scene, so it is
+treated like every other screen-brightness thing in the house and scaled each frame by what a white
+surface in the room is worth, from the fill by day and the lamps by night.
 
 ### The composition, worked out from numbers
 
 ```
  4.00  the wheelhouse sole
- 4.68  the console top
- 4.94  the dash top: the sounder, the tacho and the clinometer
+ 4.80  the dash top and the side desks
+ 4.90  the wheel's centre
  4.98  the windscreen sill
  5.52  the helmsman's eye
  6.02  the windscreen head
@@ -175,23 +233,24 @@ lists the richer CC-BY interiors and fittings the owner can download by hand and
 ```
 
 The eye is 1.58 m back from the glass, whose sill is 0.54 m below it and whose head 0.50 m above.
-Through a 62 degree lens pitched three degrees down the glass fills the middle 63% of the frame, the
-console and its dash take the bottom sixth and the deckhead and the overhead console the top fifth.
-Three front panes with the middle one wide: the two mullions sit 24 degrees off the centreline, well
-clear of where the bow and the horizon are. The radar and the plotter hang overhead on a raked panel,
-which is where a trawler really has them and which puts them in the part of the frame that would
-otherwise be bare deckhead.
+Through a 62 degree lens pitched three degrees down the glass fills the middle of the frame, the pod
+on the dash takes the bottom sixth and the deckhead and the overhead fascia the top fifth. Three
+front windows with the middle one wide: the two divisions sit 24 degrees off the centreline, well
+clear of where the bow and the horizon are.
+
+The cherry scan is a dark cherry and the photograph's is a honey one: at noon the scan's dash top
+rendered at 73 of 255 in red against the photograph's 190, with the hue right, so the material's
+tint is a gain (a colour with components past one) tuned to put the dash top where the photograph's
+is, and the grain's normal map is turned down to a satin.
 
 The glass is its own layer: rain beading and running (climbing, above about five knots, because the
 airflow beats gravity), salt drying on from the spray and washing off in the rain, misting from the
 warm wheelhouse on a cold night, two wipers on the outer panes and a spinning clear-view screen in
 the middle.
 
-Every scanned prop is at its real size. These are Poly Haven models, which are modelled in metres,
-and the scene is in metres, so none of them is scaled — they are placed. `trawler.propSizes()` prints
-the bounding box of every one in metres in the house's own frame, which is how you check that the
-pocket compass is 8 cm across and the fisherman's hat is 35 cm, rather than squinting at a
-screenshot.
+The props out on the foredeck — crates, jerrycans, fenders, a lifebuoy, a lifejacket, a caged light —
+are Poly Haven scans at their real size, placed and not scaled. `trawler.propSizes()` prints the
+bounding box of every one in metres, which is how you check it rather than squinting at a screenshot.
 
 ## Modules
 

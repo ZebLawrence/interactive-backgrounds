@@ -412,7 +412,12 @@ function installDebug(app) {
     time(t) { app.scene.sky.setTime(t); app.scene.stepExposure(0, true); app.scene.render(); },
     sea(v) { app.scene.setSeaTarget?.(v, true); app.scene.render(); },
     pause() { app.paused = true; },
-    resume() { app.lastStep = null; app.paused = false; app.scene.freeCamera = false; },
+    resume() {
+      app.lastStep = null; app.paused = false; app.scene.freeCamera = false;
+      // look() turns the camera's Euler order to yaw-first; the scene's own placement assumes the
+      // default, so hand it back or the next frame comes out tilted.
+      app.scene.camera.rotation.order = 'XYZ';
+    },
     bench(frames = 60) {
       const gl = app.renderer.getContext(), px = new Uint8Array(4);
       const one = () => { app.renderer.info.reset(); app.scene.render(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); };
