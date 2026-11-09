@@ -245,12 +245,15 @@ export class Glazing {
   register(mesh, kind, width, height) {
     mesh.userData.pane = { kind, width, height };
     mesh.onBeforeRender = (renderer, scene, camera, geometry, material) => {
+      // A pass with an override material (the occlusion pass's normals) hands that material in.
+      if (!material.uniforms) return;
       material.uniforms.uPaneSize.value.set(width, height);
       material.uniforms.uPaneKind.value = kind;
     };
     mesh.renderOrder = 800;
+    // The default layer only: the glass is not part of the room the occlusion pass measures, and
+    // nothing else keys on the interior layer.
     mesh.layers.set(LAYER.DEFAULT);
-    mesh.layers.enable(LAYER.INTERIOR);
   }
 
   /**

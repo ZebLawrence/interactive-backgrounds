@@ -29,8 +29,8 @@ house are there immediately; the scanned materials and props stream in behind th
   interest when it moves again, and they will not come at all when she is barely making way.
 - **Click a control** and it works: the throttle quadrant steps through four notches (dead slow to
   full), the deckhead lamp cycles white, red and out, the first switch on the overhead panel starts
-  the wipers whatever the weather, the dash steps the radar's range, and the horn on the overhead
-  console scatters the gulls.
+  the wipers whatever the weather, the dash steps the radar's range, and the overhead console
+  sounds the horn.
 
 ## Menu and URL flags
 
@@ -88,6 +88,14 @@ arms of a wedge 19.47 degrees either side of her track, whatever her speed, over
 trail that she lays down behind her and that stays where she laid it. In shoal water the waves feel
 the bottom and break, at the shallow-water celerity sqrt(gh), which is what puts white along every
 rock whatever the sea is doing offshore.
+
+The land is in the water. The sky's reflection comes from the atmosphere table per reflected ray,
+which is a better sky than any mirror; the shore, the islands and the mountains come from a mirror
+render of the terrain alone — the camera's image below the surface, with its near plane laid onto
+the water (the oblique-projection trick three's `Reflector` uses) so the seabed the terrain also
+carries cannot come up as land in the sky — looked up where each point of the sea projects in that
+mirror and nudged by the wave slope, which is what breaks a shoreline into the streaks real water
+makes of it. The land is a million triangles, so the mirror is drawn every other frame.
 
 ## The boat
 
@@ -232,15 +240,33 @@ refreshed every third frame (the lights ride the house, so only the wheel and th
 them) and only while there is sky or lamplight to cast; the renderer's manual shadow refresh in
 `scene.js` runs whenever either the sun or the house asks for it.
 
-### Polished stainless without an environment
+### Contact shadows, and the night
 
-Image-based lighting renders black on the owner's GPU (see the note in `sky.js`), and a metal lit
-by the cabin's fill alone comes out as flat pale plastic. So the chrome — the wheel, the column, the
-engine control, every knob ring and bezel lip — is a *matcap*: a drawn picture of a chrome ball
-sitting in this room (cream headliner above, the bright band of the windows at the horizon, dark
-joinery below), looked up by the view-space normal. A matcap is not lit by the scene, so it is
-treated like every other screen-brightness thing in the house and scaled each frame by what a white
-surface in the room is worth, from the fill by day and the lamps by night.
+Where surfaces close on each other — the pod on the counter, a drawer in its carcass, the mug on
+the dash — three's lights alone leave them as cut-outs laid on each other, because there is no
+global illumination to darken a crease. Ground-truth ambient occlusion in screen space (three's
+`GTAOPass`) puts that darkening back. It works from the beauty pass's own depth buffer, with
+normals rebuilt from it, rather than rendering the room a second time for a normal buffer, which
+was most of the pass's cost; the glass is kept out of that depth so the view through a window is
+not darkened round its frame. Low Power drops the pass.
+
+At night the room is the lamps': the two forward recessed lights are spots with shadow maps, the
+aft pair softer points. The sky's night-time ambient floor had been three times what those lamps
+put on a surface — one flat light behind the camera that washed the cabin out and buried every
+shadow — and is now a fifth of it.
+
+### Polished stainless: a cube map of the room
+
+A mirror-finish metal is nothing but its reflections, so the chrome — the wheel, the column, the
+engine control, every knob ring and bezel lip — reflects a cube map the house renders of itself from
+a point beside the wheel's hub, one face every other frame, at 128 pixels a side, in the scene's own
+linear radiance. The lookup is a small shader of its own rather than a standard material with an
+environment map: three's physical materials want that map pre-filtered through PMREM, which renders
+black on the owner's GPU (see `sky.js`), and a mirror needs nothing a BRDF offers beyond the
+reflected radiance, a little Fresnel and the slightly warm, slightly dark tint of stainless. Because
+it is radiance, the chrome follows the exposure from noon to a lamplit night with no scaling of its
+own; while a face is being drawn the chrome is handed no map at all, so it never samples the
+texture it is rendering into.
 
 ### The composition, worked out from numbers
 
@@ -292,7 +318,7 @@ bounding box of every one in metres, which is how you check it rather than squin
 | `terrain.js` | the height function, the three bakes and the land's clipmap |
 | `pilot.js`, `glass.js`, `instruments.js`, `deck.js` | the house, the glazing, the screens and the boat you see out of the window |
 | `materials.js`, `assets.js` | the manifest-driven material set and the loader |
-| `wildlife.js` | gulls, porpoises, rain and the channel marks |
+| `wildlife.js` | porpoises, rain and the channel marks |
 | `post.js`, `governor.js`, `scene.js`, `app.js` | bloom and AO, the frame-rate governor, the scene and the shell |
 
 Tests: `node --test 'trawler/tests/*.test.mjs'` — 37 of them, covering the spectrum, the transform,

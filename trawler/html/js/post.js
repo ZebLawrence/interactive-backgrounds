@@ -3,7 +3,8 @@
 // No upscaling and no temporal anti-aliasing: sharpness first, and the frame-rate governor in
 // app.js gives way instead (guidelines section 7).
 //
-//   scene ─► beauty (MSAA, half float) ─► guard (zeroes non-finite pixels) ─► bloom ─► output ─► canvas
+//   scene ─► beauty (MSAA, half float) ─► ambient occlusion (the wheelhouse only) ─► guard (zeroes
+//   non-finite pixels) ─► bloom ─► output ─► canvas
 //
 // MSAA matters here more than in a room: a sea horizon, railings, mast stays and window mullions
 // are exactly the thin near-horizontal edges that crawl without it, and it is cheap at ~2 MP.
@@ -14,6 +15,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 
 export const POST = {
   msaa: 4,
@@ -71,7 +73,29 @@ const GuardShader = {
   `,
 };
 
-export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
+/**
+ * The contact shadows. Three has no global illumination, so where the pod meets the counter, a
+ * drawer front meets its carcass or a chair's cushion meets its frame, the light is the same as
+ * in the open and the joinery reads as cut-outs laid on each other. Ground-truth ambient
+ * occlusion in screen space (three's GTAO) puts the darkening back where surfaces close on each
+ * other. It works from the beauty pass's own depth, with normals rebuilt from it, rather than
+ * rendering the scene a second time for a normal buffer: that render was most of the pass's cost.
+ * The sea and the land are in that depth too, but at the pass's quarter-metre radius and with its
+ * distance fall-off a shoreline kilometres off occludes nothing, and the glass is not in it at
+ * all, so the view through a window is not darkened round its frame.
+ */
+const AO = {
+  radius: 0.30, // metres: the reach of a contact shadow in a room of this size
+  distanceExponent: 1.2,
+  thickness: 1.0,
+  scale: 2.4, // strong, deliberately: a varnished room's creases are what the eye reads its depth from
+  samples: 12,
+  distanceFallOff: 1.0,
+  screenSpaceRadius: false,
+};
+const AO_DENOISE = { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 12 };
+
+export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower, aoCamera = null) {
   const size = new THREE.Vector2(Math.max(1, Math.round(w * pixelRatio)), Math.max(1, Math.round(h * pixelRatio)));
   // The composer owns the target's size from here: setPixelRatio + setSize resize it and every pass.
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
@@ -82,6 +106,9 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     stencilBuffer: false,
+    // The beauty pass keeps its depth, for the occlusion pass: reconstructing normals from this is
+    // far cheaper than the second render of the room the pass would otherwise make for itself.
+    depthTexture: new THREE.DepthTexture(size.x, size.y),
   });
   const composer = new EffectComposer(renderer, target);
   composer.setPixelRatio(pixelRatio);
@@ -91,7 +118,20 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
   const guard = new ShaderPass(GuardShader);
   const bloom = new UnrealBloomPass(size.clone(), POST.bloom.strength, POST.bloom.radius, POST.bloom.threshold);
   const output = new OutputPass();
+  let gtao = null;
+  if (aoCamera) {
+    // Built plain and handed the depth afterwards: r170's GTAOPass dereferences the normal target
+    // it only creates when no depth is passed, so passing one in the constructor throws.
+    gtao = new GTAOPass(scene, aoCamera, size.x, size.y);
+    gtao.setGBuffer(target.depthTexture, undefined);
+    gtao.output = GTAOPass.OUTPUT.Default;
+    gtao.blendIntensity = 1.0;
+    gtao.updateGtaoMaterial(AO);
+    gtao.updatePdMaterial(AO_DENOISE);
+    gtao.enabled = !lowPower;
+  }
   composer.addPass(renderPass);
+  if (gtao) composer.addPass(gtao);
   composer.addPass(guard);
   composer.addPass(bloom);
   composer.addPass(output);
@@ -121,9 +161,13 @@ export function buildPost(renderer, scene, camera, w, h, pixelRatio, lowPower) {
       composer.setPixelRatio(ratio);
       composer.setSize(nw, nh);
     },
+    /** The occlusion is the one pass Low Power drops: it is a second render of the room. */
+    setLowPower(on) { if (gtao) gtao.enabled = !on; },
+    gtao,
     render() { composer.render(); },
     dispose() {
       composer.dispose();
+      gtao?.dispose?.();
       bloom.dispose();
       guard.dispose?.();
       output.dispose?.();

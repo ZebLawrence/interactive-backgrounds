@@ -960,7 +960,11 @@ export class Sky {
     // the sky's irradiance has to be multiplied up to read as the light it really is.
     setHemi(this.ambient, skyIrr, 3.0);
     const fillM = Math.max(skyIrr.x, skyIrr.y, skyIrr.z);
-    this.fill.intensity = Math.max(fillM * 0.9, 0.0008);
+    // The floor is a moonless night's starlight and airglow, and it has to stay small: the
+    // wheelhouse lamps put about 0.00025 on their surfaces, and a floor of 0.0008 was three times
+    // that - one big flat light behind the camera that washed the cabin out and buried every
+    // shadow the lamps cast.
+    this.fill.intensity = Math.max(fillM * 0.9, 0.0002);
     if (fillM > 1e-8) this.fill.color.setRGB(skyIrr.x / fillM, skyIrr.y / fillM, skyIrr.z / fillM);
 
     // The moon's disc: where it sits, which way it faces, and which limb its sun lights.

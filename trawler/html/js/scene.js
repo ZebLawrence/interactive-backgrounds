@@ -25,7 +25,7 @@ import { Glazing, PANE } from './glass.js';
 import { Terrain, LAND } from './terrain.js';
 import { Pilot, buildChart, NAV } from './nav.js';
 import { WakeField, Spray } from './wake.js';
-import { Gulls, Porpoises, Rain, SeaMarks } from './wildlife.js';
+import { Porpoises, Rain, SeaMarks } from './wildlife.js';
 import { loadManifest, loadAssets } from './assets.js';
 import { buildPost, textureMemory } from './post.js';
 
@@ -64,6 +64,11 @@ export const HEAD = { keepRoll: 0.34, keepPitch: 0.52, lag: 0.14, swayLag: 0.22 
 // joinery reads 128 of 255 against the sea's 236, which is the reference's own relationship; the
 // sea keeps its texture rather than going flat white, and nothing else in the scene changes shape
 // because every emissive thing is divided by this same number.
+// Temporaries for the sea's mirror camera (renderReflection), so a frame allocates nothing.
+const _rv1 = new THREE.Vector3(), _rv2 = new THREE.Vector3(), _rv3 = new THREE.Vector3(), _rv4 = new THREE.Vector3();
+const _rq = new THREE.Quaternion(), _rplane = new THREE.Plane(), _rclip = new THREE.Vector4(), _rq4 = new THREE.Vector4();
+const _rcolor = new THREE.Color();
+
 export const EXPOSURE = { key: 2.5, power: 0.62, min: 0.80, max: 1000, tau: 3.5 };
 
 /** The exposure the current sky asks for. Pure, so the night test can assert on it. */
@@ -113,7 +118,6 @@ export class Scene {
     this.wake = new WakeField(renderer);
     this.spray = new Spray(this.scene, this.rng.fork('spray'));
     this.ocean.useWake(this.wake);
-    this.gulls = new Gulls(this.scene, this.rng.fork('gulls'), 9);
     this.porpoises = new Porpoises(this.scene, this.rng.fork('porpoises'), 5);
     this.rain = new Rain(this.scene, this.rng.fork('rain'));
     this.marks = new SeaMarks(this.scene, this.rng.fork('marks'));
@@ -150,7 +154,19 @@ export class Scene {
     });
     this.loadAssets();
 
-    this.post = buildPost(renderer, this.scene, this.camera, w, h, app.pixelRatio, settings.lowPower);
+    // The occlusion pass sees the room through a camera of its own that only has the wheelhouse
+    // layer: it is kept in step with the real one every frame (render).
+    this.aoCamera = this.camera.clone();
+    this.aoCamera.layers.set(LAYER.INTERIOR);
+    // The land's reflection for the sea: see renderReflection.
+    this.reflectTarget = new THREE.WebGLRenderTarget(768, 384, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, colorSpace: THREE.LinearSRGBColorSpace,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false,
+    });
+    this.reflectCamera = new THREE.PerspectiveCamera();
+    this.reflectCamera.layers.set(LAYER.REFLECT);
+    G.uReflection.value = this.reflectTarget.texture;
+    this.post = buildPost(renderer, this.scene, this.camera, w, h, app.pixelRatio, settings.lowPower, this.aoCamera);
     this.exposure = targetExposure(G.uSkyLight.value.y, G.uSunColor.value.y);
     this.applyExposure();
   }
@@ -320,7 +336,6 @@ export class Scene {
         break;
       case 'horn':
         this.hornAt = this.time;
-        this.gulls.startle();
         break;
       case 'radar':
         this.instruments.nextRange();
@@ -390,7 +405,6 @@ export class Scene {
     this.wake.step(dt, this.boat);
     this.ocean.wakeTexture = this.wake.texture;
     this.spray.step(dt, this.boat, this.weather.derived, G.uWind.value, this.app.pixelRatio);
-    this.gulls.step(dt, this.boat, this.weather.derived);
     // The second cursor verb: a cursor that travelled and then came to rest brings them over.
     this.porpoises.setInterest(this.resting ? 1 : 0);
     this.porpoises.step(dt, this.boat, this.weather.derived);
@@ -520,7 +534,64 @@ export class Scene {
     return `${this.ocean?.describe?.() ?? ''}\n${this.boat?.describe?.() ?? ''}`;
   }
 
+  /**
+   * The land in the water. The terrain is rendered from the camera's mirror image below the sea
+   * surface into a texture the sea looks its reflection up in (ocean.js). Only the land goes in -
+   * the sea already has the sky per reflected ray from the LUT, which is a better sky than a
+   * mirror could give it - and the mirror camera's near plane is laid onto the water surface (the
+   * oblique-projection trick three's Reflector uses), because the terrain carries the seabed too
+   * and from below the surface the seabed would otherwise come up as land in the sky.
+   */
+  renderReflection() {
+    // The land is a million triangles and a mirror of it costs what it costs: every other frame
+    // (every fourth in Low Power), which a reflection of a shoreline kilometres off never shows.
+    this.reflectTick = (this.reflectTick ?? 0) + 1;
+    if (this.reflectTick % (this.lowPower ? 4 : 2)) return;
+    const cam = this.camera, rc = this.reflectCamera, r = this.renderer;
+    cam.updateMatrixWorld(true);
+    const p = cam.getWorldPosition(_rv1);
+    if (p.y < 0.05) { G.uReflectOn.value = 0; return; }
+    rc.position.set(p.x, -p.y, p.z);
+    const fwd = cam.getWorldDirection(_rv2);
+    fwd.y = -fwd.y;
+    const up = _rv3.set(0, 1, 0).applyQuaternion(cam.getWorldQuaternion(_rq));
+    up.y = -up.y;
+    rc.up.copy(up);
+    rc.lookAt(_rv4.copy(rc.position).add(fwd));
+    rc.fov = cam.fov; rc.aspect = cam.aspect; rc.near = cam.near; rc.far = cam.far;
+    rc.updateProjectionMatrix();
+    rc.updateMatrixWorld(true);
+    rc.matrixWorldInverse.copy(rc.matrixWorld).invert();
+    // The oblique near plane: the water surface, in the mirror camera's own space.
+    const plane = _rplane.set(_rv3.set(0, 1, 0), 0).applyMatrix4(rc.matrixWorldInverse);
+    const clip = _rclip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+    const pm = rc.projectionMatrix, e = pm.elements;
+    const q = _rq4.set((Math.sign(clip.x) + e[8]) / e[0], (Math.sign(clip.y) + e[9]) / e[5], -1.0, (1.0 + e[10]) / e[14]);
+    clip.multiplyScalar(2.0 / clip.dot(q));
+    e[2] = clip.x; e[6] = clip.y; e[10] = clip.z + 1.0; e[14] = clip.w;
+    G.uReflectVP.value.multiplyMatrices(pm, rc.matrixWorldInverse);
+    G.uReflectOn.value = 1;
+    const prevTarget = r.getRenderTarget();
+    r.getClearColor(_rcolor);
+    const prevAlpha = r.getClearAlpha();
+    r.setRenderTarget(this.reflectTarget);
+    r.setClearColor(0x000000, 0);
+    r.clear();
+    r.render(this.scene, rc);
+    r.setClearColor(_rcolor, prevAlpha);
+    r.setRenderTarget(prevTarget);
+  }
+
   render() {
+    // One face of the chrome's cube map first, so the shadow maps the frame needs are drawn once,
+    // here, and the beauty pass finds them ready; then the land's reflection for the sea.
+    this.pilot.renderChromeEnvironment(this.renderer, this.scene);
+    this.renderReflection();
+    // The occlusion camera follows the real one exactly, including this frame's move.
+    this.camera.updateMatrixWorld(true);
+    this.aoCamera.copy(this.camera, false);
+    this.aoCamera.layers.set(LAYER.INTERIOR);
+    this.aoCamera.updateMatrixWorld(true);
     this.post.render();
   }
 
@@ -533,7 +604,10 @@ export class Scene {
   }
 
   setLowPower(on, pixelRatio) {
+    this.lowPower = on;
+    this.pilot.lowPower = on;
     this.post.setSize(this.width, this.height, pixelRatio);
+    this.post.setLowPower(on);
   }
 
   textureBytes() {
@@ -548,12 +622,14 @@ export class Scene {
     this.terrain.dispose();
     this.wake.dispose();
     this.spray.dispose();
-    this.gulls.dispose();
     this.porpoises.dispose();
     this.marks.dispose();
     this.rain.dispose();
     this.instruments.dispose();
     this.pilot.dispose();
+    this.reflectTarget?.dispose();
+    G.uReflection.value = null;
+    G.uReflectOn.value = 0;
     this.deck.dispose();
     this.glazing.dispose();
     this.materials.dispose();

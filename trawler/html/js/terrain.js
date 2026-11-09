@@ -474,6 +474,7 @@ export class Terrain {
       mesh.renderOrder = 5;
       mesh.layers.set(LAYER.DEFAULT);
       mesh.layers.enable(LAYER.WORLD);
+      mesh.layers.enable(LAYER.REFLECT);
       this.group.add(mesh);
       this.materialsList.push(material);
       this.levels.push({ mesh, material, half, cell });

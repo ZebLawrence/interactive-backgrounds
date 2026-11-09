@@ -29,10 +29,16 @@ export const LAYER = {
   WORLD: 1, // sea, sky, land, wake: what a reflection or a radar pass may want
   INTERIOR: 2, // the pilot house: never in an outside pass
   SKYONLY: 3, // the sky frame: drawn by every camera, never shadowed
+  REFLECT: 4, // what the sea's mirror camera draws: the land
 };
 
 /** Uniforms shared by every material in the scene. Objects are shared by reference, never cloned. */
 export const G = {
+  // The land's reflection for the sea: the terrain rendered from the camera's mirror image below
+  // the surface (scene.js), the matrix that projects a world point into it, and whether it is on.
+  uReflection: { value: null },
+  uReflectVP: { value: new THREE.Matrix4() },
+  uReflectOn: { value: 0 },
   uTime: { value: 0 }, // s, wraps hourly (TIME_WRAP)
   uDayTime: { value: 0.3 }, // 0..1 of the 24 h clock; 0 = midnight, 0.5 = noon
 

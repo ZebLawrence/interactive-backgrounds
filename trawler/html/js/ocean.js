@@ -424,6 +424,9 @@ uniform vec3 uSeaDeep;
 uniform vec3 uSeaShallow;
 uniform vec3 uFoamColor;
 uniform vec3 uSkyLight;
+uniform sampler2D uReflection; // the land, from the mirror camera below the surface (scene.js)
+uniform mat4 uReflectVP;
+uniform float uReflectOn;
 uniform vec3 uCascadeMss;    // mean square slope held by each cascade
 uniform vec3 uCascadeFine;   // the shortest wavelength each cascade carries
 uniform float uPixelAngle;   // radians a pixel subtends: how big a footprint is at a distance
@@ -528,6 +531,20 @@ void main() {
   // The reflected cloud, softened: a rough surface reflects a cone of sky, not a mirror image.
   vec4 refl = cumulus( vWorld, R, uSunDir, uSunColor, 0.3 );
   sky = mix( sky, refl.rgb, refl.a * 0.8 );
+  // The land in the water. The sky is the LUT's, per reflected ray, which is the better sky; the
+  // shore, the islands and the mountains come from a mirror render of the terrain, looked up
+  // where this point projects in the mirrored camera and nudged by the wave slope - which is what
+  // breaks a shoreline's reflection into the streaks real water makes of it.
+  if ( uReflectOn > 0.5 ) {
+    vec4 rp = uReflectVP * vec4( vWorld, 1.0 );
+    if ( rp.w > 0.0 ) {
+      vec2 ruv = rp.xy / rp.w * 0.5 + 0.5 + N.xz * 0.06;
+      if ( all( greaterThan( ruv, vec2( 0.0 ) ) ) && all( lessThan( ruv, vec2( 1.0 ) ) ) ) {
+        vec4 land = texture2D( uReflection, ruv );
+        sky = mix( sky, land.rgb, land.a );
+      }
+    }
+  }
 
   // Cook-Torrance: the outgoing radiance from an irradiance measured normal to the sun is
   // D * G * F / (4 n.v); the cosine at the surface is already inside G's other half.
@@ -762,6 +779,7 @@ export class Ocean {
         uHaze: G.uHaze, uHazeFar: G.uHazeFar,
         uCloud: G.uCloud, uWind: G.uWind, uCloudDrift: G.uCloudDrift, uWorldOrigin: G.uWorldOrigin,
         uSkyLight: G.uSkyLight,
+        uReflection: G.uReflection, uReflectVP: G.uReflectVP, uReflectOn: G.uReflectOn,
         uDisp0: { value: c[0].displacement }, uDisp1: { value: c[1].displacement }, uDisp2: { value: c[2].displacement },
         uDeriv0: { value: c[0].derivatives }, uDeriv1: { value: c[1].derivatives }, uDeriv2: { value: c[2].derivatives },
         uFoam0: { value: c[0].foamTexture }, uFoam1: { value: c[1].foamTexture }, uFoam2: { value: c[2].foamTexture },

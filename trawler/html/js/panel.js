@@ -28,88 +28,77 @@ const CONDENSED = '"Arial Narrow", "Helvetica Neue", Helvetica, Arial, sans-seri
 const MONO = '"Consolas", "Lucida Console", "Courier New", monospace';
 
 /**
- * Polished stainless, without an environment to reflect.
+ * Polished stainless.
  *
- * A mirror-finish metal is nothing but its reflections, and this renderer has none to give it:
- * image-based lighting renders black on the owner's GPU (see the note in sky.js), and a standard
- * material lit by the cabin's hemisphere fill alone comes out as flat pale plastic, which is what
- * the wheel and the engine control were. So the chrome in here is a matcap - a picture of a chrome
- * ball sitting in *this* room: cream headliner above it, the bright band of the windows at its
- * horizon, dark varnished joinery below - drawn once and looked up by the view-space normal. It is
- * not lit by the scene, so it is treated like every other screen-brightness thing in the house:
- * every chrome material is registered here and `setChromeLevel` scales them all by what a white
- * surface in the room is worth this frame, which pilot.js works out from its fill and its lamps.
+ * A mirror-finish metal is nothing but its reflections, so it is lit by a picture of the room: the
+ * house renders a cube map of itself from a point by the wheel (pilot.js, one face a frame) and
+ * every chrome in here looks its reflection up in that. The lookup is a small shader of its own
+ * rather than a standard material with an environment map, because three's physical materials
+ * want that map pre-filtered through PMREM, which renders black on the owner's GPU (see sky.js),
+ * and because a mirror needs nothing a BRDF offers: the reflected radiance, a little Fresnel, and
+ * the slightly warm, slightly dark tint that makes stainless read as stainless and not as glass.
+ * The cube map is rendered in the scene's own linear radiance, so the chrome follows the exposure
+ * from noon to a lamplit night with no scaling of its own.
  */
-let chromeMatcap = null;
 const CHROME = new Set();
-function chromeMatcapTexture() {
-  const N = 512;
-  const canvas = Art.image(N, N, (ctx, w, h) => {
-    const img = ctx.createImageData(w, h);
-    const d = img.data;
-    const band = (y, a, b) => Math.max(0, Math.min(1, (y - a) / (b - a)));
-    const mix = (a, b, t) => a.map((v, i) => v * (1 - t) + b[i] * t);
-    // What there is to reflect, as radiances relative to a white surface in the room: the dark
-    // joinery (a varnished cherry at about a fifth), the cream headliner, and the windows, which
-    // are the one thing brighter than white in here.
-    const wood = [0.22, 0.17, 0.13], sole = [0.12, 0.09, 0.07], head = [0.66, 0.64, 0.61], glass = [1.0, 1.0, 1.0];
-    for (let j = 0; j < h; j++) {
-      for (let i = 0; i < w; i++) {
-        const x = (i + 0.5) / w * 2 - 1, y = 1 - (j + 0.5) / h * 2;
-        const rr = x * x + y * y;
-        const k = (j * w + i) * 4;
-        if (rr > 1) { d[k] = d[k + 1] = d[k + 2] = 0; d[k + 3] = 255; continue; }
-        const z = Math.sqrt(1 - rr);
-        // The reflected ray for a viewer looking along -z at a normal (x, y, z): r = 2(n.v)n - v.
-        const rx = 2 * z * x, ry = 2 * z * y, rz = 2 * z * z - 1;
-        // What that ray sees. Rays that come back toward the viewer see the room behind the
-        // helmsman - joinery, with the headliner above it; rays that go sideways or forward see
-        // the windows round the horizon, the headliner above them and the dash and sole below.
-        let c;
-        const up = band(ry, 0.30, 0.55), down = band(-ry, 0.22, 0.60);
-        const aft = mix(mix(wood, head, up), sole, down * 0.6);
-        const win = band(ry, -0.26, -0.12) * (1 - band(ry, 0.30, 0.48));
-        const fwd = mix(mix(mix(wood, glass, win), head, band(ry, 0.30, 0.55)), sole, down);
-        c = mix(fwd, aft, band(rz, 0.15, 0.55));
-        // The window band is brighter where it looks straight out to the side than where it looks
-        // forward past the viewer's shoulder, and the sun comes in as a soft glint, up and left.
-        const side = 0.75 + 0.25 * Math.abs(rx);
-        c = c.map((v) => v * (win > 0 ? side : 1));
-        const hi = Math.exp(-((x + 0.42) ** 2 + (y - 0.50) ** 2) / 0.012) * 0.6;
-        c = c.map((v) => Math.min(1, v + hi));
-        d[k] = Math.round(Math.pow(c[0], 1 / 2.2) * 255);
-        d[k + 1] = Math.round(Math.pow(c[1], 1 / 2.2) * 255);
-        d[k + 2] = Math.round(Math.pow(c[2], 1 / 2.2) * 255);
-        d[k + 3] = 255;
-      }
-    }
-    ctx.putImageData(img, 0, 0);
-  });
-  const t = Art.texture(canvas);
-  t.generateMipmaps = false;
-  t.minFilter = THREE.LinearFilter;
-  return t;
-}
+let chromeEnv = null;
+const CHROME_VERT = /* glsl */ `
+  out vec3 vN;
+  out vec3 vW;
+  void main() {
+    vN = normalize( mat3( modelMatrix ) * normal );
+    vec4 w = modelMatrix * vec4( position, 1.0 );
+    vW = w.xyz;
+    gl_Position = projectionMatrix * viewMatrix * w;
+  }
+`;
+const CHROME_FRAG = /* glsl */ `
+  precision highp float;
+  uniform samplerCube uEnv;
+  uniform float uLod;
+  uniform vec3 uTint;
+  uniform float uHasEnv;
+  in vec3 vN;
+  in vec3 vW;
+  out vec4 outColor;
+  void main() {
+    vec3 N = normalize( vN );
+    vec3 V = normalize( cameraPosition - vW );
+    vec3 R = reflect( -V, N );
+    float ndv = max( dot( N, V ), 0.0 );
+    // Stainless returns about sixty per cent at normal incidence and everything at grazing.
+    float f = 0.60 + 0.40 * pow( 1.0 - ndv, 5.0 );
+    vec3 env = uHasEnv > 0.5 ? textureLod( uEnv, R, uLod ).rgb : vec3( 0.0 );
+    outColor = vec4( env * uTint * f, 1.0 );
+  }
+`;
 
-/** A polished-stainless material: see above. `tone` darkens one that reflects less of the room. */
+/** A polished-stainless material: see above. `tone` darkens one that is less bright a metal. */
 export function chromeMaterial(tone = 1) {
-  chromeMatcap ??= chromeMatcapTexture();
-  const m = new THREE.MeshMatcapMaterial({ matcap: chromeMatcap, color: new THREE.Color(tone, tone, tone) });
-  m.userData.chromeTone = tone;
-  m.userData.chromeLevel = 1;
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: {
+      uEnv: { value: chromeEnv },
+      uLod: { value: 1.0 },
+      uTint: { value: new THREE.Color(0.92 * tone, 0.92 * tone, 0.94 * tone) },
+      uHasEnv: { value: chromeEnv ? 1 : 0 },
+    },
+    vertexShader: CHROME_VERT,
+    fragmentShader: CHROME_FRAG,
+  });
+  m.userData.chrome = true;
   CHROME.add(m);
   return m;
 }
 
-/** What a white surface in the room is worth this frame, applied to every chrome in it. */
-export function setChromeLevel(level) {
-  for (const m of CHROME) {
-    if (m.userData.chromeLevel === level) continue;
-    m.userData.chromeLevel = level;
-    const t = m.userData.chromeTone * level;
-    m.color.setRGB(t, t, t);
-  }
+/** Hands the room's cube map to every chrome in it. */
+export function setChromeEnv(texture) {
+  chromeEnv = texture;
+  for (const m of CHROME) { m.uniforms.uEnv.value = texture; m.uniforms.uHasEnv.value = texture ? 1 : 0; }
 }
+
+/** Kept for callers: the cube map is radiance, so there is no level to set any more. */
+export function setChromeLevel() {}
 
 // The plastics and metals every device here is made of. Each is a function so that a device owns
 // its materials and can dispose of them; the colours are shared so that the room is one palette.

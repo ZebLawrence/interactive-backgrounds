@@ -41,7 +41,7 @@ import { Materials, paint, metreUvsBox, metreUvsPlane, scaleUvs } from './materi
 import {
   Gauge, VhfSet, Handset, EngineControl, BreakerPanel, SwitchPanel, Hailer,
   blankPanel, chartLight, handheldVhf, joystick, compassDome, wallPlate, louvreDoor, label,
-  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeLevel,
+  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeEnv,
 } from './panel.js';
 import { v3, DEG, TAU, lerp, clamp01, Art } from './util.js';
 
@@ -320,6 +320,7 @@ export class PilotHouse {
     this.panes = [];
     this.lampMode = 'white';
     this.build();
+    this.buildChromeEnvironment();
     this.group.traverse((o) => {
       o.layers.set(LAYER.DEFAULT);
       o.layers.enable(LAYER.INTERIOR);
@@ -332,6 +333,51 @@ export class PilotHouse {
         o.castShadow = r > 0.04;
       }
     });
+    // The glass is not part of the room the occlusion pass sees: a pane in its depth buffer would
+    // be a wall, and the view through it would darken round every frame.
+    for (const p of this.panes) p.mesh.layers.set(LAYER.DEFAULT);
+  }
+
+  /**
+   * The room, as the chrome sees it: a cube map rendered from a point beside the wheel's hub, one
+   * face every other frame, so a full refresh costs twelve frames and a frame costs at most one
+   * small render of the scene at 128 pixels a side. The wheel, the column and the engine control are all within a
+   * metre of the point, which is close enough for a reflection the eye reads as the room; it is
+   * rendered in the scene's own radiance, so it carries the exposure with it.
+   */
+  buildChromeEnvironment() {
+    this.cubeTarget = new THREE.WebGLCubeRenderTarget(128, {
+      type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
+    });
+    this.cubeCamera = new THREE.CubeCamera(0.05, 600, this.cubeTarget);
+    this.cubeCamera.position.set(0, HOUSE.wheelY + 0.12, HOUSE.wheelZ + 0.05);
+    this.group.add(this.cubeCamera);
+    this.cubeFace = 0;
+    setChromeEnv(this.cubeTarget.texture);
+  }
+
+  /** Renders the next face of the chrome's cube map. Called by the scene before its own frame. */
+  renderChromeEnvironment(renderer, scene) {
+    if (!this.cubeCamera) return;
+    // One face every other frame: a full refresh in twelve, a fifth of a second, which the eye
+    // does not see in a reflection and which halves what this costs.
+    this.cubeTick = (this.cubeTick ?? 0) + 1;
+    if (this.cubeTick % (this.lowPower ? 4 : 2)) return;
+    this.cubeCamera.updateMatrixWorld(true);
+    const cam = this.cubeCamera.children[this.cubeFace];
+    cam.layers.enableAll();
+    const prevTarget = renderer.getRenderTarget();
+    const prevXr = renderer.xr.enabled;
+    renderer.xr.enabled = false;
+    // The chrome cannot sample the map it is being drawn into: take it off for this render.
+    setChromeEnv(null);
+    renderer.setRenderTarget(this.cubeTarget, this.cubeFace);
+    renderer.clear();
+    renderer.render(scene, cam);
+    renderer.setRenderTarget(prevTarget);
+    setChromeEnv(this.cubeTarget.texture);
+    renderer.xr.enabled = prevXr;
+    this.cubeFace = (this.cubeFace + 1) % 6;
   }
 
   /**
@@ -581,15 +627,32 @@ export class PilotHouse {
   }
 
   /**
-   * A piece of the cream house side with window openings cut in it: `holes` are [x, y, paneW,
-   * paneH] in the piece's own plane, each cut just inside where that pane's frame reaches.
+   * A piece of the cream house side with window openings in it: `holes` are [x, y, paneW, paneH]
+   * in the piece's own plane, each opening ending just inside where that pane's frame reaches.
+   * Built from flat strips - the wall left of each opening, above it and below it, then the wall
+   * to the right of the last - rather than one shape with holes: the frames hide the openings'
+   * corners, so rectangular openings are all that is needed, and a triangulated shape with holes
+   * left a sliver of wall standing across the middle of a window.
    */
   wallRing(w, h, holes) {
+    const g = new THREE.Group();
     const inset = HOUSE.frameInset, t = 0.055;
-    const shape = roundedRectShape(w, h, 0.01);
-    for (const [x, y, pw, ph] of holes) shape.holes.push(roundedRectShape(pw - 2 * inset + 2 * t - 0.02, ph - 2 * inset + 2 * t - 0.02, 0.09, x, y));
-    const g = new THREE.ShapeGeometry(shape, 10);
-    return new THREE.Mesh(g, this.cream);
+    const rects = holes
+      .map(([x, y, pw, ph]) => ({ x, y, w: pw - 2 * inset + 2 * t - 0.02, h: ph - 2 * inset + 2 * t - 0.02 }))
+      .sort((a, b) => a.x - b.x);
+    const add = (x0, x1, y0, y1) => {
+      if (x1 - x0 < 1e-4 || y1 - y0 < 1e-4) return;
+      g.add(panel(x1 - x0, y1 - y0, this.cream, (x0 + x1) / 2, (y0 + y1) / 2, 0));
+    };
+    let x = -w / 2;
+    for (const r of rects) {
+      add(x, r.x - r.w / 2, -h / 2, h / 2);
+      add(r.x - r.w / 2, r.x + r.w / 2, r.y + r.h / 2, h / 2);
+      add(r.x - r.w / 2, r.x + r.w / 2, -h / 2, r.y - r.h / 2);
+      x = r.x + r.w / 2;
+    }
+    add(x, w / 2, -h / 2, h / 2);
+    return g;
   }
 
   buildWindscreen() {
@@ -603,8 +666,7 @@ export class PilotHouse {
     // Under the sill: the bulkhead the dash is built against, across the front and round the
     // corners.
     const sillH = H.sill - H.sole;
-    const sillPanel = this.add(panel(H.frontHalf * 2, sillH, this.cherryPanel, 0, H.sole + sillH / 2, H.front - 0.012));
-    sillPanel.rotation.y = Math.PI;
+    const sillPanel = this.add(panel(H.frontHalf * 2, sillH, frame, 0, H.sole + sillH / 2, H.front - 0.012));
 
     // The sill capping with its bullnose, and the head rail - the valance - up to the deckhead,
     // both running across the front and turning the corners. These are the two horizontals that
@@ -645,7 +707,7 @@ export class PilotHouse {
       ring.rotation.copy(yaw);
       this.add(ring);
       // Below the sill, cherry, like the front.
-      const under = panel(L, sillH, this.cherryPanel);
+      const under = panel(L, sillH, frame);
       under.position.set(mid.x, H.sole + sillH / 2, mid.z).addScaledVector(nIn, -0.012);
       under.rotation.copy(yaw);
       this.add(under);
@@ -658,7 +720,8 @@ export class PilotHouse {
       }
       const nose = bar(v3(-L / 2 - 0.05, 0, 0), v3(L / 2 + 0.05, 0, 0), 0.0425, frame, 16);
       nose.position.set(mid.x, H.sill - 0.062, mid.z).addScaledVector(nIn, 0.095);
-      nose.quaternion.setFromEuler(yaw).multiply(nose.quaternion);
+      const lying = nose.quaternion.clone(); // the bar laid along x; the yaw goes on top of it
+      nose.quaternion.setFromEuler(yaw).multiply(lying);
       this.add(nose);
       // The posts, on the joints: one where the front meets the corner, one where the corner
       // meets the side, each turned to bisect its angle.
@@ -735,10 +798,10 @@ export class PilotHouse {
     const chrome = PILOT_CHROME();
 
     // The counter: one slab across the front of the room, following the walls round the corners
-    // (inset a little, under the sill capping) and meeting the side desks flush at its aft edge,
+    // (right up to them, under the sill capping) and meeting the side desks flush at its aft edge,
     // so the dash and the desks read as the one run of joinery they are in the reference. A
     // bullnose runs along its aft edge between the desks' fiddle rails, where a hand would rest.
-    const top = this.add(counterSlab(counterOutline(0.075, H.dashBack), 0.042, cherry, H.dashTop - 0.021));
+    const top = this.add(counterSlab(counterOutline(0.02, H.dashBack), 0.042, cherry, H.dashTop - 0.021));
     top.receiveShadow = true;
     this.parts.dashTop = top;
     const noseHalf = H.deskInboard - 0.022;
@@ -746,14 +809,14 @@ export class PilotHouse {
     // The cabinet below it, the whole way to the sole, with a kick along the bottom. Its aft face
     // is where the breaker panels are set, either side of the wheel's column.
     const faceTop = H.dashTop - 0.021, faceBottom = H.sole + 0.08;
-    this.add(counterSlab(counterOutline(0.08, H.dashBack), faceTop - faceBottom, cherry, faceBottom));
+    this.add(counterSlab(counterOutline(0.03, H.dashBack), faceTop - faceBottom, cherry, faceBottom));
     this.add(counterSlab(counterOutline(0.10, H.dashBack - 0.04), 0.08, this.cherryPanel, H.sole));
 
     // The pod: a raked cherry case standing on the counter, its top edge bullnosed, carrying the
     // nav display, the fishfinder, the autopilot stack and the engine gauges. In the reference it
     // sits just under the window sill with its face square to the helmsman, which is the rake.
     const pod = new THREE.Group();
-    pod.position.set(0, H.dashTop + 0.021, H.podZ);
+    pod.position.set(0, H.dashTop + 0.016, H.podZ); // a hair into the counter: no seam at its foot
     pod.rotation.x = -H.podRake * DEG;
     const podW = 1.72, podH = H.podHeight, podD = H.podDepth;
     pod.add(box(podW, podH - 0.02, podD, cherry, 0, (podH - 0.02) / 2, -podD / 2));
@@ -1326,18 +1389,15 @@ export class PilotHouse {
     this.lampLevel = lerp(this.lampLevel ?? 0, want, 1 - Math.exp(-dt / 1.1));
     const screen = state?.emissiveScale ?? 1;
     for (const { light, lens } of this.parts.domeLamps ?? []) {
-      light.intensity = this.lampLevel * (red ? 0.0008 : 0.0018);
+      // The forward pair light the dash and cast its shadows; the aft pair are softer, so the
+      // room has a direction at night rather than an even wash.
+      const cd = light.isSpotLight ? (red ? 0.0012 : 0.0028) : (red ? 0.0005 : 0.0010);
+      light.intensity = this.lampLevel * cd;
       light.color.setRGB(1, red ? 0.12 : 0.88, red ? 0.07 : 0.68);
       lens.material.emissive.setRGB(1, red ? 0.14 : 0.94, red ? 0.08 : 0.82);
       lens.material.emissiveIntensity = this.lampLevel * (red ? 0.45 : 0.75) * screen;
     }
     for (const bulb of this.chartBulbs ?? []) bulb.material.emissiveIntensity = this.lampLevel * 0.7 * screen;
-    // The chrome reflects the room, so it is worth what a white surface in the room is worth times
-    // the sixty per cent a polished stainless returns: the sky's share by day (the fill and the
-    // window lights together, measured: the cream wall renders at 0.7 of white with the sky at
-    // 0.51) and the lamps' share by night (four lamps of 0.0018 cd at a metre and a half, over pi).
-    // Both are radiances, so neither is divided by the exposure - the camera does that.
-    setChromeLevel((this.skyLevel ?? 0) * 0.85 + this.lampLevel * 0.00018);
     // The tell-tales, the meters and the sets' displays, all screen brightnesses.
     const panelLit = Math.max(0.15, this.lampLevel);
     for (const p of this.panels) p.setLit(panelLit, screen, p.values);
@@ -1352,6 +1412,7 @@ export class PilotHouse {
     for (const h of this.handsets ?? []) h.dispose();
     for (const g of Object.values(this.gauges)) g.dispose();
     this.control?.dispose();
+    this.cubeTarget?.dispose();
     this.soleTex?.dispose();
     this.keyboardTex?.dispose();
     this.group.traverse((o) => {
