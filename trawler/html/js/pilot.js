@@ -442,7 +442,12 @@ export class PilotHouse {
    */
   setFill(skyIrradiance) {
     if (!this.fill) return;
-    const m = Math.max(skyIrradiance.x, skyIrradiance.y, skyIrradiance.z);
+    // Daylight only. The fill and the window lights stand in for the sky through the glass, and
+    // their gains are a day's worth of bounce; the model's night sky is bright enough (it has to
+    // be, to show on a display) that the same gains lit the cabin to white after dark - the "big
+    // light behind the camera". At night the room is the lamps' and nothing else's.
+    const day = 1 - G.uNight.value;
+    const m = Math.max(skyIrradiance.x, skyIrradiance.y, skyIrradiance.z) * day;
     this.fill.intensity = m * 4.8;
     for (const l of this.windowLights ?? []) l.intensity = m * 3.2;
     this.skyLevel = m;
@@ -528,9 +533,10 @@ export class PilotHouse {
 
     // The recessed lights: a cream trim ring let into the headliner with a frosted lens, four of
     // them, white by day in the house and red at night (updateLamps).
-    // The two forward ones are spots that cast shadows - they are the ones over the dash, and
-    // at night a downlight's shadow under the pod and the levers is most of what says the lamp is
-    // on. The aft pair are plain point lights: nothing under them casts a shadow worth a map.
+    // Each is a spot with a shadow map of its own: a downlight lights a cone, and the shadow under
+    // the pod and the levers, or under a chair's arms, is most of what says the lamp is on. The
+    // forward pair, over the dash, get the larger maps. The maps are refreshed in turn, one a
+    // frame (update), because the lamps ride the house and only the wheel and the levers move.
     this.parts.domeLamps = [];
     this.spotLamps = [];
     const trimMat = paint(0xeee8dc, 0.5, 0);
@@ -544,22 +550,19 @@ export class PilotHouse {
       lens.rotation.x = Math.PI / 2;
       lens.position.set(x, H.deckhead - 0.005, z);
       this.add(lens);
-      let light;
-      if (z < 0) {
-        light = new THREE.SpotLight(0xffe9cf, 0, 5.5, 0.95, 0.6, 2);
-        light.target.position.set(x, H.sole, z + 0.3);
-        light.castShadow = true;
-        light.shadow.mapSize.set(1024, 1024);
-        light.shadow.bias = -0.0004;
-        light.shadow.normalBias = 0.02;
-        light.shadow.camera.near = 0.15;
-        light.shadow.camera.far = 4.5;
-        light.shadow.autoUpdate = false;
-        this.add(light.target);
-        this.spotLamps.push(light);
-      } else {
-        light = new THREE.PointLight(0xffe9cf, 0, 5.5, 2);
-      }
+      const forward = z < 0;
+      const light = new THREE.SpotLight(0xffe9cf, 0, 5.5, 0.95, 0.6, 2);
+      light.target.position.set(x, H.sole, z + (forward ? 0.3 : 0));
+      light.castShadow = true;
+      light.shadow.mapSize.set(forward ? 1024 : 512, forward ? 1024 : 512);
+      light.shadow.bias = -0.0004;
+      light.shadow.normalBias = 0.02;
+      light.shadow.camera.near = 0.15;
+      light.shadow.camera.far = 4.5;
+      light.shadow.autoUpdate = false;
+      light.userData.forward = forward;
+      this.add(light.target);
+      this.spotLamps.push(light);
       light.position.set(x, H.deckhead - 0.10, z);
       this.add(light);
       this.lamps.push(light);
@@ -1097,6 +1100,8 @@ export class PilotHouse {
       this.add(lamp);
       this.chartBulbs = this.chartBulbs ?? [];
       this.chartBulbs.push(lamp.userData.bulb);
+      this.deskSpots = this.deskSpots ?? [];
+      this.deskSpots.push(lamp.userData.spot);
     }
 
     // To starboard: the monitor on its stand, the keyboard and mouse, the two handhelds standing
@@ -1359,16 +1364,17 @@ export class PilotHouse {
     this.updateLamps(dt, state);
 
     // The house's own shadow maps. The window lights' matter while there is sky; the lamps' while
-    // they are lit. Every third frame is plenty: the lights ride the house, so the only things
-    // that move in a map are the wheel and the levers.
+    // they are lit.
     this.frame++;
     const daylight = (this.skyLevel ?? 0) > 1e-4;
     const lamplight = (this.lampLevel ?? 0) > 0.02;
     this.shadowWanted = daylight || lamplight;
-    if (this.frame % 3 === 0) {
-      if (daylight) for (const l of this.windowLights) l.shadow.needsUpdate = true;
-      if (lamplight) for (const l of this.spotLamps ?? []) l.shadow.needsUpdate = true;
-    }
+    // One map a frame, in turn, among the lights that are lit: two by day, six by night, eight
+    // through the dusk. Nothing in these maps moves but the wheel and the levers.
+    const active = [];
+    if (daylight) active.push(...this.windowLights);
+    if (lamplight) active.push(...(this.spotLamps ?? []), ...(this.deskSpots ?? []));
+    if (active.length) active[this.frame % active.length].shadow.needsUpdate = true;
   }
 
   /**
@@ -1391,13 +1397,18 @@ export class PilotHouse {
     for (const { light, lens } of this.parts.domeLamps ?? []) {
       // The forward pair light the dash and cast its shadows; the aft pair are softer, so the
       // room has a direction at night rather than an even wash.
-      const cd = light.isSpotLight ? (red ? 0.0012 : 0.0028) : (red ? 0.0005 : 0.0010);
+      const cd = light.userData.forward ? (red ? 0.0012 : 0.0028) : (red ? 0.0005 : 0.0012);
       light.intensity = this.lampLevel * cd;
       light.color.setRGB(1, red ? 0.12 : 0.88, red ? 0.07 : 0.68);
       lens.material.emissive.setRGB(1, red ? 0.14 : 0.94, red ? 0.08 : 0.82);
       lens.material.emissiveIntensity = this.lampLevel * (red ? 0.45 : 0.75) * screen;
     }
     for (const bulb of this.chartBulbs ?? []) bulb.material.emissiveIntensity = this.lampLevel * 0.7 * screen;
+    // The desk lamps: a small warm pool on each desk, red with the rest at night.
+    for (const sp of this.deskSpots ?? []) {
+      sp.intensity = this.lampLevel * (red ? 0.0004 : 0.0010);
+      sp.color.setRGB(1, red ? 0.12 : 0.84, red ? 0.07 : 0.62);
+    }
     // The tell-tales, the meters and the sets' displays, all screen brightnesses.
     const panelLit = Math.max(0.15, this.lampLevel);
     for (const p of this.panels) p.setLit(panelLit, screen, p.values);

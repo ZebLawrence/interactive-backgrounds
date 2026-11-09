@@ -633,7 +633,9 @@ function setLight(light, dir, irradiance, cutoff) {
 /** The same for the hemisphere light, with a gain because three's hemisphere light is dim per unit. */
 function setHemi(light, irradiance, gain) {
   const m = Math.max(irradiance.x, irradiance.y, irradiance.z);
-  light.intensity = Math.max(m * gain, 0.0015);
+  // The floor is starlight on the deck: small, so that at night the boat's own lamps are the
+  // light and not this (the wheelhouse is lit by this too, there being no way to keep it out).
+  light.intensity = Math.max(m * gain, 0.0004);
   if (m > 1e-8) light.color.setRGB(irradiance.x / m, irradiance.y / m, irradiance.z / m);
   // Looking down you see the sea, which is darker and bluer than the sky above it.
   light.groundColor.setRGB(0.26, 0.40, 0.52);

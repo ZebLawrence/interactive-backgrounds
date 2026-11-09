@@ -143,6 +143,18 @@ export class Instruments {
     this.ais = this.display('ais', new Screen(...size('ais', [0.13, 0.085]), 416, { backlight: 0.3, roughness: 0.4 }), [-1.0, 5.9, -1.1]);
     this.trac = this.display('trac', new Screen(...size('trac', [0.17, 0.11]), 512, { backlight: 0.3, roughness: 0.4 }), [-0.7, 5.9, -1.1]);
     this.navData = this.display('navData', new Screen(...size('navData', [0.19, 0.15]), 512, { backlight: 0.3, roughness: 0.4 }), [1.2, 5.9, -1.1]);
+    // The two big screens light what is in front of them: a point light a hand in front of each,
+    // in the screen's colour, as bright as the screen is (step). At night it is the glow on the
+    // counter under the display; by day it is nothing against the window light, as it should be.
+    this.glows = [];
+    for (const [key, colour] of [['nav', 0xbfd6c8], ['fish', 0x5c9bff]]) {
+      const m = this.pilot?.mounts?.[key];
+      if (!m) continue;
+      const light = new THREE.PointLight(colour, 0, 1.2, 2);
+      light.position.copy(m.position).add(new THREE.Vector3(0, 0, 0.12));
+      m.parent.add(light);
+      this.glows.push(light);
+    }
   }
 
   // --- the painters -------------------------------------------------------------------------------
@@ -536,6 +548,8 @@ export class Instruments {
     // room and take only a little of this as their backlight.
     const gain = lerp(0.16, 0.42, night) * (this.emissiveScale ?? 1);
     for (const s of this.screens) s.material.emissiveIntensity = gain * s.backlight;
+    // A screen of a twelfth of a square metre radiating at `gain` is a source of about gain/30 cd.
+    for (const l of this.glows ?? []) l.intensity = gain * 0.035;
     this.lastDepth = depth;
   }
 

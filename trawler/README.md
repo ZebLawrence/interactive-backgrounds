@@ -250,10 +250,21 @@ normals rebuilt from it, rather than rendering the room a second time for a norm
 was most of the pass's cost; the glass is kept out of that depth so the view through a window is
 not darkened round its frame. Low Power drops the pass.
 
-At night the room is the lamps': the two forward recessed lights are spots with shadow maps, the
-aft pair softer points. The sky's night-time ambient floor had been three times what those lamps
-put on a surface — one flat light behind the camera that washed the cabin out and buried every
-shadow — and is now a fifth of it.
+At night the room is the lamps' and nothing else's. The fill and the window lights are daylight
+and go out with the sky; the four recessed lights are spots with shadow maps of their own (the
+forward pair the larger), each desk lamp throws a narrow warm cone onto its desk with a shadow
+map of its own, and the two big screens carry a point light a hand in front of them, as bright as
+the screen, so the counter glows under the displays. The house refreshes one of these maps a
+frame, in turn. Two things had been lighting the cabin at night that should not have: the sky's
+ambient floor, three times what the lamps put on a surface, now a fifth of it; and the deck floods
+on the crosstree — half a candela, five hundred times a cabin lamp — which had no shadow maps and
+so shone straight through the roof onto everything that faced forward. They have maps now, and
+the roof stops them.
+
+The channel marks' lights glitter on the water: each is a point source in the ocean shader with
+the same rough-specular lobe the sun and moon use, in the mark's own colour, flashing with it. Its
+strength is a screen brightness like the lens on the mark, because a lantern's true radiance
+against a night sea is far past anything a display can hold.
 
 ### Polished stainless: a cube map of the room
 

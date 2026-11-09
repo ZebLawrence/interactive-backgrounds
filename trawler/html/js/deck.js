@@ -615,6 +615,17 @@ export class Deck {
       light.target.position.set(s * 1.5, DECK.mainDeck, 5.5);
       light.layers.set(LAYER.DEFAULT);
       light.layers.enable(LAYER.WORLD);
+      // A flood on the crosstree looks down across the wheelhouse roof, and without a shadow map
+      // it lit the inside of the wheelhouse through that roof - at half a candela, five hundred
+      // times the cabin's own lamps, which is what made the cabin at night look lit from behind
+      // the camera. The map is refreshed in turn, every few frames (update): the deck is still.
+      light.castShadow = true;
+      light.shadow.mapSize.set(1024, 1024);
+      light.shadow.bias = -0.0005;
+      light.shadow.normalBias = 0.04;
+      light.shadow.camera.near = 0.5;
+      light.shadow.camera.far = 28;
+      light.shadow.autoUpdate = false;
       this.group.add(light);
       this.group.add(light.target);
       this.parts.deckFloods.push({ light, shell });
@@ -643,9 +654,11 @@ export class Deck {
     }
     // The deck floods are real lights, so they are in physical units: a few hundred lux on the
     // deck against the sun's hundred thousand.
-    for (const { light } of this.parts.deckFloods ?? []) {
+    this.frame = (this.frame ?? 0) + 1;
+    (this.parts.deckFloods ?? []).forEach(({ light }, i) => {
       light.intensity = night * (state?.deckLights === false ? 0 : 0.5);
-    }
+      if (light.intensity > 0 && this.frame % 6 === i * 3) light.shadow.needsUpdate = true;
+    });
   }
 
   dispose() {

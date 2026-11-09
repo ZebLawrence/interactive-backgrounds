@@ -258,6 +258,8 @@ export class Rain {
  * its light flashes — three seconds for the green starboard-hand marks, four for the red port-hand
  * ones, which is close enough to the real rhythm of a Norwegian lead to feel right.
  */
+const _lampPos = new THREE.Vector3();
+
 export class SeaMarks {
   constructor(scene, rng, count = 4) {
     this.scene = scene;
@@ -377,6 +379,17 @@ export class SeaMarks {
       const on = t < 0.16 ? 1 : 0;
       m.lamp.material.emissiveIntensity = night * on * 0.8 * emissiveScale;
     }
+    // Hand the lights to the sea, which glitters under them (ocean.js). The strength is a screen
+    // brightness scaled by distance squared in the shader; 800 puts a mark's streak at a few
+    // hundred metres where the eye expects it, well short of white.
+    this.marks.forEach((m, i) => {
+      if (i >= 4) return;
+      const u = G.uMarkLamps.value[i];
+      if (!m.obj || !m.sited || !m.obj.visible) { u.w = 0; return; }
+      m.lamp.getWorldPosition(_lampPos);
+      u.set(_lampPos.x, _lampPos.y, _lampPos.z, m.lamp.material.emissiveIntensity * 800 / 0.8);
+      G.uMarkLampColor.value[i].set(m.lamp.material.emissive.r, m.lamp.material.emissive.g, m.lamp.material.emissive.b);
+    });
   }
 
   dispose() {

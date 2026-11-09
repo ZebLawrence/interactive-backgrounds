@@ -39,6 +39,10 @@ export const G = {
   uReflection: { value: null },
   uReflectVP: { value: new THREE.Matrix4() },
   uReflectOn: { value: 0 },
+  // The channel marks' lights, for the sea to glitter under: position (render coordinates) and a
+  // strength in screen units, one per mark, with the colour of each. Zero strength means dark.
+  uMarkLamps: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+  uMarkLampColor: { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] },
   uTime: { value: 0 }, // s, wraps hourly (TIME_WRAP)
   uDayTime: { value: 0.3 }, // 0..1 of the 24 h clock; 0 = midnight, 0.5 = noon
 

@@ -427,6 +427,8 @@ uniform vec3 uSkyLight;
 uniform sampler2D uReflection; // the land, from the mirror camera below the surface (scene.js)
 uniform mat4 uReflectVP;
 uniform float uReflectOn;
+uniform vec4 uMarkLamps[ 4 ]; // the channel marks' lights: position, and strength in screen units
+uniform vec3 uMarkLampColor[ 4 ];
 uniform vec3 uCascadeMss;    // mean square slope held by each cascade
 uniform vec3 uCascadeFine;   // the shortest wavelength each cascade carries
 uniform float uPixelAngle;   // radians a pixel subtends: how big a footprint is at a distance
@@ -556,6 +558,23 @@ void main() {
   float ndlm = max( dot( N, uMoonDir ), 1e-3 );
   glitter += uMoonColor * ( ggxAniso( Hm, rms ) * smithG1( ndv, rms.x ) * smithG1( ndlm, rms.x ) * fres / ( 4.0 * ndv ) )
            * horizonFade * step( 0.0, uMoonDir.y );
+  // The channel marks' lights on the water: the same rough-specular lobe, from a point source that
+  // falls off with distance, in the colour of the light. Its strength is a screen brightness, like
+  // the lens on the mark itself, because a lantern's true radiance against a night sea is far past
+  // anything a display can hold and the lens is drawn at a chosen brightness for the same reason.
+  // The horizon fade here is gentler than the sun's: a lamp's streak lives right at the horizon.
+  float lampFade = smoothstep( 0.0, 0.02, ndvRaw );
+  for ( int i = 0; i < 4; i++ ) {
+    vec4 lamp = uMarkLamps[ i ];
+    if ( lamp.w <= 0.0 ) continue;
+    vec3 toLamp = lamp.xyz - vWorld;
+    float d2 = max( dot( toLamp, toLamp ), 1.0 );
+    vec3 Lm = toLamp * inversesqrt( d2 );
+    vec3 Hl = normalize( Lm + V );
+    float ndll = max( dot( N, Lm ), 1e-3 );
+    glitter += uMarkLampColor[ i ] * ( ggxAniso( Hl, rms ) * smithG1( ndv, rms.x ) * smithG1( ndll, rms.x ) * fres / ( 4.0 * ndv ) )
+             * ( lamp.w / d2 ) * lampFade;
+  }
 
   // --- what comes up: the water's own colour ---------------------------------------------------
   // Red light is gone within a couple of metres and green within ten, so what comes back out of
@@ -780,6 +799,7 @@ export class Ocean {
         uCloud: G.uCloud, uWind: G.uWind, uCloudDrift: G.uCloudDrift, uWorldOrigin: G.uWorldOrigin,
         uSkyLight: G.uSkyLight,
         uReflection: G.uReflection, uReflectVP: G.uReflectVP, uReflectOn: G.uReflectOn,
+        uMarkLamps: G.uMarkLamps, uMarkLampColor: G.uMarkLampColor,
         uDisp0: { value: c[0].displacement }, uDisp1: { value: c[1].displacement }, uDisp2: { value: c[2].displacement },
         uDeriv0: { value: c[0].derivatives }, uDeriv1: { value: c[1].derivatives }, uDeriv2: { value: c[2].derivatives },
         uFoam0: { value: c[0].foamTexture }, uFoam1: { value: c[1].foamTexture }, uFoam2: { value: c[2].foamTexture },

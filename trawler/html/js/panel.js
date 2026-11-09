@@ -1232,8 +1232,24 @@ export function chartLight(height = 0.30, reach = 0.16) {
   bulb.position.y = -0.058;
   bulb.rotation.x = Math.PI / 2;
   hood.add(bulb);
+  // And the light it throws: a narrow warm cone down onto the desk, with a shadow map of its own,
+  // so the binder and the keyboard sit in its pool rather than float in it. pilot.js sets its
+  // strength with the room's lamps.
+  const spot = new THREE.SpotLight(0xffe2bc, 0, 2.2, 0.55, 0.5, 2);
+  spot.position.set(0, -0.050, 0);
+  spot.target.position.set(0, -1.0, 0);
+  spot.castShadow = true;
+  spot.shadow.mapSize.set(512, 512);
+  spot.shadow.bias = -0.0003;
+  spot.shadow.normalBias = 0.01;
+  spot.shadow.camera.near = 0.05;
+  spot.shadow.camera.far = 2.5;
+  spot.shadow.autoUpdate = false;
+  hood.add(spot);
+  hood.add(spot.target);
   g.add(hood);
   g.userData.bulb = bulb;
+  g.userData.spot = spot;
   return interior(g);
 }
 
