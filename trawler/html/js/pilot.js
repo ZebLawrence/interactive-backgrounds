@@ -141,6 +141,9 @@ function counterSlab(outline, thickness, material, yBottom) {
   return m;
 }
 
+// The boat's axes in the world, for the shadow cameras' up vectors (update).
+const _upAft = new THREE.Vector3(), _upStbd = new THREE.Vector3();
+
 /** A box with its UVs in metres, so every material tiles at the size the manifest says. */
 function box(w, h, d, material, x = 0, y = 0, z = 0) {
   const g = metreUvsBox(new THREE.BoxGeometry(w, h, d), w, h, d);
@@ -1396,6 +1399,18 @@ export class PilotHouse {
     // frames and snapped back on the sixth, a sawtooth the eye read as the whole cabin flashing.
     // The depth in a map is in the lamp's own space and the lamp and the room move together, so
     // the map stays right; only the matrix has to follow the lamp, every frame.
+    //
+    // And the matrix has to be the *same* frame the map was drawn in. Three aims a shadow camera
+    // with lookAt and the camera's up vector, and a downlight looks straight along world up, so
+    // its roll was undefined and settled differently as the boat rolled a fraction of a degree:
+    // the map was drawn with one roll and read back with another, and the aft lamps' shadows
+    // jumped about the bulkhead. So every house shadow camera takes its up from the boat's own
+    // axes - aft for the lamps (which look down), starboard for the window lights (which look in
+    // and down) - and the camera's frame is rigid with the room, whatever she does.
+    _upAft.set(R[2], R[5], R[8]); // R is the boat's rotation, from the top of update()
+    _upStbd.set(R[0], R[3], R[6]);
+    for (const l of this.windowLights) l.shadow.camera.up.copy(_upStbd);
+    for (const l of [...(this.spotLamps ?? []), ...(this.deskSpots ?? [])]) l.shadow.camera.up.copy(_upAft);
     this.group.updateMatrixWorld(true);
     for (const l of [...this.windowLights, ...(this.spotLamps ?? []), ...(this.deskSpots ?? [])]) l.shadow.updateMatrices(l);
   }
