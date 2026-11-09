@@ -49,19 +49,20 @@ export const HOUSE = {
   sole: 4.00,
   deckhead: 6.14,
   halfWidth: 1.72,
-  front: -1.40, // the windscreen sill's z
-  frontTop: -1.56, // the windscreen head's z: the glass rakes forward, as a working boat's does
+  front: -1.40, // the windscreen's z: vertical, as the reference yacht's is
   back: 1.75,
   // The windscreen opening. The sill is 0.54 m below the eye, which leaves room under it for the
   // dash and its pod without either of them climbing into the view.
   sill: 4.98,
   head: 6.02,
-  glassHalf: 1.55,
+  glassHalf: 1.30,
+  frontHalf: 1.40, // where the front wall ends and the angled corner walls begin
+  cornerAngle: 52, // the corner walls' angle to the front, in degrees
   mullion: 0.70, // the two front window divisions, either side of the centreline
   mullionWidth: 0.13,
   frameInset: 0.04, // how far each window's frame overlaps its glass
-  // The side windows.
-  sideSill: 4.90,
+  // The side windows. Their sill is a hand above the desks, which is where the outlets live.
+  sideSill: 5.06,
   sideHead: 5.82,
   // The dash: a counter at desk height across the front of the room, the pod standing on it.
   dashTop: 4.80,
@@ -80,7 +81,7 @@ export const HOUSE = {
   // The side desks: a chart table to port and a desk with a screen to starboard.
   deskTop: 4.80,
   deskInboard: 1.14,
-  deskFront: -0.70,
+  deskFront: -0.72, // the dash's aft face: the desks and the dash are one counter
   deskBack: 0.72,
   // The wheel: hung on a column from the dash's face, its upper half rising in front of the pod.
   wheelZ: -0.50,
@@ -97,6 +98,48 @@ export const HOUSE = {
  * and only a reflection does that.
  */
 const PILOT_CHROME = () => chromeMaterial(1);
+
+/**
+ * The plan of the forward end of the house, which everything up there is built to: the front wall
+ * from -frontHalf to frontHalf, then a corner wall each side at `cornerAngle` to it running back
+ * to the side walls. `L` is a corner wall's length, `z1` where the side walls begin, and `n` is a
+ * corner wall's inboard normal (for the starboard side; mirror x for port).
+ */
+function cornerPlan(H = HOUSE) {
+  const a = H.cornerAngle * DEG;
+  const L = (H.halfWidth - H.frontHalf) / Math.cos(a);
+  const z1 = H.front + L * Math.sin(a);
+  return { a, L, z1, n: v3(-Math.sin(a), 0, Math.cos(a)), along: v3(Math.cos(a), 0, Math.sin(a)) };
+}
+
+/**
+ * The counter's outline in plan, inset from the walls by `inset`, closed along the aft edge at
+ * `zBack`: the front, the two corners and the sides, as a list of [x, z] going round clockwise.
+ */
+function counterOutline(inset, zBack, H = HOUSE) {
+  const { a, z1 } = cornerPlan(H);
+  // Each edge moved inboard by `inset`; where two meet is worked out from the angle between them.
+  const zFront = H.front + inset;
+  const xFront = H.frontHalf - inset * Math.tan(a / 2);
+  const xSide = H.halfWidth - inset;
+  const zCorner = z1 + inset * (1 - Math.sin(a)) / Math.cos(a);
+  return [
+    [-xSide, zBack], [-xSide, zCorner], [-xFront, zFront], [xFront, zFront], [xSide, zCorner], [xSide, zBack],
+  ];
+}
+
+/** A slab with that outline: a Shape in plan, extruded up by `thickness`, with its UVs in metres. */
+function counterSlab(outline, thickness, material, yBottom) {
+  const shape = new THREE.Shape();
+  outline.forEach(([x, z], i) => { if (i === 0) shape.moveTo(x, -z); else shape.lineTo(x, -z); });
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+  g.rotateX(-Math.PI / 2); // the shape's y was -z; the extrusion now runs up +y
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, material);
+  m.position.y = yBottom;
+  return m;
+}
 
 /** A box with its UVs in metres, so every material tiles at the size the manifest says. */
 function box(w, h, d, material, x = 0, y = 0, z = 0) {
@@ -311,6 +354,32 @@ export class PilotHouse {
     this.fill.position.set(0, HOUSE.deckhead, (HOUSE.front + HOUSE.back) / 2);
     this.fill.layers.set(LAYER.INTERIOR);
     this.group.add(this.fill);
+
+    // The light through the glass. The fill above is the bounce; this is the direct part - the sky
+    // coming in through six square metres of window, which in a real wheelhouse is what puts the
+    // shadow under the pod and the wheel's shadow across the dash. Two directional lights from the
+    // forward quarters, each with a shadow map fitted to the house, scaled by the sky's irradiance
+    // so they go down with the day. Their maps are refreshed every third frame (update), because
+    // the house and its lights move together and only the wheel and the levers change between.
+    this.windowLights = [];
+    for (const s of [-1, 1]) {
+      const l = new THREE.DirectionalLight(0xe4ecf6, 0);
+      l.position.set(s * 1.6, 6.6, -3.0);
+      l.target.position.set(s * 0.3, 4.3, 0.8);
+      l.castShadow = true;
+      l.shadow.mapSize.set(1024, 1024);
+      l.shadow.bias = -0.0004;
+      l.shadow.normalBias = 0.03;
+      const c = l.shadow.camera;
+      c.left = -2.3; c.right = 2.3; c.top = 2.1; c.bottom = -2.1; c.near = 0.5; c.far = 9;
+      c.updateProjectionMatrix();
+      l.shadow.autoUpdate = false;
+      this.group.add(l);
+      this.group.add(l.target);
+      this.windowLights.push(l);
+    }
+    this.shadowWanted = true;
+    this.frame = 0;
   }
 
   /**
@@ -322,12 +391,15 @@ export class PilotHouse {
    * the entire sky. What the photograph actually shows is a camera exposed for the inside of a
    * room, and that is a question for the meter (see EXPOSURE in scene.js), not for the lamps. So
    * this is left at what it is for: several bounces of light round a varnished room with a cream
-   * deckhead, about four times the sky's own term.
+   * deckhead, about four times the sky's own term - less the share the window lights now carry
+   * as direct light, so the room as a whole is where it was.
    */
   setFill(skyIrradiance) {
     if (!this.fill) return;
     const m = Math.max(skyIrradiance.x, skyIrradiance.y, skyIrradiance.z);
-    this.fill.intensity = m * 8.0;
+    this.fill.intensity = m * 4.8;
+    for (const l of this.windowLights ?? []) l.intensity = m * 3.2;
+    this.skyLevel = m;
   }
 
   mat(tag, opts) { return this.materials.get(tag, opts); }
@@ -349,7 +421,12 @@ export class PilotHouse {
 
   /** The same timber in a flatter veneer, for the big panels: the walls, the sill, the aft bulkhead. */
   get cherryPanel() {
-    return this.mat('mat:cherry-panel', { key: 'cherry-panel', tint: new THREE.Color(1.05, 0.66, 0.36), roughness: 0.26, normalScale: 0.4 });
+    const m = this.mat('mat:cherry-panel', { key: 'cherry-panel', tint: new THREE.Color(1.05, 0.66, 0.36), roughness: 0.26, normalScale: 0.4 });
+    // The walls and the aft bulkhead are single planes of this. Three's shadow pass draws back
+    // faces, so a one-sided plane casts no shadow at all and the sun walked straight through the
+    // house: at noon it put more light on the dash than the windows did. Both sides, for shadows.
+    m.shadowSide = THREE.DoubleSide;
+    return m;
   }
 
   /** The cream-painted house side round the windows, and the headliner. */
@@ -405,7 +482,11 @@ export class PilotHouse {
 
     // The recessed lights: a cream trim ring let into the headliner with a frosted lens, four of
     // them, white by day in the house and red at night (updateLamps).
+    // The two forward ones are spots that cast shadows - they are the ones over the dash, and
+    // at night a downlight's shadow under the pod and the levers is most of what says the lamp is
+    // on. The aft pair are plain point lights: nothing under them casts a shadow worth a map.
     this.parts.domeLamps = [];
+    this.spotLamps = [];
     const trimMat = paint(0xeee8dc, 0.5, 0);
     for (const [x, z] of [[-0.95, -0.55], [0.95, -0.55], [-0.95, 0.95], [0.95, 0.95]]) {
       const trim = lathe([[0.050, 0], [0.074, 0], [0.074, 0.006], [0.060, 0.013], [0.050, 0.013]], trimMat, 32);
@@ -417,22 +498,39 @@ export class PilotHouse {
       lens.rotation.x = Math.PI / 2;
       lens.position.set(x, H.deckhead - 0.005, z);
       this.add(lens);
-      const light = new THREE.PointLight(0xffe9cf, 0, 5.5, 2);
+      let light;
+      if (z < 0) {
+        light = new THREE.SpotLight(0xffe9cf, 0, 5.5, 0.95, 0.6, 2);
+        light.target.position.set(x, H.sole, z + 0.3);
+        light.castShadow = true;
+        light.shadow.mapSize.set(1024, 1024);
+        light.shadow.bias = -0.0004;
+        light.shadow.normalBias = 0.02;
+        light.shadow.camera.near = 0.15;
+        light.shadow.camera.far = 4.5;
+        light.shadow.autoUpdate = false;
+        this.add(light.target);
+        this.spotLamps.push(light);
+      } else {
+        light = new THREE.PointLight(0xffe9cf, 0, 5.5, 2);
+      }
       light.position.set(x, H.deckhead - 0.10, z);
       this.add(light);
       this.lamps.push(light);
       this.parts.domeLamps.push({ light, lens });
     }
 
-    // The side walls: cherry panelling below the side windows; the cream house side above them is
-    // built with the windows (buildSideWindows), cut round their frames.
+    // The side walls, from the corner walls aft: cherry panelling below the side windows; the
+    // cream house side above them is built with the windows (buildSideWindows), cut round their
+    // frames. The posts at the corner walls' joints are built with the windscreen.
     const wallMat = this.cherryPanel;
+    const { z1 } = cornerPlan();
     for (const s of [-1, 1]) {
       const lowerH = H.sideSill - 0.06 - H.sole;
-      const lower = this.add(panel(d, lowerH, wallMat, s * H.halfWidth, H.sole + lowerH / 2, midZ));
+      const sideD = H.back - z1;
+      const lower = this.add(panel(sideD, lowerH, wallMat, s * H.halfWidth, H.sole + lowerH / 2, (z1 + H.back) / 2));
       lower.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-      // The corner posts, fore and aft, in solid cherry.
-      this.add(box(0.11, H.deckhead - H.sole, 0.13, batten, s * (H.halfWidth - 0.055), (H.sole + H.deckhead) / 2, H.front + 0.065));
+      // The aft corner posts, in solid cherry.
       this.add(box(0.11, H.deckhead - H.sole, 0.13, batten, s * (H.halfWidth - 0.055), (H.sole + H.deckhead) / 2, H.back - 0.065));
     }
 
@@ -442,6 +540,7 @@ export class PilotHouse {
     roof.rotation.x = -Math.PI / 2;
     roof.receiveShadow = true;
     roof.castShadow = true;
+    roof.material.shadowSide = THREE.DoubleSide; // a one-sided plane casts nothing (see cherryPanel)
     const coamMat = this.mat('mat:enamel', { key: 'coaming', tint: 0xe6e8e2, side: THREE.DoubleSide });
     for (const s of [-1, 1]) {
       const side = this.add(panel(d + 0.14, 0.12, coamMat, s * (H.halfWidth + 0.07), H.deckhead + 0.03, midZ));
@@ -453,12 +552,8 @@ export class PilotHouse {
     }
   }
 
-  /** The windscreen's z at a height: it rakes forward from the sill to the head. */
-  frontZ(y) {
-    const H = HOUSE;
-    const t = clamp01((y - H.sill) / (H.head - H.sill));
-    return lerp(H.front, H.frontTop, t);
-  }
+  /** The windscreen's z: vertical, the same at the sill and the head. */
+  frontZ() { return HOUSE.front; }
 
   /** A pane of glass with its frame and gasket, placed and registered. */
   glaze(kind, w, h, position, rotation, { wall = null } = {}) {
@@ -500,57 +595,79 @@ export class PilotHouse {
   buildWindscreen() {
     const H = HOUSE;
     const frame = this.cherry;
-    const rake = Math.atan2(H.frontTop - H.front, H.head - H.sill);
     const openH = H.head - H.sill;
-    const glassH = openH / Math.cos(rake);
     const y = (H.sill + H.head) / 2;
+    const { a, L, z1, n, along } = cornerPlan();
+    const postH = H.deckhead - H.sole;
 
-    // Under the sill: the bulkhead the dash is built against.
+    // Under the sill: the bulkhead the dash is built against, across the front and round the
+    // corners.
     const sillH = H.sill - H.sole;
-    const sillPanel = this.add(panel(H.halfWidth * 2, sillH, this.cherryPanel, 0, H.sole + sillH / 2, H.front - 0.012));
+    const sillPanel = this.add(panel(H.frontHalf * 2, sillH, this.cherryPanel, 0, H.sole + sillH / 2, H.front - 0.012));
     sillPanel.rotation.y = Math.PI;
 
-    // The sill capping with its bullnose, and the head rail - the valance - up to the deckhead.
-    // These are the two horizontals that frame the view and they are 1.5 m from the eye.
-    this.add(box(H.halfWidth * 2, 0.085, 0.14, frame, 0, H.sill - 0.062, H.front - 0.005));
-    this.add(bar(v3(-H.halfWidth, H.sill - 0.062, H.front + 0.065), v3(H.halfWidth, H.sill - 0.062, H.front + 0.065), 0.0425, frame, 16));
+    // The sill capping with its bullnose, and the head rail - the valance - up to the deckhead,
+    // both running across the front and turning the corners. These are the two horizontals that
+    // frame the view and they are 1.5 m from the eye.
     const railH = H.deckhead - H.head - 0.015;
-    this.add(box(H.halfWidth * 2, railH, 0.10, frame, 0, H.head + 0.015 + railH / 2, H.frontTop + 0.03));
+    this.add(box(H.frontHalf * 2 + 0.10, 0.085, 0.10, frame, 0, H.sill - 0.062, H.front + 0.045));
+    this.add(bar(v3(-H.frontHalf - 0.05, H.sill - 0.062, H.front + 0.095), v3(H.frontHalf + 0.05, H.sill - 0.062, H.front + 0.095), 0.0425, frame, 16));
+    this.add(box(H.frontHalf * 2 + 0.10, railH, 0.10, frame, 0, H.head + 0.015 + railH / 2, H.front + 0.045));
 
     // Three windows: a wide one on the centreline and a narrower one each side. The two divisions
-    // are what the composition is built round, so they are placed and not nudged. Behind the
-    // glass's edges, the cream house side shows between the frames.
+    // are what the composition is built round, so they are placed and not nudged.
     const spans = [
       [-H.glassHalf, -H.mullion - H.mullionWidth / 2],
       [-H.mullion + H.mullionWidth / 2, H.mullion - H.mullionWidth / 2],
       [H.mullion + H.mullionWidth / 2, H.glassHalf],
     ];
-    const rot = new THREE.Euler(-rake, 0, 0);
+    const rot = new THREE.Euler(0, 0, 0);
     for (const [x0, x1] of spans) {
-      const w = x1 - x0;
-      this.glaze('FRONT', w, glassH, v3((x0 + x1) / 2, y, this.frontZ(y) + 0.004), rot);
+      this.glaze('FRONT', x1 - x0, openH, v3((x0 + x1) / 2, y, H.front + 0.004), rot);
     }
-    // The house side across the front, in the plane of the glass behind it, with the three
-    // openings cut in it: what shows between the frames.
-    const frontWall = this.wallRing(H.glassHalf * 2 + 0.30, glassH + 0.10, spans.map(([x0, x1]) => [(x0 + x1) / 2, 0, x1 - x0, glassH]));
-    frontWall.position.set(0, y, this.frontZ(y) + 0.004);
-    frontWall.rotation.copy(rot);
-    frontWall.translateZ(-0.014);
+    // The house side across the front, behind the glass, with the three openings cut in it: what
+    // shows between the frames. It ends exactly where the corner walls begin.
+    const frontWall = this.wallRing(H.frontHalf * 2, openH + 0.10, spans.map(([x0, x1]) => [(x0 + x1) / 2, 0, x1 - x0, openH]));
+    frontWall.position.set(0, y, H.front - 0.010);
     this.add(frontWall);
 
-    // The angled corner windows, which is what makes a wheelhouse of this kind look like one: a
-    // narrow light each side running from the windscreen's outboard edge back to the side window.
+    // The angled corner walls, which are what make a wheelhouse of this kind look like one: a
+    // light each side running from the front wall's end back to the side wall, in its own piece of
+    // house side, with its own capping and valance, and a cherry post on each of the two joints.
     for (const s of [-1, 1]) {
-      const cw = 0.42;
-      const z = (this.frontZ(y) + H.front + 0.30) / 2;
-      this.glaze('SIDE', cw, openH, v3(s * (H.glassHalf + 0.09), y, z), new THREE.Euler(0, -s * 52 * DEG, 0), { wall: [cw + 0.24, openH + 0.12] });
-      // Its post at the outboard end and cappings top and bottom.
-      const post = this.add(box(0.09, openH + 0.24, 0.11, frame, s * (H.halfWidth - 0.05), y, H.front + 0.30));
-      post.rotation.y = s * 18 * DEG;
-      for (const yy of [H.sill - 0.062, H.head + 0.015 + railH / 2]) {
-        const cap = this.add(box(cw + 0.14, yy < H.sill ? 0.085 : railH, 0.11, frame, s * (H.glassHalf + 0.09), yy, z));
-        cap.rotation.y = -s * 52 * DEG;
+      const cw = 0.40;
+      const mid = v3(s * (H.frontHalf + H.halfWidth) / 2, y, H.front + (z1 - H.front) / 2);
+      const nIn = v3(s * n.x, 0, n.z); // this side's inboard normal
+      const yaw = new THREE.Euler(0, -s * a, 0);
+      this.glaze('SIDE', cw, openH, mid.clone().addScaledVector(nIn, 0.004), yaw);
+      const ring = this.wallRing(L, openH + 0.10, [[0, 0, cw, openH]]);
+      ring.position.copy(mid).addScaledVector(nIn, -0.010);
+      ring.rotation.copy(yaw);
+      this.add(ring);
+      // Below the sill, cherry, like the front.
+      const under = panel(L, sillH, this.cherryPanel);
+      under.position.set(mid.x, H.sole + sillH / 2, mid.z).addScaledVector(nIn, -0.012);
+      under.rotation.copy(yaw);
+      this.add(under);
+      // The capping and the valance, inboard of the wall, running into the posts at each end.
+      for (const [yy, hh] of [[H.sill - 0.062, 0.085], [H.head + 0.015 + railH / 2, railH]]) {
+        const cap = box(L + 0.10, hh, 0.10, frame);
+        cap.position.set(mid.x, yy, mid.z).addScaledVector(nIn, 0.045);
+        cap.rotation.copy(yaw);
+        this.add(cap);
       }
+      const nose = bar(v3(-L / 2 - 0.05, 0, 0), v3(L / 2 + 0.05, 0, 0), 0.0425, frame, 16);
+      nose.position.set(mid.x, H.sill - 0.062, mid.z).addScaledVector(nIn, 0.095);
+      nose.quaternion.setFromEuler(yaw).multiply(nose.quaternion);
+      this.add(nose);
+      // The posts, on the joints: one where the front meets the corner, one where the corner
+      // meets the side, each turned to bisect its angle.
+      const fwd = box(0.13, postH, 0.13, frame, s * H.frontHalf, (H.sole + H.deckhead) / 2, H.front);
+      fwd.rotation.y = -s * a / 2;
+      this.add(fwd);
+      const aft = box(0.13, postH, 0.13, frame, s * H.halfWidth, (H.sole + H.deckhead) / 2, z1);
+      aft.rotation.y = -s * (a + Math.PI / 2) / 2;
+      this.add(aft);
     }
   }
 
@@ -559,25 +676,28 @@ export class PilotHouse {
     const frame = this.cherry;
     const openH = H.sideHead - H.sideSill;
     const y = (H.sideSill + H.sideHead) / 2;
-    // Two lights each side, between the corner posts, each in its own radiused frame.
-    const zs = [[H.front + 0.52, H.front + 1.52], [H.front + 1.62, H.back - 0.22]];
+    const { z1 } = cornerPlan();
+    const zMid = (z1 + H.back) / 2, sideD = H.back - z1;
+    // Two lights each side, between the corner wall and the aft post, each in its own radiused
+    // frame.
+    const zs = [[z1 + 0.12, z1 + 1.11], [z1 + 1.21, H.back - 0.22]];
     for (const s of [-1, 1]) {
       const rot = new THREE.Euler(0, s > 0 ? -Math.PI / 2 : Math.PI / 2, 0);
-      for (const [z0, z1] of zs) {
-        const w = z1 - z0;
-        this.glaze('SIDE', w, openH, v3(s * (H.halfWidth - 0.012), y, (z0 + z1) / 2), rot);
+      for (const [z0, zEnd] of zs) {
+        this.glaze('SIDE', zEnd - z0, openH, v3(s * (H.halfWidth - 0.012), y, (z0 + zEnd) / 2), rot);
       }
-      // The cream house side above the cherry, with both lights cut out of it. In the wall's own
-      // plane +x runs forward on one side and aft on the other, hence the sign on the holes.
-      const d = H.back - H.front, zMid = (H.front + H.back) / 2;
+      // The cream house side above the cherry, with both lights cut out of it, from the corner
+      // wall's end to the aft bulkhead. In the wall's own plane +x runs forward on one side and
+      // aft on the other, hence the sign on the holes.
       const upperH = H.deckhead - (H.sideSill - 0.06);
-      const upper = this.wallRing(d, upperH, zs.map(([z0, z1]) => [-s * ((z0 + z1) / 2 - zMid), y - (H.sideSill - 0.06 + upperH / 2), z1 - z0, openH]));
+      const upper = this.wallRing(sideD, upperH, zs.map(([z0, zEnd]) => [-s * ((z0 + zEnd) / 2 - zMid), y - (H.sideSill - 0.06 + upperH / 2), zEnd - z0, openH]));
       upper.position.set(s * (H.halfWidth - 0.002), H.sideSill - 0.06 + upperH / 2, zMid);
       upper.rotation.copy(rot);
       this.add(upper);
-      // The sill ledge below the windows and the capping above.
-      this.add(box(0.12, 0.08, H.back - H.front - 0.24, frame, s * (H.halfWidth - 0.055), H.sideSill - 0.06, (H.front + H.back) / 2 + 0.06));
-      this.add(box(0.10, 0.08, H.back - H.front - 0.24, frame, s * (H.halfWidth - 0.045), H.sideHead + 0.06, (H.front + H.back) / 2 + 0.06));
+      // The sill ledge below the windows and the capping above, between the posts.
+      const len = sideD - 0.20;
+      this.add(box(0.10, 0.05, len, frame, s * (H.halfWidth - 0.045), H.sideSill - 0.045, zMid - 0.02));
+      this.add(box(0.10, 0.08, len, frame, s * (H.halfWidth - 0.045), H.sideHead + 0.06, zMid - 0.02));
     }
   }
 
@@ -612,21 +732,22 @@ export class PilotHouse {
   buildDash() {
     const H = HOUSE;
     const cherry = this.cherry;
-    const wHalf = 1.52;
-    const topD = H.dashBack - H.dashFront;
     const chrome = PILOT_CHROME();
 
-    // The counter, with a bullnose along its aft edge where a hand would rest.
-    const top = this.add(box(wHalf * 2, 0.042, topD, cherry, 0, H.dashTop, (H.dashFront + H.dashBack) / 2));
+    // The counter: one slab across the front of the room, following the walls round the corners
+    // (inset a little, under the sill capping) and meeting the side desks flush at its aft edge,
+    // so the dash and the desks read as the one run of joinery they are in the reference. A
+    // bullnose runs along its aft edge between the desks' fiddle rails, where a hand would rest.
+    const top = this.add(counterSlab(counterOutline(0.075, H.dashBack), 0.042, cherry, H.dashTop - 0.021));
     top.receiveShadow = true;
-    this.add(bar(v3(-wHalf, H.dashTop, H.dashBack), v3(wHalf, H.dashTop, H.dashBack), 0.021, cherry, 16));
     this.parts.dashTop = top;
-
-    // The face below it, the whole way to the sole, with a kick along the bottom. The breaker
-    // panels are set into it either side of the wheel's column.
+    const noseHalf = H.deskInboard - 0.022;
+    this.add(bar(v3(-noseHalf, H.dashTop, H.dashBack), v3(noseHalf, H.dashTop, H.dashBack), 0.021, cherry, 16));
+    // The cabinet below it, the whole way to the sole, with a kick along the bottom. Its aft face
+    // is where the breaker panels are set, either side of the wheel's column.
     const faceTop = H.dashTop - 0.021, faceBottom = H.sole + 0.08;
-    this.add(box(wHalf * 2, faceTop - faceBottom, 0.05, cherry, 0, (faceTop + faceBottom) / 2, H.dashBack - 0.025));
-    this.add(box(wHalf * 2, 0.08, 0.05, this.cherryPanel, 0, H.sole + 0.04, H.dashBack - 0.065));
+    this.add(counterSlab(counterOutline(0.08, H.dashBack), faceTop - faceBottom, cherry, faceBottom));
+    this.add(counterSlab(counterOutline(0.10, H.dashBack - 0.04), 0.08, this.cherryPanel, H.sole));
 
     // The pod: a raked cherry case standing on the counter, its top edge bullnosed, carrying the
     // nav display, the fishfinder, the autopilot stack and the engine gauges. In the reference it
@@ -689,24 +810,25 @@ export class PilotHouse {
 
     // The engine control on the counter to starboard of the wheel, where a hand falls on it.
     const control = new EngineControl();
-    control.group.position.set(0.62, H.dashTop + 0.021, H.dashBack - 0.16);
+    control.group.position.set(0.60, H.dashTop + 0.021, H.dashBack - 0.17);
     this.group.add(control.group);
     this.control = control;
     this.parts.quadrant = control.group;
     this.parts.levers = control.levers;
 
-    // The breaker panels, in raised cherry frames across the dash's face: AC and DC to port of
-    // the wheel, electronics and pumps to starboard. The wipers' breaker is the one a click works.
+    // The breaker panels, in raised cherry frames across the dash's face between the desks: AC
+    // and DC to port of the wheel, electronics and pumps to starboard. The wipers' breaker is the
+    // one a click works.
     const spec = [
-      [-1.20, 'AC DISTRIBUTION', ['VOLTS AC', 'HERTZ'], ['shore 1', 'shore 2', 'inverter', 'water heater', 'galley', 'air con', 'battery chgr', 'outlets', 'washer', 'spare'], [0, 2, 3, 6, 7]],
-      [-0.60, 'DC DISTRIBUTION', ['VOLTS', 'AMPS'], ['nav lights', 'anchor light', 'deck flood', 'steaming', 'wipers', 'horn', 'cabin lights', 'spreaders', 'bilge pump', 'fresh water', 'refrigeration', 'windlass'], [0, 3, 4, 5, 6, 8, 9, 10]],
-      [0.60, 'ELECTRONICS', ['VOLTS', 'AMPS'], ['radar', 'chartplotter', 'sounder', 'VHF 1', 'VHF 2', 'autopilot', 'AIS', 'GPS', 'stabiliser', 'instruments', 'panel lights', 'spare'], [0, 1, 2, 3, 5, 6, 7, 8, 9, 10]],
-      [1.20, 'PUMPS & TANKS', ['FUEL %', 'WATER %'], ['bilge fwd', 'bilge aft', 'shower sump', 'grey tank', 'black tank', 'wash down', 'fuel transfer', 'gen start'], [0, 1, 2]],
+      [-0.78, 'AC DISTRIBUTION', ['VOLTS AC', 'HERTZ'], ['shore 1', 'shore 2', 'inverter', 'water heater', 'galley', 'air con', 'battery chgr', 'outlets', 'washer', 'spare'], [0, 2, 3, 6, 7]],
+      [-0.33, 'DC DISTRIBUTION', ['VOLTS', 'AMPS'], ['nav lights', 'anchor light', 'deck flood', 'steaming', 'wipers', 'horn', 'cabin lights', 'spreaders', 'bilge pump', 'fresh water', 'refrigeration', 'windlass'], [0, 3, 4, 5, 6, 8, 9, 10]],
+      [0.33, 'ELECTRONICS', ['VOLTS', 'AMPS'], ['radar', 'chartplotter', 'sounder', 'VHF 1', 'VHF 2', 'autopilot', 'AIS', 'GPS', 'stabiliser', 'instruments', 'panel lights', 'spare'], [0, 1, 2, 3, 5, 6, 7, 8, 9, 10]],
+      [0.78, 'PUMPS & TANKS', ['FUEL %', 'WATER %'], ['bilge fwd', 'bilge aft', 'shower sump', 'grey tank', 'black tank', 'wash down', 'fuel transfer', 'gen start'], [0, 1, 2]],
     ];
     for (const [x, title, meters, circuits, on] of spec) {
       const pw = 0.30, ph = 0.44;
       const yC = H.sole + 0.46;
-      this.add(box(pw + 0.07, ph + 0.07, 0.03, cherry, x, yC, H.dashBack + 0.015));
+      this.add(box(pw + 0.065, ph + 0.07, 0.03, cherry, x, yC, H.dashBack + 0.015));
       const p = new BreakerPanel(circuits, { width: pw, height: ph, title, meters, on });
       p.group.position.set(x, yC, H.dashBack + 0.031);
       this.group.add(p.group);
@@ -772,7 +894,7 @@ export class PilotHouse {
   buildOverhead() {
     const H = HOUSE;
     const cherry = this.cherry;
-    const w = 3.00;
+    const w = 2.90;
     const fascia = new THREE.Group();
     fascia.position.set(0, H.overheadY, H.overheadZ);
     fascia.rotation.x = H.overheadRake * DEG;
@@ -788,7 +910,7 @@ export class PilotHouse {
     // stabiliser's display; a switch panel; a single gauge; the six-gauge cluster; another single
     // gauge; a second switch panel; the VHF with its handset on a clip; the heading repeater; and
     // the nav data display at the end.
-    fascia.add(blankPanel(0.26, 0.19).translateX(-1.29).translateZ(face));
+    fascia.add(blankPanel(0.26, 0.19).translateX(-1.27).translateZ(face));
     this.mounts.ais = { parent: fascia, position: v3(-1.015, 0.0, face), size: [0.13, 0.085], brand: 'AIS', keys: ['MENU', 'ENT', 'ESC'] };
     this.mounts.trac = { parent: fascia, position: v3(-0.74, 0.0, face), size: [0.17, 0.11], brand: 'TRAC', keys: ['ON', 'OFF', 'MODE', 'SET'] };
 
@@ -954,10 +1076,10 @@ export class PilotHouse {
     stick.position.set(1.25, H.deskTop + 0.021, -0.56);
     this.add(stick);
     this.parts.joystick = stick;
-    // The outlets on the starboard side above the desk.
+    // The outlets on the starboard side, on the strip of wall between the desk and the window sill.
     for (const z of [0.08, 0.40]) {
       const plate = wallPlate('outlet');
-      plate.position.set(H.halfWidth - 0.003, H.deskTop + 0.26, z);
+      plate.position.set(H.halfWidth - 0.003, H.deskTop + 0.11, z);
       plate.rotation.y = -Math.PI / 2;
       this.add(plate);
     }
@@ -967,9 +1089,10 @@ export class PilotHouse {
     binder.rotation.y = 0.18;
     this.add(bar(v3(-1.30, H.deskTop + 0.025, -0.30), v3(-1.16, H.deskTop + 0.025, -0.20), 0.003, chrome, 8));
     this.add(bar(v3(-1.30, H.deskTop + 0.025, -0.30), v3(-1.20, H.deskTop + 0.025, -0.38), 0.003, chrome, 8));
+    // And the wall switch beside the saloon door, on the aft bulkhead.
     const sw = wallPlate('switch');
-    sw.position.set(-H.halfWidth + 0.003, H.deskTop + 0.30, 0.40);
-    sw.rotation.y = Math.PI / 2;
+    sw.position.set(-0.32, 5.15, H.back - 0.014);
+    sw.rotation.y = Math.PI;
     this.add(sw);
   }
 
@@ -1065,7 +1188,11 @@ export class PilotHouse {
     coffee.rotation.x = -Math.PI / 2;
     coffee.position.y = 0.072;
     mug.add(coffee);
-    mug.add(bar(v3(0.042, 0.062, 0), v3(0.068, 0.046, 0), 0.006, paint(0xeae5dc, 0.5, 0), 8));
+    // Its handle: a C of a torus standing off the side, its ends run into the wall.
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.0055, 8, 24, Math.PI * 1.2), paint(0xeae5dc, 0.5, 0));
+    handle.position.set(0.051, 0.050, 0);
+    handle.rotation.z = -Math.PI * 0.6;
+    mug.add(handle);
     mug.position.set(-0.34, H.dashTop + 0.021, H.dashBack - 0.17);
     this.group.add(mug);
     this.parts.mug = mug;
@@ -1167,6 +1294,18 @@ export class PilotHouse {
     this.setWipers(state?.wipers);
     this.setFill(G.uSkyLight.value);
     this.updateLamps(dt, state);
+
+    // The house's own shadow maps. The window lights' matter while there is sky; the lamps' while
+    // they are lit. Every third frame is plenty: the lights ride the house, so the only things
+    // that move in a map are the wheel and the levers.
+    this.frame++;
+    const daylight = (this.skyLevel ?? 0) > 1e-4;
+    const lamplight = (this.lampLevel ?? 0) > 0.02;
+    this.shadowWanted = daylight || lamplight;
+    if (this.frame % 3 === 0) {
+      if (daylight) for (const l of this.windowLights) l.shadow.needsUpdate = true;
+      if (lamplight) for (const l of this.spotLamps ?? []) l.shadow.needsUpdate = true;
+    }
   }
 
   /**
@@ -1194,11 +1333,11 @@ export class PilotHouse {
     }
     for (const bulb of this.chartBulbs ?? []) bulb.material.emissiveIntensity = this.lampLevel * 0.7 * screen;
     // The chrome reflects the room, so it is worth what a white surface in the room is worth times
-    // the sixty per cent a polished stainless returns: the fill's share by day (measured: the cream
-    // wall renders at 0.7 of white with the fill at 4.1) and the lamps' share by night (four lamps
-    // of 0.0018 cd at a metre and a half, over pi). Both are radiances, so neither is divided by
-    // the exposure - the camera does that.
-    setChromeLevel(this.fill.intensity * 0.10 + this.lampLevel * 0.00018);
+    // the sixty per cent a polished stainless returns: the sky's share by day (the fill and the
+    // window lights together, measured: the cream wall renders at 0.7 of white with the sky at
+    // 0.51) and the lamps' share by night (four lamps of 0.0018 cd at a metre and a half, over pi).
+    // Both are radiances, so neither is divided by the exposure - the camera does that.
+    setChromeLevel((this.skyLevel ?? 0) * 0.85 + this.lampLevel * 0.00018);
     // The tell-tales, the meters and the sets' displays, all screen brightnesses.
     const panelLit = Math.max(0.15, this.lampLevel);
     for (const p of this.panels) p.setLit(panelLit, screen, p.values);

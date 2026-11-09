@@ -414,9 +414,13 @@ function installDebug(app) {
     pause() { app.paused = true; },
     resume() {
       app.lastStep = null; app.paused = false; app.scene.freeCamera = false;
-      // look() turns the camera's Euler order to yaw-first; the scene's own placement assumes the
-      // default, so hand it back or the next frame comes out tilted.
-      app.scene.camera.rotation.order = 'XYZ';
+      // look() turns the camera's Euler order to yaw-first and may narrow its field of view; the
+      // scene's own placement assumes the defaults, so hand both back or the next frame comes out
+      // tilted or zoomed.
+      const c = app.scene.camera;
+      c.rotation.order = 'XYZ';
+      c.fov = 62;
+      c.updateProjectionMatrix();
     },
     bench(frames = 60) {
       const gl = app.renderer.getContext(), px = new Uint8Array(4);

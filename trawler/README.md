@@ -169,8 +169,12 @@ Region by region, as the photograph has it:
 
 - **Windows** with radiused inner corners, in cherry frames with a bevelled room-side edge and a
   black rubber gasket between frame and glass, set in the cream-painted house side. Three forward,
-  two angled corner lights, two each side, and a glazed light in the saloon door aft.
-- **The dash**: a cherry counter with a bullnose edge and a raked pod standing on it, carrying the
+  one in each angled corner wall, two each side, and a glazed light in the saloon door aft. The
+  house is planned as walls: the front to `frontHalf`, a corner wall each side at 52 degrees to it,
+  then the sides, each wall one piece of house side with its own openings cut in it and a cherry
+  post on each joint — which is why there is no overlap at the corners.
+- **The dash**: a cherry counter that follows the walls round the corners and meets the side desks
+  flush, with a bullnose edge and a raked pod standing on it, carrying the
   nav display (radar and chart side by side, with soft keys down its edge), the fishfinder, the
   autopilot head over the loudhailer with its hand mic on a clip, three engine gauges and a compass
   in a black binnacle under a glass dome. The twin-lever chrome engine control sits on the counter to
@@ -210,6 +214,24 @@ the chart draws the same coast and the track she has run, the fishfinder reads t
 keel, the stabiliser display reads the hull's own roll, the autopilot head and the nav data page show
 the heading and speed she is making. The gauges read the boat too; at night their dials are backlit.
 
+### Light from the windows, and shadows
+
+The room is lit three ways. A hemisphere fill stands in for the bounce round a varnished room with
+a cream deckhead (three has no global illumination). Two directional **window lights** from the
+forward quarters, scaled by the sky's irradiance, are the sky coming in through the glass as direct
+light; each has a shadow map fitted to the house, so the pod throws its shadow across the counter
+and the wheel across the panels. And the sun itself: when it is low and ahead it comes through the
+windscreen and puts sunlit patches and hard shadows across the dash. At night the two forward
+recessed lights are spots with shadow maps and the aft pair plain points.
+
+One bug worth recording: three's shadow pass draws *back* faces, so a single-sided plane casts no
+shadow at all. The roof and the bulkheads were planes, and at noon the sun was walking straight
+through them — it put more light on the dash than the windows did, and that flat, shadowless room
+was the result. The shell's plane materials now have `shadowSide = DoubleSide`. The house's maps are
+refreshed every third frame (the lights ride the house, so only the wheel and the levers move in
+them) and only while there is sky or lamplight to cast; the renderer's manual shadow refresh in
+`scene.js` runs whenever either the sun or the house asks for it.
+
 ### Polished stainless without an environment
 
 Image-based lighting renders black on the owner's GPU (see the note in `sky.js`), and a metal lit
@@ -236,7 +258,8 @@ The eye is 1.58 m back from the glass, whose sill is 0.54 m below it and whose h
 Through a 62 degree lens pitched three degrees down the glass fills the middle of the frame, the pod
 on the dash takes the bottom sixth and the deckhead and the overhead fascia the top fifth. Three
 front windows with the middle one wide: the two divisions sit 24 degrees off the centreline, well
-clear of where the bow and the horizon are.
+clear of where the bow and the horizon are. The windscreen is vertical, as the reference yacht's
+is: a raked front meeting vertical corner glass makes a slanted joint that no post can cover.
 
 The cherry scan is a dark cherry and the photograph's is a honey one: at noon the scan's dash top
 rendered at 73 of 255 in red against the photograph's 190, with the hue right, so the material's

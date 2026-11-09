@@ -172,12 +172,17 @@ export class Scene {
    */
   followShadow() {
     const l = this.sky.sunLight;
-    if (!l.visible) { this.renderer.shadowMap.needsUpdate = false; return; }
-    const p = this.boat.position;
-    l.target.position.set(p.x, p.y + 3, p.z);
-    l.target.updateMatrixWorld();
-    l.position.set(p.x + this.sky.sunDir.x * 120, p.y + this.sky.sunDir.y * 120 + 3, p.z + this.sky.sunDir.z * 120);
-    l.updateMatrixWorld();
+    // The house has shadow lights of its own - the sky through the windows, the lamps at night -
+    // which schedule their own maps (pilot.js) but need the renderer's pass to run.
+    const houseWants = this.pilot?.shadowWanted ?? false;
+    if (!l.visible && !houseWants) { this.renderer.shadowMap.needsUpdate = false; return; }
+    if (l.visible) {
+      const p = this.boat.position;
+      l.target.position.set(p.x, p.y + 3, p.z);
+      l.target.updateMatrixWorld();
+      l.position.set(p.x + this.sky.sunDir.x * 120, p.y + this.sky.sunDir.y * 120 + 3, p.z + this.sky.sunDir.z * 120);
+      l.updateMatrixWorld();
+    }
     this.renderer.shadowMap.needsUpdate = true;
   }
 
