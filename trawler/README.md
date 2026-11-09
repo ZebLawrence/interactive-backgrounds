@@ -255,11 +255,15 @@ and go out with the sky; the four recessed lights are spots with shadow maps of 
 forward pair the larger), each desk lamp throws a narrow warm cone onto its desk with a shadow
 map of its own, and the two big screens carry a point light a hand in front of them, as bright as
 the screen, so the counter glows under the displays. The house refreshes one of these maps a
-frame, in turn. Two things had been lighting the cabin at night that should not have: the sky's
-ambient floor, three times what the lamps put on a surface, now a fifth of it; and the deck floods
-on the crosstree — half a candela, five hundred times a cabin lamp — which had no shadow maps and
-so shone straight through the roof onto everything that faced forward. They have maps now, and
-the roof stops them.
+frame, in turn. Each lamp also shows its beam in the air — a soft additive cone below it, brightest
+near the lamp and where it faces the camera, drawn at a screen brightness so it vanishes by day —
+because the upper walls of this room are nearly all glass and a downlight's cone has nothing else
+to land on; the lamp itself lights the room, the cone is only what the air does. Two things had
+been lighting the cabin at night that should not have: the sky's ambient floor, three times what
+the lamps put on a surface, now a fifth of it; and the deck floods on the crosstree — half a
+candela, five hundred times a cabin lamp — which had no shadow maps and so shone straight through
+the roof onto everything that faced forward. The floods are gone (their fixtures remain); what
+they lit was never in frame.
 
 The channel marks' lights glitter on the water: each is a point source in the ocean shader with
 the same rough-specular lobe the sun and moon use, in the mark's own colour, flashing with it. Its

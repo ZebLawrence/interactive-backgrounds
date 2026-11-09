@@ -602,7 +602,10 @@ export class Deck {
       this.add(lens);
       this.parts.navLights.push(lens);
     }
-    // Two working floods on the crosstree, which light the deck when they are on.
+    // Two working floods on the crosstree: the fittings only. They were lights once - half a
+    // candela each, five hundred times a cabin lamp - but they pointed down across the wheelhouse
+    // and lit the cabin through its walls, and what they lit on deck is behind the viewer and
+    // never in frame. The fixtures stay because a crosstree has them.
     this.parts.deckFloods = [];
     const roof = this.parts.mainRoof;
     for (const s of [-1, 1]) {
@@ -610,25 +613,6 @@ export class Deck {
       shell.position.set(s * 1.0, roof + 1.38, DECK.mainMastZ + 0.12);
       shell.rotation.x = 1.15;
       this.add(shell);
-      const light = new THREE.SpotLight(0xfff0d2, 0, 26, 0.8, 0.45, 1.6);
-      light.position.set(s * 1.0, roof + 1.32, DECK.mainMastZ + 0.12);
-      light.target.position.set(s * 1.5, DECK.mainDeck, 5.5);
-      light.layers.set(LAYER.DEFAULT);
-      light.layers.enable(LAYER.WORLD);
-      // A flood on the crosstree looks down across the wheelhouse roof, and without a shadow map
-      // it lit the inside of the wheelhouse through that roof - at half a candela, five hundred
-      // times the cabin's own lamps, which is what made the cabin at night look lit from behind
-      // the camera. The map is refreshed in turn, every few frames (update): the deck is still.
-      light.castShadow = true;
-      light.shadow.mapSize.set(1024, 1024);
-      light.shadow.bias = -0.0005;
-      light.shadow.normalBias = 0.04;
-      light.shadow.camera.near = 0.5;
-      light.shadow.camera.far = 28;
-      light.shadow.autoUpdate = false;
-      this.group.add(light);
-      this.group.add(light.target);
-      this.parts.deckFloods.push({ light, shell });
     }
   }
 
@@ -654,11 +638,6 @@ export class Deck {
     }
     // The deck floods are real lights, so they are in physical units: a few hundred lux on the
     // deck against the sun's hundred thousand.
-    this.frame = (this.frame ?? 0) + 1;
-    (this.parts.deckFloods ?? []).forEach(({ light }, i) => {
-      light.intensity = night * (state?.deckLights === false ? 0 : 0.5);
-      if (light.intensity > 0 && this.frame % 6 === i * 3) light.shadow.needsUpdate = true;
-    });
   }
 
   dispose() {

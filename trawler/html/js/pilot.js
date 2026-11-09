@@ -41,7 +41,7 @@ import { Materials, paint, metreUvsBox, metreUvsPlane, scaleUvs } from './materi
 import {
   Gauge, VhfSet, Handset, EngineControl, BreakerPanel, SwitchPanel, Hailer,
   blankPanel, chartLight, handheldVhf, joystick, compassDome, wallPlate, louvreDoor, label,
-  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeEnv,
+  roundedRectShape, lathe, PLASTIC, chromeMaterial, setChromeEnv, lampBeam,
 } from './panel.js';
 import { v3, DEG, TAU, lerp, clamp01, Art } from './util.js';
 
@@ -551,7 +551,9 @@ export class PilotHouse {
       lens.position.set(x, H.deckhead - 0.005, z);
       this.add(lens);
       const forward = z < 0;
-      const light = new THREE.SpotLight(0xffe9cf, 0, 5.5, 0.95, 0.6, 2);
+      // A downlight's beam is wide and has an edge: the cone it draws on the walls is most of
+      // what the eye reads a lamp by at night.
+      const light = new THREE.SpotLight(0xffe9cf, 0, 5.5, 1.1, 0.35, 2);
       light.target.position.set(x, H.sole, z + (forward ? 0.3 : 0));
       light.castShadow = true;
       light.shadow.mapSize.set(forward ? 1024 : 512, forward ? 1024 : 512);
@@ -566,7 +568,13 @@ export class PilotHouse {
       light.position.set(x, H.deckhead - 0.10, z);
       this.add(light);
       this.lamps.push(light);
-      this.parts.domeLamps.push({ light, lens });
+      // What the air makes of the beam: see lampBeam.
+      const beam = lampBeam(1.5, 0.55);
+      beam.position.set(x, H.deckhead - 0.02, z);
+      this.add(beam);
+      this.beams = this.beams ?? [];
+      this.beams.push(beam);
+      this.parts.domeLamps.push({ light, lens, beam });
     }
 
     // The side walls, from the corner walls aft: cherry panelling below the side windows; the
@@ -753,13 +761,24 @@ export class PilotHouse {
         this.glaze('SIDE', zEnd - z0, openH, v3(s * (H.halfWidth - 0.012), y, (z0 + zEnd) / 2), rot);
       }
       // The cream house side above the cherry, with both lights cut out of it, from the corner
-      // wall's end to the aft bulkhead. In the wall's own plane +x runs forward on one side and
-      // aft on the other, hence the sign on the holes.
+      // wall's end to the aft bulkhead. The wall is turned to face inboard, and a yaw of -90
+      // degrees maps the wall's own +x onto world +z (the yaw of +90 for the port side onto -z),
+      // so the openings sit at +s times their offset from the wall's centre. With the sign the
+      // other way they came out mirrored: a strip of wall stood across the aft window and the
+      // real gap between the windows had no wall in it at all.
       const upperH = H.deckhead - (H.sideSill - 0.06);
-      const upper = this.wallRing(sideD, upperH, zs.map(([z0, zEnd]) => [-s * ((z0 + zEnd) / 2 - zMid), y - (H.sideSill - 0.06 + upperH / 2), zEnd - z0, openH]));
+      const upper = this.wallRing(sideD, upperH, zs.map(([z0, zEnd]) => [s * ((z0 + zEnd) / 2 - zMid), y - (H.sideSill - 0.06 + upperH / 2), zEnd - z0, openH]));
       upper.position.set(s * (H.halfWidth - 0.002), H.sideSill - 0.06 + upperH / 2, zMid);
       upper.rotation.copy(rot);
       this.add(upper);
+      // Cherry mullions between the lights, and between each light and its post, flush with the
+      // frames: in the reference the joinery runs unbroken along the side.
+      const edges = [z1 + 0.065, ...zs.flatMap(([z0, zEnd]) => [z0 - 0.015, zEnd + 0.015]), H.back - 0.13];
+      for (let k = 0; k < edges.length; k += 2) {
+        const za = edges[k], zb = edges[k + 1];
+        if (zb - za < 0.02) continue;
+        this.add(box(0.045, openH + 0.07, zb - za + 0.04, frame, s * (H.halfWidth - 0.0345), y, (za + zb) / 2));
+      }
       // The sill ledge below the windows and the capping above, between the posts.
       const len = sideD - 0.20;
       this.add(box(0.10, 0.05, len, frame, s * (H.halfWidth - 0.045), H.sideSill - 0.045, zMid - 0.02));
@@ -1102,6 +1121,8 @@ export class PilotHouse {
       this.chartBulbs.push(lamp.userData.bulb);
       this.deskSpots = this.deskSpots ?? [];
       this.deskSpots.push(lamp.userData.spot);
+      this.deskBeams = this.deskBeams ?? [];
+      this.deskBeams.push(lamp.userData.beam);
     }
 
     // To starboard: the monitor on its stand, the keyboard and mouse, the two handhelds standing
@@ -1236,12 +1257,14 @@ export class PilotHouse {
       this.gauges[lbl.toLowerCase()] = g;
     }
 
-    // A teak shelf on the port wall aft, with a fiddle: the one flat place in the room.
-    const shelf = this.add(box(0.24, 0.035, 0.80, cherry, -H.halfWidth + 0.12, 5.44, 1.20));
+    // A teak shelf on the port wall aft, with a fiddle: the one flat place in the room. It sits
+    // under the side window's sill (at 5.44 it ran straight across the glass).
+    const shelfY = H.sideSill - 0.17;
+    const shelf = this.add(box(0.24, 0.035, 0.80, cherry, -H.halfWidth + 0.12, shelfY, 1.20));
     this.parts.shelf = shelf;
-    this.shelfTop = 5.44 + 0.0175;
-    this.add(box(0.022, 0.05, 0.80, cherry, -H.halfWidth + 0.23, 5.4725, 1.20));
-    this.add(box(0.26, 0.05, 0.05, cherry, -H.halfWidth + 0.13, 5.415, 0.82));
+    this.shelfTop = shelfY + 0.0175;
+    this.add(box(0.022, 0.05, 0.80, cherry, -H.halfWidth + 0.23, shelfY + 0.0325, 1.20));
+    this.add(box(0.26, 0.05, 0.05, cherry, -H.halfWidth + 0.13, shelfY - 0.025, 0.82));
 
     // A mug on the dash: it slides when she rolls (update), and fetches up against the pod.
     const mug = new THREE.Group();
@@ -1394,10 +1417,14 @@ export class PilotHouse {
     const want = Math.max(night, state?.redLight ? 1 : 0) * off;
     this.lampLevel = lerp(this.lampLevel ?? 0, want, 1 - Math.exp(-dt / 1.1));
     const screen = state?.emissiveScale ?? 1;
-    for (const { light, lens } of this.parts.domeLamps ?? []) {
+    for (const { light, lens, beam } of this.parts.domeLamps ?? []) {
+      if (beam) {
+        beam.material.uniforms.uGain.value = this.lampLevel * 0.28 * screen;
+        beam.material.uniforms.uColor.value.setRGB(1, red ? 0.14 : 0.92, red ? 0.08 : 0.80);
+      }
       // The forward pair light the dash and cast its shadows; the aft pair are softer, so the
       // room has a direction at night rather than an even wash.
-      const cd = light.userData.forward ? (red ? 0.0012 : 0.0028) : (red ? 0.0005 : 0.0012);
+      const cd = light.userData.forward ? (red ? 0.0017 : 0.0040) : (red ? 0.0008 : 0.0019);
       light.intensity = this.lampLevel * cd;
       light.color.setRGB(1, red ? 0.12 : 0.88, red ? 0.07 : 0.68);
       lens.material.emissive.setRGB(1, red ? 0.14 : 0.94, red ? 0.08 : 0.82);
@@ -1408,6 +1435,10 @@ export class PilotHouse {
     for (const sp of this.deskSpots ?? []) {
       sp.intensity = this.lampLevel * (red ? 0.0004 : 0.0010);
       sp.color.setRGB(1, red ? 0.12 : 0.84, red ? 0.07 : 0.62);
+    }
+    for (const b of this.deskBeams ?? []) {
+      b.material.uniforms.uGain.value = this.lampLevel * 0.22 * screen;
+      b.material.uniforms.uColor.value.setRGB(1, red ? 0.12 : 0.84, red ? 0.07 : 0.62);
     }
     // The tell-tales, the meters and the sets' displays, all screen brightnesses.
     const panelLit = Math.max(0.15, this.lampLevel);

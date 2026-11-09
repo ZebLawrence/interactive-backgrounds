@@ -100,6 +100,65 @@ export function setChromeEnv(texture) {
 /** Kept for callers: the cube map is radiance, so there is no level to set any more. */
 export function setChromeLevel() {}
 
+
+/**
+ * The beam of a lamp, in the air. A downlight in a dark wheelhouse shows as a soft cone below it,
+ * because there is always a little salt haze and breath in the air for its light to catch; the
+ * lamp itself lights the room (that is the SpotLight), and this is only what the air does. A
+ * surface cone, additive, brightest near the lamp and where it faces the camera - which is where
+ * a view ray crosses the most lit air - fading to nothing toward the base. It is drawn at a
+ * screen brightness like the lens, so it is scaled by the camera's exposure and vanishes by day.
+ */
+const BEAM_VERT = /* glsl */ `
+  out vec2 vUv;
+  out vec3 vN;
+  out vec3 vW;
+  void main() {
+    vUv = uv;
+    vN = normalize( mat3( modelMatrix ) * normal );
+    vec4 w = modelMatrix * vec4( position, 1.0 );
+    vW = w.xyz;
+    gl_Position = projectionMatrix * viewMatrix * w;
+  }
+`;
+const BEAM_FRAG = /* glsl */ `
+  precision highp float;
+  uniform vec3 uColor;
+  uniform float uGain;
+  in vec2 vUv;
+  in vec3 vN;
+  in vec3 vW;
+  out vec4 outColor;
+  void main() {
+    float fromApex = 1.0 - vUv.y; // the cone's uv.y is 1 at the apex
+    vec3 V = normalize( cameraPosition - vW );
+    float facing = abs( dot( normalize( vN ), V ) );
+    float a = pow( 1.0 - fromApex, 1.6 ) * ( 0.06 + 0.94 * facing * facing );
+    outColor = vec4( uColor * ( uGain * a ), 1.0 );
+  }
+`;
+
+/** A lamp's beam: apex at the origin, opening downward, `height` tall at `halfAngle`. */
+export function lampBeam(height, halfAngle, colour = 0xffe9cf) {
+  const r = height * Math.tan(halfAngle);
+  const g = new THREE.ConeGeometry(r, height, 28, 1, true);
+  g.translate(0, -height / 2, 0);
+  const m = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { uColor: { value: new THREE.Color(colour) }, uGain: { value: 0 } },
+    vertexShader: BEAM_VERT,
+    fragmentShader: BEAM_FRAG,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.renderOrder = 815; // after the room, before the glass
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 // The plastics and metals every device here is made of. Each is a function so that a device owns
 // its materials and can dispose of them; the colours are shared so that the room is one palette.
 export const PLASTIC = {
@@ -1247,9 +1306,13 @@ export function chartLight(height = 0.30, reach = 0.16) {
   spot.shadow.autoUpdate = false;
   hood.add(spot);
   hood.add(spot.target);
+  const beam = lampBeam(0.42, 0.42, 0xffe2bc);
+  beam.position.set(0, -0.052, 0);
+  hood.add(beam);
   g.add(hood);
   g.userData.bulb = bulb;
   g.userData.spot = spot;
+  g.userData.beam = beam;
   return interior(g);
 }
 
