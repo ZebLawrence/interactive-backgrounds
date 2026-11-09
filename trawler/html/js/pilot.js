@@ -1364,8 +1364,11 @@ export class PilotHouse {
     if (this.parts.compass?.userData.card) this.parts.compass.userData.card.rotation.z = boat.heading;
 
     // The mug slides on the dash when she rolls, and fetches up against the pod or the control.
+    // Downhill: the boat's rotation is Rz(roll) about the fore-and-aft axis, so a positive roll
+    // lifts the starboard side, and the dash then slopes down to port, which is -x. (It slid the
+    // other way for a while: the sign was written for the opposite convention.)
     if (this.parts.mug) {
-      const a = Math.sin(boat.roll) * 9.81 - boat.rate.x * 0.4;
+      const a = -Math.sin(boat.roll) * 9.81;
       const stick = 0.9;
       if (Math.abs(a) > stick || Math.abs(this.mugV) > 1e-3) {
         this.mugV += (a - Math.sign(this.mugV || a) * stick) * dt;
