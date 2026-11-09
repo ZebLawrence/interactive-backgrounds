@@ -239,6 +239,36 @@
       "source": "https://polyhaven.com/a/teak_veneer",
       "author": "Jenelle van Heerden",
       "license": "CC0"
+    },
+    "sat:heath": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/heath.webp"
+      },
+      "name": "Saltfjorden hills, Nordland, Norway (Landsat 8 OLI, 11 July 2016)",
+      "source": "https://earthobservatory.nasa.gov/images/89984/ungovernable-fury",
+      "author": "NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
+    },
+    "sat:upland": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/upland.webp"
+      },
+      "name": "The plateau behind Saltfjorden, Nordland, Norway (Landsat 8 OLI, 11 July 2016)",
+      "source": "https://earthobservatory.nasa.gov/images/89984/ungovernable-fury",
+      "author": "NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
+    },
+    "sat:snow": {
+      "tile": 15000,
+      "maps": {
+        "color": "assets/satellite/snow.webp"
+      },
+      "name": "Glaciers above Tunulliarfik Fjord, southern Greenland (Landsat 9 OLI-2, 3 August 2023)",
+      "source": "https://earthobservatory.nasa.gov/images/151870/ephemeral-arc-spans-greenland-fjord",
+      "author": "NASA Earth Observatory image by Wanmei Liang, using Landsat data from the U.S. Geological Survey",
+      "license": "Public domain (NASA / USGS)"
     }
   },
   "models": {

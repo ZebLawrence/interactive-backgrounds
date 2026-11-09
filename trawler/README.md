@@ -149,6 +149,24 @@ sounds, skerries and the snowline all come out of the same function, so the char
 by and the land you see are the same land. It is drawn as a second geometry clipmap, with rock,
 cliff, scree, heath, shore and snow blended by height, slope and aspect.
 
+The land's colour is photographed, not painted. Metre-scale scans are right at arm's length and
+wrong at a kilometre: averaged over a hillside they come out as a flat colour and the hill reads as
+a gradient, and on a shore a hundred metres off their two-metre repeat is twenty pixels wide and the
+eye counts it. So the colour comes from Landsat — three windows cut from NASA Earth Observatory
+scenes at about fifteen metres a pixel: the green-brown hills and the bare plateau behind
+Saltfjorden in Nordland, and the glaciers above Tunulliarfik in Greenland for the snow — with their
+lakes and cloud painted out by cloning land from elsewhere in the window and the tile made seamless
+(`tools/satellite.py`). The shader lays each tile over the ground at its own scale, fifteen
+kilometres to the repeat, and multiplies in a second octave of the same tile, turned and seven times
+finer, and a third, fifty times finer again, for the first few hundred metres — a hill is roughly
+the same picture at every scale, and the eye accepts the small copy as the detail of the large. The
+scans are kept only as relief: each
+divided by its own mean so it carries texture and no tone, sampled at two scales in an irrational
+ratio so no repeat survives, and faded to flat beyond a kilometre. Steep ground takes the plateau's
+picture turned, offset and darkened, because a satellite looks down and a cliff face in one is a
+line. The snow tile is a snowfield with rock through it, and its own dark parts thin the cover, so
+the snow lies in the hollows and the ridges stand out of it.
+
 Four channel marks follow her about, moored on shoals — four to thirty metres of water with deep
 water within a hundred and seventy — and re-sited ahead of her when one falls three kilometres
 astern. They float on the same sea the hull rides and their lights flash at night.
@@ -353,10 +371,11 @@ every surface in the house is within two metres of the viewer.
 ## Credits
 
 Every asset the page loads is listed in `html/assets/manifest.json` with its source, author and
-licence; this table mirrors it. Thanks to Poly Haven and ambientCG for the CC0 scans, to NASA GSFC's
-Scientific Visualization Studio (and ESA/Gaia/DPAC) for the Milky Way, to NASA's Scientific
-Visualization Studio for the CGI Moon Kit, and to ESA's Hipparcos mission (via NASA HEASARC) for the
-stars.
+licence; this table mirrors it. Thanks to Poly Haven and ambientCG for the CC0 scans, to NASA's
+Earth Observatory and the U.S. Geological Survey for the Landsat scenes the land is coloured from,
+to NASA GSFC's Scientific Visualization Studio (and ESA/Gaia/DPAC) for the Milky Way, to NASA's
+Scientific Visualization Studio for the CGI Moon Kit, and to ESA's Hipparcos mission (via NASA
+HEASARC) for the stars.
 
 | Kind | Key | Asset | Author | Licence | Source |
 |---|---|---|---|---|---|
@@ -377,6 +396,9 @@ stars.
 | Material | `mat:steel-brushed` | Metal009 | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com/a/Metal009 |
 | Material | `mat:steel-rust` | Rusty Metal 03 | Amal Kumar | CC0 | https://polyhaven.com/a/rusty_metal_03 |
 | Material | `mat:teak` | Teak Veneer | Jenelle van Heerden | CC0 | https://polyhaven.com/a/teak_veneer |
+| Satellite | `sat:heath` | The hills behind Saltfjorden, Nordland, Norway (Landsat 8 OLI, 11 July 2016) | NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey | PD | https://earthobservatory.nasa.gov/images/89984/ungovernable-fury |
+| Satellite | `sat:upland` | The plateau behind Saltfjorden, Nordland, Norway (Landsat 8 OLI, 11 July 2016) | NASA Earth Observatory image by Joshua Stevens, using Landsat data from the U.S. Geological Survey | PD | https://earthobservatory.nasa.gov/images/89984/ungovernable-fury |
+| Satellite | `sat:snow` | Glaciers above Tunulliarfik Fjord, southern Greenland (Landsat 9 OLI-2, 3 August 2023) | NASA Earth Observatory image by Wanmei Liang, using Landsat data from the U.S. Geological Survey | PD | https://earthobservatory.nasa.gov/images/151870/ephemeral-arc-spans-greenland-fjord |
 | Model | `binoculars` | Binoculars | Derek Wight | CC0 | https://polyhaven.com/a/binoculars |
 | Model | `buoy` | Ocean Buoy | Mateusz Sadek | CC0 | https://polyhaven.com/a/ocean_buoy |
 | Model | `caged_light` | Caged Hanging Light | Ulan Cabanilla | CC0 | https://polyhaven.com/a/caged_hanging_light |

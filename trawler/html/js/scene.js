@@ -242,6 +242,8 @@ export class Scene {
       // The house first: it is what the viewer is sitting in.
       priority: ['mat:cherry', 'mat:cherry-panel', 'mat:leather-cream', 'mat:enamel',
         'mat:steel-brushed', 'mat:paint-worn', 'mat:deck', 'mat:steel-rust',
+        // Then the land's colour, which is in the window from the first frame.
+        'sat:upland', 'sat:heath', 'sat:snow',
         // Then the props that are in the view every moment: the ones out on the foredeck.
         'crate', 'lifebuoy', 'fender', 'jerrycan', 'seamark', 'buoy'],
       onItem: (kind, name, asset) => {

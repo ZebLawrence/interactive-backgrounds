@@ -77,6 +77,7 @@ shares.
 | `manifest-lib.mjs` | the shared bits: paths, slugs, the manifest read/write, HTTP with retries |
 | `pack.py` | a raw material folder to the three WebP maps the page loads: `color` (sRGB, quality 92), `normal` (lossless — a normal map is a vector field and lossy chroma puts facets in it), `orm` (AO / roughness / metalness packed into R / G / B, quality 95) |
 | `prepare-models.py` | a raw glTF prop to `html/assets/models/<name>/`, with its PNG maps converted to WebP and the glTF's image URIs repointed. The geometry is left exactly as downloaded: these are a handful of objects seen close up, not a forest |
+| `satellite.py` | the land's macro colour tiles from NASA Earth Observatory Landsat scenes (`--fetch` downloads them to `raw/sat/`): cuts a window per land class, paints out its lakes and cloud by cloning land from elsewhere in the window, makes it seamless by offset-and-blend, and writes `html/assets/satellite/<class>.webp` at 1024 px with a `.mask.jpg` (what was painted out, in magenta) and a `.check.jpg` (the tile 2 x 2, for the seams) beside it. The windows are a table at the top of the script, chosen by eye from contact sheets; the manifest entries and credits are written by hand |
 
 Height maps are deliberately not packed. Hangar's lesson was that parallax on a surface seen at a
 grazing angle smears and shimmers, and that relief the camera gets close to is better built as

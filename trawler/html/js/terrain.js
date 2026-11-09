@@ -238,6 +238,9 @@ uniform sampler2D uScree;
 uniform sampler2D uHeath;
 uniform sampler2D uSnowTex;
 uniform sampler2D uShore;
+uniform sampler2D uSatHeath;  // the land's colour, from Landsat: see satellite.py and macro() below
+uniform sampler2D uSatUpland;
+uniform sampler2D uSatSnow;
 uniform vec3 uSkyLight;
 uniform float uSnowline;
 uniform float uTreeline;
@@ -260,33 +263,93 @@ vec3 triplanar( sampler2D tex, vec3 p, vec3 n, float scale ) {
   return a * w.x + b * w.y + c * w.z;
 }
 
+/** A texture's mean colour: its top mip level, which the GPU has already averaged for us. */
+vec3 meanOf( sampler2D t ) { return max( textureLod( t, vec2( 0.5 ), 12.0 ).rgb, vec3( 0.02 ) ); }
+
+vec2 turn( vec2 p ) { return vec2( p.x * 0.866 - p.y * 0.5, p.x * 0.5 + p.y * 0.866 ); }
+
+/**
+ * The land's colour, from a satellite. A tile is a Landsat window of about fifteen kilometres at
+ * fifteen metres a texel, laid over the ground at that scale: the big picture of a hillside, the
+ * lichen on its shoulders and the bog in its hollows, which no metre-scale scan can carry and
+ * which is what a hill looks like from a kilometre off. A second octave of the same tile, turned
+ * and seven times finer, is multiplied in as variation about the tile's mean, and a third, finer
+ * again, close to: a hill is roughly the same picture at every scale, and the eye accepts the
+ * small copy as the detail of the large.
+ */
+vec3 macro( sampler2D t, vec2 p, float near ) {
+  vec3 m = meanOf( t );
+  vec3 a = texture( t, p * ( 1.0 / 15000.0 ) ).rgb;
+  vec3 b = texture( t, turn( p ) * ( 1.0 / 2300.0 ) ).rgb / m;
+  // A third octave, fifty times finer than the first, for the first few hundred metres: at that
+  // range a scan tile is mip-averaged to its mean and gives nothing, and this is what the ground
+  // between two metres and fifteen is made of. It fades with distance like the scans do.
+  vec3 c = texture( t, turn( turn( p ) ) * ( 1.0 / 330.0 ) ).rgb / m;
+  return a * mix( vec3( 1.0 ), b, 0.55 ) * mix( vec3( 1.0 ), c, 0.35 * near );
+}
+
+/**
+ * A scan as relief: divided by its own mean so it carries texture and no tone (the photograph
+ * sets the tone), and sampled at two scales whose ratio is irrational, blended by a slow noise,
+ * so the two periods never line up and there is no repeat to count - which there was, on a shore
+ * a hundred metres off, where a two-metre tile was twenty pixels wide.
+ */
+vec3 relief( sampler2D t, vec2 p, float s ) {
+  vec3 m = meanOf( t );
+  vec3 a = texture( t, p * s ).rgb / m;
+  vec3 b = texture( t, turn( p ) * s * 0.4142 ).rgb / m;
+  return mix( a, b, smoothstep( 0.3, 0.7, vnoise( p * 0.045 ) ) );
+}
+vec3 reliefTri( sampler2D t, vec3 p, vec3 n, float s ) {
+  vec3 m = meanOf( t );
+  vec3 a = triplanar( t, p, n, s ) / m;
+  vec3 b = triplanar( t, vec3( turn( p.xz ), p.y ).xzy, n, s * 0.4142 ) / m;
+  return mix( a, b, smoothstep( 0.3, 0.7, vnoise( p.xz * 0.045 ) ) );
+}
+
 void main() {
   vec3 N = normalize( vNormalW );
   float slope = 1.0 - clamp( N.y, 0.0, 1.0 );
   float h = vHeight;
 
-  // Detail fades out with distance: at five kilometres a one-metre feature is well under a pixel,
-  // and sampling it is how a far hillside starts to crawl.
-  float detail = 1.0 - smoothstep( 600.0, 4000.0, vDistance );
-
-  vec3 rock = triplanar( uRock, vWorld, N, 0.33 );
-  vec3 cliff = triplanar( uCliff, vWorld, N, 0.25 );
-  vec3 scree = texture( uScree, vWorld.xz * 0.5 ).rgb;
-  vec3 heath = texture( uHeath, vWorld.xz * 0.5 ).rgb;
-  vec3 snow = texture( uSnowTex, vWorld.xz * 0.5 ).rgb;
+  // Two scales of ground at once. The satellite tiles are the land's colour at the land's own
+  // scale, and nothing else sets the colour, so a hillside is the same colour at a kilometre as
+  // at a hundred metres; the scans are the relief of the first few metres, multiplied in close
+  // to and faded to flat with distance, where a metre is under a pixel and sampling it only makes
+  // the hill crawl.
+  float far = smoothstep( 120.0, 1500.0, vDistance );
+  vec3 satHeath = macro( uSatHeath, vWorld.xz, 1.0 - far );
+  vec3 satUpland = macro( uSatUpland, vWorld.xz, 1.0 - far );
+  // There is no photograph of a cliff face from above - a satellite sees a cliff as a line - so
+  // the steep ground takes the plateau's picture, turned and offset so it is not the same picture
+  // as the shoulder beside it, and darkened: a wall is wetter and barer than the top of it.
+  vec3 satRock = macro( uSatUpland, turn( vWorld.xz ) + vec2( 3700.0, -2100.0 ), 1.0 - far ) * 0.72;
+  vec3 satSnow = macro( uSatSnow, vWorld.xz, 1.0 - far );
+  vec3 rockD = reliefTri( uRock, vWorld, N, 0.33 );
+  vec3 cliffD = reliefTri( uCliff, vWorld, N, 0.25 );
+  vec3 heathD = relief( uHeath, vWorld.xz, 0.25 );
+  vec3 screeD = relief( uScree, vWorld.xz, 0.25 );
+  vec3 snowD = relief( uSnowTex, vWorld.xz, 0.25 );
   vec3 shore = triplanar( uShore, vWorld, N, 0.5 );
 
   // Bare rock where it is steep, scree under the cliffs, heather on the gentle lower ground.
   float steep = smoothstep( 0.35, 0.68, slope );
-  vec3 albedo = mix( rock, cliff, steep );
   // Heather and moss only get a hold where it is gentle enough to hold soil, and only in
   // patches. A fjord wall is mostly bare rock, which is the whole point of it.
   float gentle = smoothstep( 0.30, 0.10, slope );
   float green = gentle * smoothstep( 2.0, 40.0, h ) * ( 1.0 - smoothstep( uTreeline * 1.3, uTreeline * 2.0, h ) );
   green *= smoothstep( 0.30, 0.68, vnoise( vWorld.xz * 0.003 ) * 0.65 + vnoise( vWorld.xz * 0.014 ) * 0.35 );
-  albedo = mix( albedo, heath, green * 0.8 );
-  float screeMask = smoothstep( 0.58, 0.34, slope ) * smoothstep( 0.0, 1.0, vnoise( vWorld.xz * 0.0016 ) * 1.4 - 0.2 );
-  albedo = mix( albedo, scree, screeMask * ( 1.0 - green ) * 0.5 );
+  float screeMask = smoothstep( 0.58, 0.34, slope ) * smoothstep( 0.0, 1.0, vnoise( vWorld.xz * 0.0016 ) * 1.4 - 0.2 ) * ( 1.0 - green ) * 0.5;
+
+  // The colour: the upland photograph everywhere as the ground, the bare-rock one where it is
+  // steep, the heath one where it is gentle and low.
+  vec3 albedo = mix( satUpland, satRock, steep );
+  albedo = mix( albedo, satHeath, green * 0.85 );
+  // The relief: the matching scans.
+  vec3 rel = mix( rockD, cliffD, steep );
+  rel = mix( rel, heathD, green * 0.8 );
+  rel = mix( rel, screeD, screeMask );
+  albedo *= mix( rel, vec3( 1.0 ), far );
 
   // The trees, as colour at this range: the instanced ones only stand near the boat.
   float treeBand = smoothstep( 8.0, 45.0, h ) * ( 1.0 - smoothstep( uTreeline * 0.75, uTreeline * 1.2, h ) );
@@ -296,16 +359,21 @@ void main() {
   treeMask *= smoothstep( 0.46, 0.78, vnoise( vWorld.xz * 0.0024 ) * 0.55 + vnoise( vWorld.xz * 0.0095 ) * 0.45 );
   albedo = mix( albedo, uTreeColor * ( 0.7 + 0.6 * vnoise( vWorld.xz * 0.07 ) ), clamp( treeMask, 0.0, 0.88 ) );
 
-  // Snow: above a line that is lower on a north face, and never on anything near vertical.
+  // Snow: above a line that is lower on a north face, and never on anything near vertical. The
+  // snow photograph is a snowfield with rock through it, and its own dark parts thin the cover,
+  // so the snow lies in the hollows and the ridges stand out of it, as they do.
   float aspect = clamp( -N.z, -1.0, 1.0 );           // north is -z
   float line = uSnowline - aspect * 70.0;
   float snowMask = smoothstep( line, line + 120.0, h ) * smoothstep( 0.72, 0.42, slope );
   snowMask *= 0.55 + 0.45 * vnoise( vWorld.xz * 0.006 );
-  albedo = mix( albedo, snow, clamp( snowMask, 0.0, 0.96 ) );
+  float snowLum = dot( satSnow, vec3( 0.3333 ) );
+  float snowCover = clamp( snowMask * ( 0.45 + 0.9 * smoothstep( 0.25, 0.70, snowLum ) ), 0.0, 0.96 );
+  albedo = mix( albedo, satSnow * mix( snowD, vec3( 1.0 ), far ), snowCover );
 
-  // The shore: everything the sea reaches is dark, wet and bare, with a weed line above it.
+  // The shore: everything the sea reaches is dark, wet and bare, with a weed line above it. The
+  // shore scan is dark (a scan of dark rock), hence the gain, which used to be on the whole hill.
   float tide = smoothstep( 4.5, 0.2, h );
-  albedo = mix( albedo, shore * 0.8, tide * 0.85 );
+  albedo = mix( albedo, shore * 2.2, tide * 0.85 );
   // Below the waterline the land is carried down as a flat shelf and the sea is drawn over it, so
   // none of this is meant to be seen. It is painted as dark sea bed anyway, because the sea is a
   // clipmap and a clipmap's ring edges are one place a hairline crack can open: a crack over a
@@ -487,6 +555,11 @@ export class Terrain {
     const white = new THREE.DataTexture(new Uint8Array([160, 160, 160, 255]), 1, 1, THREE.RGBAFormat);
     white.needsUpdate = true;
     const tex = (tag) => ({ value: white });
+    // Until the satellite tiles land, the hills are the mean colour of fjord country.
+    const hill = new THREE.DataTexture(new Uint8Array([118, 108, 86, 255]), 1, 1, THREE.RGBAFormat);
+    hill.colorSpace = THREE.SRGBColorSpace;
+    hill.needsUpdate = true;
+    const sat = () => ({ value: hill });
     const m = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
       uniforms: {
@@ -505,14 +578,13 @@ export class Terrain {
         uRock: tex('mat:rock'), uRockN: tex('mat:rock'), uCliff: tex('mat:rock-cliff'),
         uScree: tex('mat:scree'), uHeath: tex('mat:heath'), uSnowTex: tex('mat:snow'),
         uShore: tex('mat:shore'),
+        uSatHeath: sat(), uSatUpland: sat(), uSatSnow: sat(),
         uSnowline: { value: LAND.snowline },
         uTreeline: { value: LAND.treeline },
         uTreeDensity: { value: 0.85 },
         uTreeColor: { value: v3(0.045, 0.072, 0.045) },
-        // The scanned granite is very dark indeed (it is a scan of dark rock), and a fjord wall
-        // is a mid grey. The gain is applied to the albedo rather than to the light, so the
-        // shading still behaves.
-        uRockGain: { value: 2.7 },
+        // The colour is the satellite's now and needs no lifting; the gain stays as a knob.
+        uRockGain: { value: 1.0 },
         uWet: { value: 0.4 },
       },
       vertexShader: TERRAIN_VERT,
@@ -522,11 +594,12 @@ export class Terrain {
     return m;
   }
 
-  /** The scanned ground materials, as they arrive. */
+  /** The scanned ground materials and the satellite tiles, as they arrive. */
   setAsset(tag, asset) {
     const slot = {
       'mat:rock': 'uRock', 'mat:rock-cliff': 'uCliff', 'mat:scree': 'uScree',
       'mat:heath': 'uHeath', 'mat:snow': 'uSnowTex', 'mat:shore': 'uShore',
+      'sat:heath': 'uSatHeath', 'sat:upland': 'uSatUpland', 'sat:snow': 'uSatSnow',
     }[tag];
     if (!slot || !asset?.color) return;
     for (const m of this.materialsList) m.uniforms[slot].value = asset.color;
