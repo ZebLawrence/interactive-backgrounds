@@ -1,0 +1,191 @@
+{
+  "materials": {
+    "aluminium": {
+      "tile": 0.16,
+      "maps": {
+        "color": "assets/materials/aluminium/color.jpg",
+        "normal": "assets/materials/aluminium/normal.jpg",
+        "roughness": "assets/materials/aluminium/roughness.jpg",
+        "metalness": "assets/materials/aluminium/metalness.jpg"
+      },
+      "use": "heatsinks, heat spreaders, the graphics card backplate",
+      "name": "Metal 011",
+      "source": "https://ambientcg.com/a/Metal011",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "paint": {
+      "tile": 0.3,
+      "maps": {
+        "color": "assets/materials/paint/color.jpg",
+        "normal": "assets/materials/paint/normal.jpg",
+        "roughness": "assets/materials/paint/roughness.jpg",
+        "metalness": "assets/materials/paint/metalness.jpg"
+      },
+      "use": "the case: powder-coated steel",
+      "name": "Metal 027",
+      "source": "https://ambientcg.com/a/Metal027",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "plastic": {
+      "tile": 0.14,
+      "maps": {
+        "color": "assets/materials/plastic/color.jpg",
+        "normal": "assets/materials/plastic/normal.jpg",
+        "roughness": "assets/materials/plastic/roughness.jpg"
+      },
+      "use": "fan frames and blades, shrouds, connectors",
+      "name": "Plastic 006",
+      "source": "https://ambientcg.com/a/Plastic006",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "mesh": {
+      "tile": 0.06,
+      "maps": {
+        "color": "assets/materials/mesh/color.jpg",
+        "normal": "assets/materials/mesh/normal.jpg",
+        "roughness": "assets/materials/mesh/roughness.jpg",
+        "opacity": "assets/materials/mesh/opacity.jpg",
+        "metalness": "assets/materials/mesh/metalness.jpg"
+      },
+      "use": "perforated panels and dust filters",
+      "name": "SheetMetal 001",
+      "source": "https://ambientcg.com/a/SheetMetal001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "weave": {
+      "tile": 0.02,
+      "maps": {
+        "color": "assets/materials/weave/color.jpg",
+        "normal": "assets/materials/weave/normal.jpg",
+        "roughness": "assets/materials/weave/roughness.jpg",
+        "metalness": "assets/materials/weave/metalness.jpg"
+      },
+      "use": "cable sleeving",
+      "name": "Fabric 004",
+      "source": "https://ambientcg.com/a/Fabric004",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "rubber": {
+      "tile": 0.1,
+      "maps": {
+        "color": "assets/materials/rubber/color.jpg",
+        "normal": "assets/materials/rubber/normal.jpg",
+        "roughness": "assets/materials/rubber/roughness.jpg"
+      },
+      "use": "grommets and fan mounts",
+      "name": "Rubber 004",
+      "source": "https://ambientcg.com/a/Rubber004",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "floor": {
+      "tile": 1.6,
+      "maps": {
+        "color": "assets/materials/floor/color.jpg",
+        "normal": "assets/materials/floor/normal.jpg",
+        "roughness": "assets/materials/floor/roughness.jpg"
+      },
+      "use": "the office floor",
+      "name": "WoodFloor 051",
+      "source": "https://ambientcg.com/a/WoodFloor051",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "wood": {
+      "tile": 0.9,
+      "maps": {
+        "color": "assets/materials/wood/color.jpg",
+        "normal": "assets/materials/wood/normal.jpg",
+        "roughness": "assets/materials/wood/roughness.jpg"
+      },
+      "use": "the desk, the door, the chairs, the mouldings",
+      "name": "Wood 049",
+      "source": "https://ambientcg.com/a/Wood049",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "woodLight": {
+      "tile": 0.9,
+      "maps": {
+        "color": "assets/materials/woodLight/color.jpg",
+        "normal": "assets/materials/woodLight/normal.jpg",
+        "roughness": "assets/materials/woodLight/roughness.jpg"
+      },
+      "use": "the bookcase, the pinboard frame, picture frames",
+      "name": "Wood 051",
+      "source": "https://ambientcg.com/a/Wood051",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "plaster": {
+      "tile": 1.8,
+      "maps": {
+        "color": "assets/materials/plaster/color.jpg",
+        "normal": "assets/materials/plaster/normal.jpg",
+        "roughness": "assets/materials/plaster/roughness.jpg"
+      },
+      "use": "the office walls and ceiling",
+      "name": "PaintedPlaster 017",
+      "source": "https://ambientcg.com/a/PaintedPlaster017",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "leather": {
+      "tile": 0.5,
+      "maps": {
+        "color": "assets/materials/leather/color.jpg",
+        "normal": "assets/materials/leather/normal.jpg",
+        "roughness": "assets/materials/leather/roughness.jpg"
+      },
+      "use": "the swivel chair, the desk blotter",
+      "name": "Leather 037",
+      "source": "https://ambientcg.com/a/Leather037",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "cloth": {
+      "tile": 0.35,
+      "maps": {
+        "color": "assets/materials/cloth/color.jpg",
+        "normal": "assets/materials/cloth/normal.jpg",
+        "roughness": "assets/materials/cloth/roughness.jpg"
+      },
+      "use": "the coat, the hat",
+      "name": "Fabric 026",
+      "source": "https://ambientcg.com/a/Fabric026",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "carpet": {
+      "tile": 1.2,
+      "maps": {
+        "color": "assets/materials/carpet/color.jpg",
+        "normal": "assets/materials/carpet/normal.jpg",
+        "roughness": "assets/materials/carpet/roughness.jpg"
+      },
+      "use": "the rug",
+      "name": "Carpet 016",
+      "source": "https://ambientcg.com/a/Carpet016",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    },
+    "paper": {
+      "tile": 0.4,
+      "maps": {
+        "color": "assets/materials/paper/color.jpg",
+        "normal": "assets/materials/paper/normal.jpg",
+        "roughness": "assets/materials/paper/roughness.jpg"
+      },
+      "use": "files, loose sheets, the lampshade",
+      "name": "Paper 001",
+      "source": "https://ambientcg.com/a/Paper001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0"
+    }
+  }
+}

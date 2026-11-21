@@ -1,0 +1,66 @@
+/* Diorama — page layout, the menu, the intro card, the camera preview and the readout. */
+
+:root { color-scheme: dark; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #05070a; }
+body { font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; color: #eef1f4; }
+canvas#diorama { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+
+#ui { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  transition: opacity .6s; z-index: 3; }
+#ui.idle:not(.open) { opacity: 0; }
+#menuBtn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(225,235,245,.25); cursor: pointer;
+  background: rgba(24,30,38,.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: #e6edf4;
+  display: grid; place-items: center; padding: 0; }
+#menuBtn:hover { background: rgba(40,52,66,.65); }
+#menuBtn svg { width: 22px; height: 22px; }
+#menu { min-width: 270px; max-height: calc(100vh - 80px); overflow: auto; padding: 6px; border-radius: 12px;
+  background: rgba(20,26,34,.8); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(225,235,245,.18); box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+#menu[hidden], #menu button[hidden] { display: none; }
+#menu .hdr { padding: 6px 10px 8px; color: rgba(238,241,244,.6); font-weight: 600; }
+#menu hr { border: 0; border-top: 1px solid rgba(225,235,245,.12); margin: 5px 4px; }
+#menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 10px; border: 0; border-radius: 6px;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#menu button:hover, #menu button:focus-visible { background: rgba(130,190,255,.2); outline: none; }
+#menu button .check { width: 14px; flex: none; text-align: center; }
+#menu button .label { flex: 1; }
+#menu kbd { font: inherit; color: rgba(238,241,244,.5); }
+
+#hint { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 14px; border-radius: 20px;
+  background: rgba(20,26,34,.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: rgba(238,241,244,.9);
+  pointer-events: none; transition: opacity 1.2s; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis; z-index: 2; }
+#hint.gone { opacity: 0; }
+
+#error { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: #eef1f4; z-index: 4; }
+#error[hidden] { display: none; }
+#error.soft { inset: 0 0 auto 0; display: block; padding: 6px 12px; font-size: 12px; background: rgba(16,32,52,.7);
+  pointer-events: none; transition: opacity 1.5s; }
+#error.soft.faded { opacity: 0; }
+#error.soft[hidden] { display: none; }
+
+/* Asked once, before the camera is touched. */
+#intro { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(5,7,10,.45); z-index: 5; }
+#intro[hidden] { display: none; }
+#intro .card { max-width: 420px; padding: 22px 24px; border-radius: 16px; background: rgba(20,26,34,.86);
+  backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(225,235,245,.18); box-shadow: 0 16px 60px rgba(0,0,0,.5); }
+#intro h1 { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
+#intro p { margin: 0 0 16px; font-size: 14px; line-height: 1.45; color: rgba(238,241,244,.82); }
+#intro .row { display: flex; gap: 10px; flex-wrap: wrap; }
+#intro button { padding: 9px 14px; border-radius: 9px; border: 1px solid rgba(225,235,245,.25); background: rgba(40,52,66,.6);
+  color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+#intro button:hover { background: rgba(60,76,94,.7); }
+#intro button.primary { background: #2f7fd6; border-color: #2f7fd6; color: #fff; }
+#intro button.primary:hover { background: #3c8ee6; }
+
+/* The camera's picture, mirrored so it behaves like a mirror, with what the tracker measures drawn over it. */
+/* The <video> must stay in the layout even when the preview is hidden, or some browsers stop decoding it. */
+#preview { position: fixed; left: 12px; bottom: 12px; width: 240px; border-radius: 10px; overflow: hidden;
+  border: 1px solid rgba(225,235,245,.25); box-shadow: 0 8px 30px rgba(0,0,0,.4); z-index: 2; line-height: 0; }
+#preview[hidden] { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; }
+#preview video, #preview canvas { width: 100%; height: auto; transform: scaleX(-1); display: block; }
+#preview canvas { position: absolute; inset: 0; height: 100%; }
+
+#hud { position: fixed; left: 12px; top: 12px; margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(5,7,10,.62);
+  color: #b8f5d8; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; pointer-events: none; z-index: 2; }
+#hud[hidden] { display: none; }

@@ -5,3 +5,6 @@ build/
 # Hangar: raw asset downloads and tool deps (only processed assets under hangar/html/assets/ are committed)
 hangar/tools/raw/
 hangar/tools/node_modules/
+
+# Diorama: raw asset downloads (only the maps under diorama/html/assets/ are committed)
+diorama/tools/raw/
