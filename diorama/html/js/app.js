@@ -7,11 +7,12 @@ import { Tracker, DEFAULT_CAMERA_FOV } from './tracker.js';
 import { Room } from './room.js';
 import { Computer } from './pc.js';
 import { Office } from './noir.js';
+import { Theatre } from './stage.js';
 import { buildPost } from './post.js';
 import { Governor } from './governor.js';
 
 /** The skins: what lives behind the glass. The box is the plain proof of concept, kept for checking the tracking. */
-const SKINS = { office: { name: 'The Office', make: Office }, computer: { name: 'Computer', make: Computer }, box: { name: 'Test Box', make: Room } };
+const SKINS = { theatre: { name: 'Paper Theatre', make: Theatre }, office: { name: 'The Office', make: Office }, computer: { name: 'Computer', make: Computer }, box: { name: 'Test Box', make: Room } };
 
 const params = new URLSearchParams(location.search);
 
@@ -52,7 +53,7 @@ const Settings = {
   set preview(v) { this.write('preview', v); },
   get hud() { return params.has('hud') || this.read('hud', false); },
   set hud(v) { this.write('hud', v); },
-  get skin() { const q = params.get('skin'); return q in SKINS ? q : (this.read('scene', 'office') in SKINS ? this.read('scene', 'office') : 'office'); },
+  get skin() { const q = params.get('skin'); return q in SKINS ? q : (this.read('scene', 'theatre') in SKINS ? this.read('scene', 'theatre') : 'theatre'); },
   set skin(v) { params.delete('skin'); this.write('scene', v); },
   // Each skin's own mood or chapter: the computer's lighting, the office's night.
   get ledMode() { return params.get('leds') ?? this.read(`mode.${this.skin}`, ''); },

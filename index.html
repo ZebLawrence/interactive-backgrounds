@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Interactive Backgrounds</title>
-<meta name="description" content="Ten animated 3D scenes that react to the mouse: an aquarium, a firefly meadow, a balloon dawn, a mountain lake, a boreal night, an aspen grove in snow, a sandstone arch under the aurora, a walkable remaster of Doom's first level, and two behind a window that follows your head: a detective's office in miniature and the inside of a computer.">
+<meta name="description" content="Eleven animated 3D scenes that react to the mouse: an aquarium, a firefly meadow, a balloon dawn, a mountain lake, a boreal night, an aspen grove in snow, a sandstone arch under the aurora, a walkable remaster of Doom's first level, and three behind a window that follows your head: a mechanical paper theatre, a detective's office in miniature and the inside of a computer.">
 <meta name="theme-color" content="#07090e">
 <style>
   :root {
@@ -114,11 +114,11 @@
   <div class="hero-slides" id="slides" aria-hidden="true"></div>
   <div class="hero-inner">
     <h1>Interactive Backgrounds</h1>
-    <p class="lead">Ten animated 3D scenes that react to your mouse: a fingertip that stirs the water, creatures that come to a resting cursor, a click that skips a stone or fires a burner. Each is a single web page, served straight from this repository.</p>
+    <p class="lead">Eleven animated 3D scenes that react to your mouse: a fingertip that stirs the water, creatures that come to a resting cursor, a click that skips a stone or fires a burner. Each is a single web page, served straight from this repository.</p>
     <div class="hero-bar">
       <a class="hero-now" id="heroNow" href="#"><span class="dot"></span><small>Now showing</small><strong id="heroTitle">…</strong></a>
       <div class="hero-dots" id="heroDots" role="tablist" aria-label="Scenes"></div>
-      <a class="btn btn-ghost" href="#scenes">All ten scenes ↓</a>
+      <a class="btn btn-ghost" href="#scenes">All eleven scenes ↓</a>
     </div>
   </div>
 </header>
@@ -131,7 +131,7 @@
   <div class="grid" id="grid"></div>
   <noscript>
     <ul>
-      <li><a href="fishbowl/html/">Fishbowl</a> · <a href="meadow/html/">Firefly Meadow</a> · <a href="balloons/html/">Balloon Dawn</a> · <a href="lake/html/">Loon Lake</a> · <a href="boreal/html/">Boreal Night</a> · <a href="aspen/html/">Aspen Snow</a> · <a href="arch/html/">Sandstone Arch</a> · <a href="hangar/html/">Hangar</a> · <a href="diorama/html/?skin=office">The Office</a> · <a href="diorama/html/?skin=computer">Diorama: Computer</a></li>
+      <li><a href="fishbowl/html/">Fishbowl</a> · <a href="meadow/html/">Firefly Meadow</a> · <a href="balloons/html/">Balloon Dawn</a> · <a href="lake/html/">Loon Lake</a> · <a href="boreal/html/">Boreal Night</a> · <a href="aspen/html/">Aspen Snow</a> · <a href="arch/html/">Sandstone Arch</a> · <a href="hangar/html/">Hangar</a> · <a href="diorama/html/?skin=theatre">Paper Theatre</a> · <a href="diorama/html/?skin=office">The Office</a> · <a href="diorama/html/?skin=computer">Diorama: Computer</a></li>
     </ul>
   </noscript>
 </main>
@@ -152,7 +152,7 @@
 
 <footer>
   <div class="inner">
-    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; seven of the ten also have native Swift ports (Hangar and the two Diorama scenes are web only).</span>
+    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; seven of the eleven also have native Swift ports (Hangar and the three Diorama scenes are web only).</span>
     <span>Screenshots are the pages themselves, captured in each of their modes.</span>
   </div>
 </footer>
@@ -192,6 +192,10 @@ const SCENES = [
     desc: 'Doom E1M1 remastered in scanned materials on Phobos: a camera walks the base on its own, from the slime hall to a courtyard under a huge Mars. Web only.',
     does: [['Resting cursor', 'the camera looks toward it'], ['Click the floor', 'it walks there'], ['Click a door, switch or console', 'works it'], ['Menu', 'Emergency Power (red lights), Low Power, a new tour']],
     modes: [['slime', 'Slime hall'], ['window', 'Mars window'], ['courtyard', 'Courtyard'], ['emergency', 'Emergency Power']] },
+  { key: 'theatre', dir: 'diorama', open: 'diorama/html/?skin=theatre', title: 'Paper Theatre', kind: 'Head-tracked toy theatre', accent: '#c9a04a', swift: false,
+    desc: 'The webcam follows your head and the screen becomes the front of a mechanical toy theatre at real size. Every player is painted card on a rod or a wire: four rows of cut waves, a ship, a sun with a face, a sea serpent, a whale. It plays “The Voyage of the Petrel” in five scenes, and then the curtain. Web only.',
+    does: [['Head', 'the rows of the sea shear past one another; look into the wings'], ['Move fast', 'the gulls go up'], ['Click', 'the effects man obliges: a dolphin, lightning, a rocket'], ['L', 'on to the next scene'], ['Menu', 'the scene, the mouse in place of the webcam, calibration']],
+    modes: [['harbour', 'The Harbour'], ['fair', 'Fair Wind'], ['storm', 'The Storm'], ['calm', 'The Calm'], ['landfall', 'Landfall']] },
   { key: 'office', dir: 'diorama', open: 'diorama/html/?skin=office', title: 'The Office', kind: 'Head-tracked miniature', accent: '#e0a23c', swift: false,
     desc: 'The webcam follows your head and the screen becomes a window into a 1:10 miniature: a private eye’s office in the rain. Nobody is ever in it. A four-night mystery is told by the pinboard, the shadows at the frosted door and the light through the blinds. Web only.',
     does: [['Head', 'look round the desk, into the safe, through the blinds at the street'], ['Move fast', 'the mouse bolts for its hole'], ['Click', 'switches the lamps off and on'], ['L', 'on to the next night'], ['Menu', 'the scene, the mouse in place of the webcam, calibration']],

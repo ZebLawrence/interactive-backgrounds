@@ -2,9 +2,11 @@
 
 A new kind of background (`diorama/html/`): the webcam follows your head, and the screen stops being a picture
 and becomes a window. Sit in the middle and you look straight in; lean to the right and you see more of
-the left wall, as you would through a real opening. What is behind the glass is a "skin". There are three:
+the left wall, as you would through a real opening. What is behind the glass is a "skin". There are four:
 
-- **The Office** (`js/noir.js`, the default): a private investigator's office in the rain, as a 1:10
+- **Paper Theatre** (`js/stage.js`, the default): a mechanical toy theatre at real size, playing "The Voyage of
+  the Petrel" in five scenes with painted card on rods and wires. See "The paper theatre".
+- **The Office** (`js/noir.js`): a private investigator's office in the rain, as a 1:10
   miniature, in which a four-night mystery is told by what changes on the pinboard and the desk, by the
   shadows that come to the frosted door, and by the light through the blinds. See "The office".
 - **Computer** (`js/pc.js`): the inside of a desktop PC, seen through its glass side panel, at
@@ -35,8 +37,8 @@ Top-right button (it fades when idle):
 
 | Item | Key | What it does |
 |---|---|---|
-| Scene | `S` | The Office, Computer or Test Box |
-| Chapter / Lighting | `L` | in the office, on to the next night; in the computer, its mood: Dread (red, a slow heartbeat), Abyss (deep blue), Toxic (green), Spectrum, Work Light (the case's strip turned up, to see how it is made), Off |
+| Scene | `S` | Paper Theatre, The Office, Computer or Test Box |
+| Scene / Chapter / Lighting | `L` | in the theatre, on to the next scene of the play; in the office, on to the next night; in the computer, its mood: Dread (red, a slow heartbeat), Abyss (deep blue), Toxic (green), Spectrum, Work Light (the case's strip turned up, to see how it is made), Off |
 | Track My Head (Webcam) | `C` | the webcam on or off; off, the mouse is your head |
 | Calibrate | `K` | sit centred, 60 cm back, and press it (above) |
 | Clear Calibration | | back to the guesses |
@@ -47,12 +49,13 @@ Top-right button (it fades when idle):
 | Low Power (30 fps) | | 30 fps, no ambient occlusion, smaller shadow maps |
 | Full Screen | | |
 
-Not in the menu: a click on the scene is a knock on the glass (in the office it switches the desk lamp and the picture light off and on),
+Not in the menu: a click on the scene is a knock on the glass (in the theatre the effects man obliges; in the office it switches the desk lamp and the picture light off and on),
 and `E` starts the next of the things that
 otherwise happen by themselves (see "What goes on in there").
 
-Flags: `?skin=office` / `?skin=computer` / `?skin=box`, `?leds=abyss` (a lighting mode by name, or one of the
-office's nights: `client`, `trail`, `warning`, `answer`), `?event=crawl` (start one of
+Flags: `?skin=theatre` / `?skin=office` / `?skin=computer` / `?skin=box`, `?leds=abyss` (a lighting mode by
+name, or one of the office's nights: `client`, `trail`, `warning`, `answer`, or one of the theatre's scenes:
+`harbour`, `fair`, `storm`, `calm`, `landfall`), `?event=crawl` (start one of
 the random events three seconds in: `crawl`, `eyes`, `descend`, `code`, `morse`, `sag`), `?camera` / `?mouse`,
 `?preview`, `?hud`, `?fullres`, `?lowpower`, `?diag=27` (display diagonal in inches). The
 settings and the calibration are remembered in `localStorage`.
@@ -119,6 +122,65 @@ skin.dispose()          // the window was resized
 The Test Box is sized from the window, so its open face is exactly the screen. What is in it is there to
 give the eye depth to measure: a ruled grid on every wall, things hung at six depths, shadows that pin each
 to a wall, and one ball on a rod that comes out through the glass.
+
+## The paper theatre
+
+A table-top toy theatre at real size: the screen is its front, about 55 cm wide on a 25-inch display. A
+painted proscenium stands a couple of centimetres behind the glass, with a red curtain and a row of
+footlights, and behind it a stage 33 cm deep on which everything is a piece of painted card worked from off
+stage. It suits the window because a toy theatre is already a stack of flat things at different depths, each
+facing the audience: move your head and the rows of the sea shear past one another, and from the side you
+can see into the wings. (`js/stage.js` is the theatre and its machinery, `js/stageart.js` cuts and paints the
+card, `js/stageplay.js` is the play and has no three.js in it.)
+
+### The play
+
+"The Voyage of the Petrel", five scenes of a little over a minute each. Between scenes the lights go down
+and the scenery changes behind them; after the fifth the curtain falls, waits nine seconds, and rises again.
+A placard at the foot of the stage names the scene, and a line of caption opens each. `L` goes on to the next.
+
+| Scene | What is on | What happens |
+|---|---|---|
+| I, **The Harbour** | The town, the quay, the lighthouse; a dawn sky | The sun comes up on its rod, the windows go dark as it gets light, and the Petrel leaves the quay. |
+| II, **Fair Wind** | Open sea, fair-weather cloud, the painted panorama of islands | The islands are wound past, the sun crosses, and dolphins leap between the rows of waves. |
+| III, **The Storm** | A slate sky, black cloud let down, rain on its threads | The sea heaves to three times its swell, lightning is dropped in, and a serpent rises round the ship: tail, two humps and a head, each on its own rod. |
+| IV, **The Calm** | Night: the moon on its rod, twenty-six stars on threads | A whale surfaces beside the ship, blows twice, shows its flukes and sounds. A star falls down a wire. |
+| V, **Landfall** | The harbour again, at sunset and then dark | The Petrel comes in to the quay, the town's windows and the quay's lanterns are lit, and there are fireworks. |
+
+Now and then, in any scene but the storm, a fish jumps.
+
+### How it is made
+
+- **Card.** Every piece is drawn once as an outline, in millimetres, and that outline is used twice: extruded
+  1.2 mm thick as the piece's geometry, so it has an edge and throws a shadow, and as the clip its paint is
+  laid inside. The paint is canvas strokes in the same millimetres (gradients, brush marks, the details),
+  finished with paper grain and the dark line a blade leaves along a cut edge. A player of several pieces
+  (the ship: spars, two jibs, sails, hull, flags) is a few cards a fraction of a millimetre apart.
+- **Machinery.** Things that rise have iron rods down through slots in the stage floor; things that are
+  let down hang on threads from battens over the stage. The sea is four rows of waves, paler and smaller
+  toward the back, sliding against one another and bobbing at twice that rate. Each player has a place on
+  stage and a way off (into a wing, down a slot, up into the flies) and eases between the two.
+- **The house.** The proscenium is one painted card with the arch cut out of it: columns, a gilt frame, a red
+  frieze with swags and the piece's name in a cartouche. Behind it are two pairs of wings, two borders, and
+  the curtain: two halves of red cloth in folds that are drawn to the sides and gathered there.
+
+### How it is lit
+
+As a stage is. Footlights: a spot on a shelf in front of the proscenium, behind a gilt trough with nine
+lamps, shining up the scenery so shadows climb it. A light under the arch whose colour and level are the
+time of day. A little house light from where the audience sits, on the proscenium's front. All three have
+shadow maps, redrawn every frame because nothing here stands still. The sky cloth is lit from behind: a
+two-colour gradient laid into its emissive map and changed through each scene. The moon, the stars, the
+windows, the lanterns, the lighthouse and the fireworks glow by themselves. Bounce, reflections and contact
+shadows are the computer's.
+
+### Limits
+
+- The art is drawn in code, with curves and washes. It is meant to look like a printed toy-theatre sheet,
+  and it is simpler than a good one.
+- Shadows from the footlights are hard-edged and go straight up, so a roof can throw a black wedge on the sun
+  behind it. That is what footlights do, but a real row of lamps would soften it.
+- No sound.
 
 ## The office
 
@@ -320,7 +382,7 @@ turns that off: the pixels stay and the frame rate gives. The Readout shows what
 
 ## What has and has not been checked
 
-- `node --test 'diorama/tests/*.test.mjs'` (Node 22 or newer; 31 tests): the window's corners land on the screen's
+- `node --test 'diorama/tests/*.test.mjs'` (Node 22 or newer; 37 tests): the window's corners land on the screen's
   corners for any eye; a point in the plane of the glass does not move; things behind it follow the head and
   things in front move against it; a head put at a known place is recovered from synthetic landmarks, at
   the centre, 30 degrees off the lens's axis and with the head turned; a blink changes neither the distance
@@ -335,6 +397,14 @@ turns that off: the pixels stay and the frame rate gives. The Readout shows what
 - The computer, in a browser at 1400 x 788 with the eye pinned from the console: the centred view, views from
   the upper right and lower left, close-ups at a 4K display's pixel density, every lighting mode including
   Off, switching scenes, and three rebuilds without a leaked texture or geometry. No shader errors.
+- The paper theatre, in a browser at 1400 x 788 and 1600 x 900 with the eye pinned from the console: each of
+  the five scenes, the curtain part-way open and a view from up and to one side looked at; two whole
+  performances run through at thirty steps a second with every cue, caption and phase counted and every
+  position checked for a number that is not finite; the click and the E key; two rebuilds and a round of the
+  four scenes without a leaked texture or geometry. No shader errors. `stageplay.js` has six node tests.
+  **Not checked:** any of it with a real head in front of a real display, and the frame rate. This scene
+  redraws three shadow maps every frame, which the others do not; the geometry in them is light (flat
+  cards), but the cost was not measured.
 - The office, in a browser at 1400 x 788 and 1600 x 900 with the eye pinned from the console: each of the
   four nights and the day between looked at; the pinboard, the door with a visitor at it and the safe at
   three to four times magnification; the whole cycle of four nights run through at thirty steps a second
