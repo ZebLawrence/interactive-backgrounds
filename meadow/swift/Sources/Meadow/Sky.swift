@@ -50,6 +50,20 @@ final class Sky {
     private let indexCount: Int
     private let haze: MTLTexture
 
+    /// The real sky (assets/sky/RealSky.swift): a temperate summer night at 41 degrees north. Which way
+    /// north lies is solved for, so the real band crosses the sky where the painted one did. The painted band
+    /// and the hashed stars stand in only if its files are missing.
+    let real = RealSky(latitude: 41, matchBand: simd_normalize(SIMD3<Float>(0.6, 0.76, 0.24)),
+                       radius: skyRadius, horizon: SIMD2(0, 0.09))
+
+    /// Turns the real sky. It fades with the moon (which washes the faint stars out) and goes entirely in a
+    /// storm, where the dome's cloud ceiling takes the sky over.
+    func update(dt: Float, moon: Float, storm: Float, lowPower: Bool) {
+        real.fade = (1 - storm * 0.97) * (1 - moon * 0.25)
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
+    }
+
     init() {
         let (verts, idx) = sphereMesh(radius: skyRadius, widthSegments: 48, heightSegments: 32)
         vertices = GPU.shared.buffer(verts.map { V4($0.0, 1) })
@@ -67,7 +81,10 @@ final class Sky {
         e.setFragmentBuffer(ctx.frame, offset: 0, index: 0)
         e.setFragmentTexture(haze, index: 0)
         e.setFragmentSamplerState(gpu.skySampler, index: 0)
+        var procedural = V4(real.ready ? 0 : 1, 0, 0, 0)
+        e.setFragmentBytes(&procedural, length: 16, index: 1)
         e.drawIndexedPrimitives(type: .triangle, indexCount: indexCount, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
+        real.draw(e, frame: ctx.frame, samples: ctx.samples)
     }
 
     static func milkyWay(_ w: Int = 1536, _ h: Int = 768) -> Canvas {

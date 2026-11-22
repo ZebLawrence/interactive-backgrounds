@@ -25,15 +25,33 @@ final class Sky {
         haze = GPU.shared.texture(Sky.milkyWay(), srgb: false)
     }
 
+    /// The real sky (assets/sky/RealSky.swift): a northern lake at 48 degrees north, loon country. Which way
+    /// north lies is solved for, so the real band crosses the sky where the painted one did. The painted band
+    /// and the hashed stars stand in only if its files are missing.
+    let real = RealSky(latitude: 48, matchBand: simd_normalize(SIMD3<Float>(0.75, 0.6, 0.19)),
+                       radius: skyRadius, horizon: SIMD2(-0.01, 0.1))
+
+    /// Turns the real sky. It belongs to the night: it comes up with `night` and the rain's cloud
+    /// ceiling takes it away.
+    func update(dt: Float, night: Float, rain: Float, lowPower: Bool) {
+        real.fade = night * (1 - rain * 0.95)
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
+    }
+
+    /// Seen directly and in the water's reflection (the real sky too, so the band and the stars lie on the lake).
     func draw(_ ctx: DrawContext) {
         let gpu = GPU.shared, e = ctx.encoder
         e.setRenderPipelineState(gpu.pipeline("skyVertex", "skyFragment", samples: ctx.samples))
         e.setDepthStencilState(gpu.depthTest)
         e.setVertexBuffer(ctx.frame, offset: 0, index: 1)
         e.setFragmentBuffer(ctx.frame, offset: 0, index: 0)
+        var procedural = V4(real.ready ? 0 : 1, 0, 0, 0)
+        e.setFragmentBytes(&procedural, length: 16, index: 1)
         e.setFragmentTexture(haze, index: 0)
         e.setFragmentSamplerState(gpu.skySampler, index: 0)
         mesh.draw(e)
+        real.draw(e, frame: ctx.frame, samples: ctx.samples)
     }
 
     /// The Milky Way, painted once onto an equirectangular image: a glowing core, cooler arms,

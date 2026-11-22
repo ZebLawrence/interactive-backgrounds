@@ -19,8 +19,22 @@ struct QuadParams {
 final class Sky {
     private let mesh: GPUMesh
 
+    /// The real sky (assets/sky/RealSky.swift), turning at the sidereal rate: 35 degrees north,
+    /// balloon-fiesta country. Night mode had only hashed stars and no Milky Way, so `bandNormal` lays the
+    /// band across the sky above the ridges and which way north lies is solved from it. The hashed stars
+    /// stand in only if its files are missing.
+    static let bandNormal = simd_normalize(SIMD3<Float>(0.6, 0.66, 0.45))
+    let real = RealSky(latitude: 35, matchBand: Sky.bandNormal, radius: skyRadius, horizon: SIMD2(-0.01, 0.1))
+
     init() {
         mesh = Geometry.sphere(radius: skyRadius, widthSegments: 64, heightSegments: 40).upload()
+    }
+
+    /// Turns the real sky; `night` is what brings it up (dawn washes it out long before the sun is up).
+    func update(dt: Float, night: Float, lowPower: Bool) {
+        real.fade = night
+        real.starFraction = lowPower ? 0.25 : 1
+        real.update(dt: dt)
     }
 
     func draw(_ ctx: DrawContext) {
@@ -30,7 +44,11 @@ final class Sky {
         e.setDepthStencilState(gpu.depthTest)
         e.setVertexBuffer(ctx.frame, offset: 0, index: 1)
         e.setFragmentBuffer(ctx.frame, offset: 0, index: 0)
+        // The hashed stars only when the real sky's files are missing.
+        var procedural: Float = real.ready ? 0 : 1
+        e.setFragmentBytes(&procedural, length: MemoryLayout<Float>.stride, index: 1)
         mesh.draw(e)
+        real.draw(e, frame: ctx.frame, samples: ctx.samples)
     }
 }
 

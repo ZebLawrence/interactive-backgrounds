@@ -214,6 +214,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 for b in w.valley.balloons {
                     print(String(format: "%5.0f %5.0f %6.0f heat %.2f burn %.2f", b.pos.x, b.pos.y, b.pos.z, b.heat, b.burn))
                 }
+                let real = w.valley.sky.real
+                let gc = real.direction(RealSky.galacticCenter), gp = real.direction(RealSky.galacticPole)
+                print(String(format: "real sky %@: north %.5f, turn %.5f rad, galactic centre (%.4f, %.4f, %.4f), pole (%.4f, %.4f, %.4f), fade %.2f",
+                             real.ready ? "up" : "missing", real.frame.north, real.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, real.fade))
             }
             w.view.captureNextFrame { image in
                 guard let image else { exit(1) }

@@ -13,6 +13,7 @@ static web page.
 | [Aspen Snow](aspen/) — a quaking-aspen grove in falling snow, at eye level among the trunks; snowshoe hares come to look at a resting cursor and bolt from a fast one, a click on the snow flushes a ruffed grouse from its snow roost, and a click on a trunk brings its snow down in a cascade | [`aspen/swift`](aspen/swift) | [`aspen/html`](aspen/html) · [live](https://zeblawrence.github.io/interactive-backgrounds/aspen/html/) |
 | [Sandstone Arch](arch/) — a natural bridge over a still lake at night under the aurora, with a weathered craft exploring the canyon beneath it; a fingertip stirs the water, a click tosses a stone or rouses the craft, the craft turns its red eye on a resting cursor, and rain mode brings a storm sky with lightning | [`arch/swift`](arch/swift) | [`arch/html`](arch/html) · [live](https://zeblawrence.github.io/interactive-backgrounds/arch/html/) |
 | [Hangar](hangar/) — a walkable remaster of Doom's E1M1 on Phobos, in scanned PBR materials; a camera strolls the base on its own (stairs, the zigzag walkway over the glowing slime, the computer-room window onto Mars, the courtyard), doors slide open ahead of it, a resting cursor draws its gaze, a click sends it somewhere or works a door, and Emergency Power drops the lights to red | web only | [`hangar/html`](hangar/html) · [live](https://zeblawrence.github.io/interactive-backgrounds/hangar/html/) |
+| [Trawler](trawler/) — the view from a fishing boat's pilot house as she works her way through the fjords on her own; a spectral sea that runs from glassy calm to a gale and a hull that rides it in six degrees of freedom, procedural islands and channel marks, full day and night at latitude 62; the mouse looks round the wheelhouse, a click out through the glass alters course, a click on a control works it, and a resting cursor brings the porpoises onto her bow wave | web only | [`trawler/html`](trawler/html) · [live](https://zeblawrence.github.io/interactive-backgrounds/trawler/html/) |
 | [Diorama](diorama/) — the webcam follows your head and the screen becomes a real window: lean right and you see the left wall. Behind the glass is a mechanical toy theatre at real size, playing a five-scene sea voyage with painted card on rods and wires (cut waves, a ship, a sea serpent, a whale, fireworks). A second scene is a private investigator's office in the rain, as a 1:10 miniature, where a four-night mystery is told by the pinboard, the shadows at the frosted door and the light through the blinds. A third is the inside of a desktop computer at real size (a painted motherboard, a tower cooler, lit memory, a graphics card), dark, with something living in it | web only | [`diorama/html`](diorama/html) · [live](https://zeblawrence.github.io/interactive-backgrounds/diorama/html/) |
 
 The web pages are served by GitHub Pages straight from this repository (no build step):
@@ -23,6 +24,11 @@ NASA's photographic Milky Way and the Hipparcos catalogue of 118,218 stars, stan
 scene's own latitude and turning about the celestial pole once a sidereal day, 15 degrees an hour,
 the way the sky really turns over an evening. It is progressive — each scene keeps its own painted
 sky until the files land, and keeps it for good if they never do.
+The macOS apps draw the same sky with `assets/sky/RealSky.swift`, a Swift port of it copied into
+each app, at the same latitude, north and hour. Their `build.sh` transcodes Hangar's Milky Way map to
+ASTC, which Apple GPUs sample directly (`assets/sky/tools/prepare-macos.sh`: it needs Node and a
+network connection the first time, and keeps the result in the git-ignored `assets/sky/build/`), and
+bundles it with the star catalogue; an app built without them keeps its painted sky.
 
 Building a new one? Read [guidelines.md](guidelines.md) first: the quality bar, the conventions, and the
 traps the existing backgrounds fell into.

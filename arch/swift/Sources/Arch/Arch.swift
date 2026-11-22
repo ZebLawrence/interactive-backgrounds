@@ -432,6 +432,7 @@ final class Arch {
             rockLights.lamp.w = 0
         }
         if let f = Arch.followCraft { look = (craft.pos, f) }
+        sky.update(dt: dt, aurora: lightState.aurora, rain: rain, lowPower: settings.lowPower)
         rings.update(time: clock)
         sim.advance(dt: dt)
     }
@@ -444,6 +445,9 @@ final class Arch {
                      finger.point.x, finger.point.z, stones.count, keptStones.count))
         if let hit = rockHit(cursor.screen) { print(String(format: "cursor on rock at (%.1f, %.1f, %.1f), %.0f m", hit.point.x, hit.point.y, hit.point.z, hit.dist)) }
         print("craft \(craft!.debugDescription)")
+        let gc = sky.real.direction(RealSky.galacticCenter), gp = sky.real.direction(RealSky.galacticPole)
+        print(String(format: "real sky %@: turn %.4f rad, galactic centre (%.3f, %.3f, %.3f), pole (%.3f, %.3f, %.3f), fade %.2f",
+                     sky.real.ready ? "up" : "missing", sky.real.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, sky.real.fade))
     }
 
     // MARK: - Cameras

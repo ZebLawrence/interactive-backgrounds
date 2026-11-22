@@ -311,7 +311,7 @@ enum Shaders {
         return o;
     }
 
-    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]],
+    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]], constant float4& S [[buffer(1)]],
                                 texture2d<float> hazeMap [[texture(0)]], sampler s [[sampler(0)]]) {
         float time = F.misc.x, moonAmt = F.moonDir.w, storm = F.env.z, flash = F.env.w;
         float3 d = normalize(in.dir);
@@ -322,14 +322,17 @@ enum Shaders {
         // Faint airglow low on the horizon.
         col += float3(0.02, 0.045, 0.035) * exp(-max(h, 0.0) * 14.0);
 
-        float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-        float3 haze = hazeMap.sample(s, tv(uv)).rgb;
-        float hazeAmt = dot(haze, float3(0.33));
-        float3 stars = starLayer(time, uv, 380.0, 0.75, 1.5, 0.0)
-                     + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
-                     + starLayer(time, uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
-        col += haze * 0.3;
-        col += stars * (1.0 - moonAmt * 0.3);
+        // The painted band and the hashed stars stand in only when the real sky's files are missing
+        // (S.x = 1); otherwise RealSky draws the sky and none of this is paid for.
+        if (S.x > 0.001) {
+            float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            float3 haze = hazeMap.sample(s, tv(uv)).rgb;
+            float hazeAmt = dot(haze, float3(0.33));
+            float3 stars = starLayer(time, uv, 380.0, 0.75, 1.5, 0.0)
+                         + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0) * (0.7 + 1.5 * hazeAmt)
+                         + starLayer(time, uv, 1400.0, 0.9, 0.35, 11.0) * (0.5 + 2.0 * hazeAmt);
+            col += (haze * 0.3 + stars * (1.0 - moonAmt * 0.3)) * S.x;
+        }
 
         // The moon's halo.
         float cosm = dot(d, F.moonDir.xyz);
