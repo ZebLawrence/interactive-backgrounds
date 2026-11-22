@@ -22,6 +22,11 @@ NASA's photographic Milky Way and the Hipparcos catalogue of 118,218 stars, stan
 scene's own latitude and turning about the celestial pole once a sidereal day, 15 degrees an hour,
 the way the sky really turns over an evening. It is progressive — each scene keeps its own painted
 sky until the files land, and keeps it for good if they never do.
+The macOS apps draw the same sky with `assets/sky/RealSky.swift`, a Swift port of it copied into
+each app, at the same latitude, north and hour. Their `build.sh` transcodes Hangar's Milky Way map to
+ASTC, which Apple GPUs sample directly (`assets/sky/tools/prepare-macos.sh`: it needs Node and a
+network connection the first time, and keeps the result in the git-ignored `assets/sky/build/`), and
+bundles it with the star catalogue; an app built without them keeps its painted sky.
 
 Building a new one? Read [guidelines.md](guidelines.md) first: the quality bar, the conventions, and the
 traps the existing backgrounds fell into.

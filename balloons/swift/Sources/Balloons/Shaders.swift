@@ -145,7 +145,7 @@ enum Shaders {
         return o;
     }
 
-    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]]) {
+    fragment float4 skyFragment(SkyOut in [[stage_in]], constant Frame& F [[buffer(0)]], constant float& procedural [[buffer(1)]]) {
         float time = F.misc.x, night = F.misc.z;
         float3 sunDir = F.sunDir.xyz, fogColor = F.fogColor.xyz;
         float3 d = normalize(in.dir);
@@ -169,8 +169,12 @@ enum Shaders {
 
         // Night: a dark blue vault full of stars.
         float3 nightCol = mix(float3(0.05, 0.07, 0.14), float3(0.008, 0.012, 0.04), pow(clamp(h * 1.3, 0.0, 1.0), 0.55));
-        float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
-        nightCol += starLayer(time, uv, 380.0, 0.75, 1.5, 0.0) + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0);
+        // The hashed stars stand in only when the real sky's files are missing (RealSky draws the real
+        // stars and the Milky Way); otherwise `procedural` is 0 and none of this is paid for.
+        if (procedural > 0.001) {
+            float2 uv = float2(atan2(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(h, -1.0, 1.0)) / 3.14159265 + 0.5);
+            nightCol += (starLayer(time, uv, 380.0, 0.75, 1.5, 0.0) + starLayer(time, uv, 760.0, 0.84, 0.8, 5.0)) * procedural;
+        }
 
         float3 col = mix(dawn, nightCol, night);
         col = mix(col, fogColor, sstep(0.1, -0.01, h));

@@ -346,6 +346,9 @@ final class Lake {
         for t in shoal.fish { print(String(format: "trout %@ (%.1f, %.2f, %.1f) %@", t.speciesName, t.pos.x, t.pos.y, t.pos.z, "\(t.state)")) }
         for l in loons.list { print(String(format: "loon (%.1f, %.1f) %@", l.pos.x, l.pos.z, "\(l.state)")) }
         for d in dragonflies.list { print(String(format: "dragonfly (%.2f, %.2f, %.2f) %@", d.pos.x, d.pos.y, d.pos.z, "\(d.state)")) }
+        let real = sky.real, gc = real.direction(RealSky.galacticCenter), gp = real.direction(RealSky.galacticPole)
+        print(String(format: "real sky %@: north %.5f, turn %.5f rad, galactic centre (%.4f, %.4f, %.4f), pole (%.4f, %.4f, %.4f), fade %.2f",
+                     real.ready ? "up" : "missing", real.frame.north, real.frame.angle, gc.x, gc.y, gc.z, gp.x, gp.y, gp.z, real.fade))
     }
 
     // MARK: - Population and modes
@@ -430,6 +433,7 @@ final class Lake {
         loons.update(dt: dt)
         dragonflies.update(dt: dt)
         mist.update(dt: dt, night: night, rain: rain, wind: wind)
+        sky.update(dt: dt, night: night, rain: rain, lowPower: settings.lowPower)
         rings.update(time: clock)
         sim.advance(dt: dt)
     }

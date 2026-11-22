@@ -75,6 +75,16 @@ Catmull-Rom curves). The textures are drawn with Core Graphics using the same ca
 code; the moon maps are copied from `meadow/html/assets` into the app bundle. At 60 fps it uses about
 11 ms of GPU time per frame at 2560x1600 on an M3 laptop (Firefly Meadow uses about 7.5).
 
+The night sky is the same real one as the web page's, through the shared `assets/sky/RealSky.swift`
+(a port of `assets/sky/realsky.js`, copied into `Sources/Lake/`): NASA's Deep Star Maps 2020 Milky Way
+on a sphere and the 118,218 Hipparcos stars as points, turning at the sidereal rate for 48 degrees
+north, with north solved so the band crosses the sky where the painted one did. It is drawn in the
+reflection too, so the band and the stars lie on the water; it comes up with the night and the rain's
+ceiling takes it away; Low Power draws the brightest quarter of the stars. `build.sh` copies Hangar's
+`stars.bin` into the bundle, and the Milky Way as ASTC 4x4 (`assets/sky/tools/prepare-macos.sh` makes
+it from Hangar's `milkyway.ktx2` once, which needs node and a network connection the first time); an
+app built without them keeps the painted Milky Way and hashed stars.
+
 ## Web page
 
 It's a plain static page in `html/` (`index.html`, `styles.css` and ES modules in `html/js/`, with

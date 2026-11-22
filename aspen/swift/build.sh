@@ -11,6 +11,14 @@ cp "$(swift build -c release --show-bin-path)/Aspen" "$APP/Contents/MacOS/Aspen"
 # The NASA moon maps, shared with the web version.
 cp ../html/assets/lroc_color_2k.jpg ../html/assets/ldem_3_8bit.jpg "$APP/Contents/Resources/"
 
+# The real night sky (assets/sky): the Milky Way map transcoded for Apple GPUs, and Hangar's star catalogue.
+# Without them the app keeps its hashed stars.
+if ../../assets/sky/tools/prepare-macos.sh; then
+    cp ../../assets/sky/build/milkyway.astc ../../hangar/html/data/stars.bin "$APP/Contents/Resources/"
+else
+    echo "warning: couldn't make the real sky's Milky Way map; the app will hash its own stars" >&2
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
