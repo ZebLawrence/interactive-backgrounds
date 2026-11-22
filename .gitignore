@@ -9,3 +9,5 @@ hangar/tools/node_modules/
 # Trawler: raw asset downloads and tool deps
 trawler/tools/raw/
 trawler/tools/node_modules/
+# The macOS apps' transcoded Milky Way map (assets/sky/tools/prepare-macos.sh makes it)
+assets/sky/build/
