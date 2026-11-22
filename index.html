@@ -152,7 +152,7 @@
 
 <footer>
   <div class="inner">
-    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; seven of the eight also have native Swift ports (Hangar is web only).</span>
+    <span>Served by GitHub Pages from <a href="https://github.com/ZebLawrence/interactive-backgrounds">ZebLawrence/interactive-backgrounds</a>, with no build step. Each scene is a self-contained page on three.js; seven of the nine also have native Swift ports (Hangar and Trawler are web only).</span>
     <span>Screenshots are the pages themselves, captured in each of their modes.</span>
   </div>
 </footer>
@@ -192,6 +192,10 @@ const SCENES = [
     desc: 'Doom E1M1 remastered in scanned materials on Phobos: a camera walks the base on its own, from the slime hall to a courtyard under a huge Mars. Web only.',
     does: [['Resting cursor', 'the camera looks toward it'], ['Click the floor', 'it walks there'], ['Click a door, switch or console', 'works it'], ['Menu', 'Emergency Power (red lights), Low Power, a new tour']],
     modes: [['slime', 'Slime hall'], ['window', 'Mars window'], ['courtyard', 'Courtyard'], ['emergency', 'Emergency Power']] },
+  { key: 'trawler', title: 'Trawler', kind: 'Pilot house at sea', accent: '#4fa8c7', swift: false,
+    desc: 'The view out of a fishing boat’s wheelhouse as she works her way through the fjords on her own. A spectral sea from calm to gale, a hull that rides it, and a day that takes twenty-four minutes. Web only.',
+    does: [['Move the mouse', 'look round the pilot house'], ['Click out through the glass', 'she alters course to that bearing'], ['Click a control', 'throttle, lamps, wipers, radar range, horn'], ['Resting cursor', 'porpoises ride her bow wave'], ['Menu', 'sea state, clock, rain, red night lighting, new waters']],
+    modes: [['calm', 'Calm'], ['storm', 'Storm'], ['night', 'Night'], ['rain', 'Rain']] },
 ];
 const shot = (s, m, large) => `assets/shots/${s.key}-${m}${large ? '' : '-s'}.jpg`;
 const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const k of kids) e.append(k); return e; };
