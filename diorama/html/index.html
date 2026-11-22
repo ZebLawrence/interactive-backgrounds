@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diorama</title>
+<meta name="description" content="A box behind your screen: the webcam follows your head and the view shifts as it would through a real window. A proof of concept for head-tracked backgrounds.">
+<meta name="theme-color" content="#05070a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%AA%9F%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css?v=45">
+<!-- Module URLs (and the stylesheet's) carry a version so GitHub Pages' cached copies are refreshed after a push: bump every ?v= when the JS or CSS changes. -->
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "./js/app.js": "./js/app.js?v=45",
+  "./js/offaxis.js": "./js/offaxis.js?v=45",
+  "./js/headpose.js": "./js/headpose.js?v=45",
+  "./js/tracker.js": "./js/tracker.js?v=45",
+  "./js/room.js": "./js/room.js?v=45",
+  "./js/pc.js": "./js/pc.js?v=45",
+  "./js/pcparts.js": "./js/pcparts.js?v=45",
+  "./js/pcboard.js": "./js/pcboard.js?v=45",
+  "./js/pclife.js": "./js/pclife.js?v=45",
+  "./js/noir.js": "./js/noir.js?v=45",
+  "./js/noirparts.js": "./js/noirparts.js?v=45",
+  "./js/noirprint.js": "./js/noirprint.js?v=45",
+  "./js/noirstory.js": "./js/noirstory.js?v=45",
+  "./js/stage.js": "./js/stage.js?v=45",
+  "./js/stageart.js": "./js/stageart.js?v=45",
+  "./js/stageplay.js": "./js/stageplay.js?v=45",
+  "./js/gi.js": "./js/gi.js?v=45",
+  "./js/post.js": "./js/post.js?v=45",
+  "./js/governor.js": "./js/governor.js?v=45"
+} }
+</script>
+</head>
+<body>
+<canvas id="diorama"></canvas>
+<div id="ui">
+  <button id="menuBtn" aria-label="Diorama menu" aria-expanded="false" title="Diorama">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM8 8h8v8H8zM3 4l5 4M21 4l-5 4M3 20l5-4M21 20l-5-4"/></svg>
+  </button>
+  <div id="menu" hidden role="menu">
+    <div class="hdr" id="menuTitle">Diorama</div>
+    <hr>
+    <button data-act="skin"><span class="check"></span><span class="label">Scene</span><kbd>S</kbd></button>
+    <button data-act="leds"><span class="check"></span><span class="label">Lighting</span><kbd>L</kbd></button>
+    <hr>
+    <button data-toggle="camera"><span class="check"></span><span class="label">Track My Head (Webcam)</span><kbd>C</kbd></button>
+    <button data-act="calibrate"><span class="check"></span><span class="label">Calibrate (sit centred, 60 cm back)</span><kbd>K</kbd></button>
+    <button data-act="uncalibrate"><span class="check"></span><span class="label">Clear Calibration</span></button>
+    <button data-act="diagonal"><span class="check"></span><span class="label">Display Size</span></button>
+    <hr>
+    <button data-toggle="preview"><span class="check"></span><span class="label">Camera Preview</span><kbd>P</kbd></button>
+    <button data-toggle="hud"><span class="check"></span><span class="label">Readout</span><kbd>H</kbd></button>
+    <hr>
+    <button data-toggle="fullRes"><span class="check"></span><span class="label">Full Resolution (may run at 30 fps)</span></button>
+    <button data-toggle="lowPower"><span class="check"></span><span class="label">Low Power (30 fps)</span></button>
+    <button data-act="fullscreen"><span class="check"></span><span class="label">Full Screen</span></button>
+  </div>
+</div>
+<div id="intro" hidden>
+  <div class="card">
+    <h1>Look into the box</h1>
+    <p>This page can use your webcam to follow your head, so the view shifts as it would through a real window. The picture is read in this tab only: nothing is recorded or sent anywhere.</p>
+    <div class="row">
+      <button id="introCamera" class="primary">Use my webcam</button>
+      <button id="introMouse">Use the mouse instead</button>
+    </div>
+  </div>
+</div>
+<div id="preview" hidden>
+  <video id="cam" playsinline muted></video>
+  <canvas id="camOverlay"></canvas>
+</div>
+<pre id="hud" hidden></pre>
+<div id="hint">Move your head (or the mouse) to look around inside · K calibrates · P shows the camera</div>
+<div id="error" hidden></div>
+<script type="module" src="js/app.js?v=45"></script>
+</body>
+</html>
